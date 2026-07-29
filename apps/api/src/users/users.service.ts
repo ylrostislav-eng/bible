@@ -8,6 +8,9 @@ import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 
+/** XP required per level; level = floor(experience / XP_PER_LEVEL) + 1. */
+const XP_PER_LEVEL = 100;
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -67,6 +70,29 @@ export class UsersService {
         language: dto.language,
       },
     });
+  }
+
+  /** Applies XP/coin rewards from a finished game and recalculates level. */
+  async applyGameRewards(
+    userId: string,
+    params: { xpEarned: number; coinsEarned: number },
+  ): Promise<{ user: User; leveledUp: boolean }> {
+    const user = await this.findById(userId);
+    const experience = user.experience + params.xpEarned;
+    const level = Math.floor(experience / XP_PER_LEVEL) + 1;
+    const leveledUp = level > user.level;
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        experience,
+        level,
+        coins: { increment: params.coinsEarned },
+        gamesPlayed: { increment: 1 },
+      },
+    });
+
+    return { user: updated, leveledUp };
   }
 
   toProfile(user: User): UserProfile {

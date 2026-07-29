@@ -54,6 +54,7 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
 docker compose up -d
 pnpm --filter @bible-arena/api run prisma:migrate
+pnpm --filter @bible-arena/api run prisma:seed
 pnpm dev
 ```
 
@@ -73,11 +74,12 @@ pnpm dev
 
 Prisma (из `apps/api` или через `pnpm --filter @bible-arena/api run …`):
 
-| Команда           | Описание                     |
-| ----------------- | ---------------------------- |
-| `prisma:generate` | Сгенерировать Prisma Client  |
-| `prisma:migrate`  | Создать и применить миграцию |
-| `prisma:studio`   | Открыть Prisma Studio        |
+| Команда           | Описание                         |
+| ----------------- | -------------------------------- |
+| `prisma:generate` | Сгенерировать Prisma Client      |
+| `prisma:migrate`  | Создать и применить миграцию     |
+| `prisma:seed`     | Заполнить банк вопросов (40 шт.) |
+| `prisma:studio`   | Открыть Prisma Studio            |
 
 По умолчанию:
 
@@ -92,5 +94,7 @@ Prisma (из `apps/api` или через `pnpm --filter @bible-arena/api run �
 - ✅ Этап 1 — базовая структура монорепозитория.
 - ✅ Этап 2 — авторизация через Telegram, профиль пользователя, оболочка
   приложения (навигация, тёмная тема, онбординг).
-- ⏳ Далее — игровые режимы, друзья, рейтинги, комнаты, турниры (см.
-  `docs/CHANGELOG.md`).
+- ✅ Этап 3 — одиночная игра: банк из 40 вопросов, полный игровой цикл
+  (вопрос → ответ → объяснение → итог), начисление опыта/монет/уровня.
+- ⏳ Далее — режим "Изучение", друзья, дуэли, рейтинги, комнаты, турниры
+  (см. `docs/CHANGELOG.md`).

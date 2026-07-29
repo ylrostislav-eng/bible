@@ -32,6 +32,109 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  gameSessions GameSession[]
+
   @@index([rating])
   @@map("users")
+}
+
+enum Testament {
+  OLD
+  NEW
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  APPROVED
+}
+
+/// A single quiz question. `options` always has exactly 4 entries;
+/// `correctIndex` points into that array.
+model Question {
+  id String @id @default(cuid())
+
+  text         String
+  options      String[]
+  correctIndex Int
+  explanation  String
+
+  testament Testament
+  book      String
+  chapter   Int?
+  verses    String?
+  topic     String?
+
+  difficulty Difficulty     @default(MEDIUM)
+  source     String?
+  status     QuestionStatus @default(APPROVED)
+
+  usageCount Int @default(0)
+  errorCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  answers GameAnswer[]
+
+  @@index([testament, difficulty, status])
+  @@map("questions")
+}
+
+enum GameMode {
+  SOLO
+}
+
+enum GameSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+/// One played game. Only SOLO mode exists today; duels/rooms will extend
+/// this with participants rather than reusing `userId` as the sole owner.
+model GameSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mode          GameMode          @default(SOLO)
+  status        GameSessionStatus @default(IN_PROGRESS)
+  questionCount Int
+  correctCount  Int               @default(0)
+  score         Int               @default(0)
+  xpEarned      Int               @default(0)
+  coinsEarned   Int               @default(0)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  answers GameAnswer[]
+
+  @@index([userId])
+  @@map("game_sessions")
+}
+
+/// One question served within a session, in order. Created up front for the
+/// whole session; filled in as the player answers.
+model GameAnswer {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question   @relation(fields: [questionId], references: [id])
+
+  order         Int
+  selectedIndex Int?
+  isCorrect     Boolean?
+  answeredAt    DateTime?
+  timeTakenMs   Int?
+
+  @@unique([sessionId, order])
+  @@map("game_answers")
 }

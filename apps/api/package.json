@@ -21,7 +21,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "prisma db seed"
   },
   "dependencies": {
     "@bible-arena/shared": "workspace:*",
@@ -38,6 +39,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "dotenv": "^16.4.7",
     "prisma": "^6.2.1",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
