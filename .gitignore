@@ -28,3 +28,6 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+
+# Local Redis dump (created if redis-server is ever run outside Docker)
+dump.rdb
