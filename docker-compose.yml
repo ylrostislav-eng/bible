@@ -1,16 +1,37 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: bible-quiz-postgres
+    container_name: bible-arena-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-bible_quiz}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bible_quiz}
-      POSTGRES_DB: ${POSTGRES_DB:-bible_quiz}
+      POSTGRES_USER: ${POSTGRES_USER:-bible_arena}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bible_arena}
+      POSTGRES_DB: ${POSTGRES_DB:-bible_arena}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-bible_arena}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bible-arena-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
+  redis_data:

@@ -1,0 +1,88 @@
+'use client';
+
+import type { AuthResponse, UpdateProfileInput, UserProfile } from '@bible-arena/shared';
+import { retrieveRawInitData } from '@telegram-apps/sdk-react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ApiError, apiClient, setAccessToken } from './api';
+
+type AuthStatus = 'loading' | 'no-telegram' | 'authenticated' | 'error';
+
+interface AuthContextValue {
+  status: AuthStatus;
+  user: UserProfile | null;
+  errorMessage: string | null;
+  retry: () => void;
+  updateProfile: (input: UpdateProfileInput) => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [status, setStatus] = useState<AuthStatus>('loading');
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function login() {
+      setStatus('loading');
+      setErrorMessage(null);
+
+      let initData: string | undefined;
+      try {
+        initData = retrieveRawInitData();
+      } catch {
+        initData = undefined;
+      }
+
+      if (!initData) {
+        if (!cancelled) setStatus('no-telegram');
+        return;
+      }
+
+      try {
+        const response = await apiClient.post<AuthResponse>('/auth/telegram', { initData });
+        if (cancelled) return;
+        setAccessToken(response.accessToken);
+        setUser(response.user);
+        setStatus('authenticated');
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof ApiError ? error.message : 'Не удалось подключиться к серверу';
+        setErrorMessage(message);
+        setStatus('error');
+      }
+    }
+
+    void login();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+
+  const updateProfile = useCallback(async (input: UpdateProfileInput) => {
+    const profile = await apiClient.patch<UserProfile>('/users/me', input);
+    setUser(profile);
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({ status, user, errorMessage, retry, updateProfile }),
+    [status, user, errorMessage, retry, updateProfile],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return ctx;
+}

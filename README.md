@@ -1,13 +1,18 @@
-# Bible Quiz — Telegram Mini App
+# Bible Arena — Telegram Mini App
 
-Начальная структура монорепозитория для Telegram Mini App — викторины по Библии.
+Игровая социальная платформа для изучения Библии внутри Telegram: дуэли,
+комнаты, рейтинги, турниры, друзья, ежедневные задания.
+
+Подробная архитектура — в [`docs/architecture.md`](docs/architecture.md).
+История изменений — в [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
 ## Стек технологий
 
-- **Frontend**: Next.js + TypeScript (`apps/web`)
+- **Frontend**: Next.js (App Router) + TypeScript + TailwindCSS (`apps/web`)
 - **Backend**: NestJS + TypeScript (`apps/api`)
-- **Database**: PostgreSQL
-- **ORM**: Prisma (`apps/api/prisma`)
+- **База данных**: PostgreSQL + Prisma (`apps/api/prisma`)
+- **Кэш/Realtime**: Redis
+- **Авторизация**: Telegram Mini Apps `initData` → JWT
 - **Monorepo**: pnpm workspaces
 - **Общие типы**: `packages/shared`
 
@@ -15,11 +20,13 @@
 
 ```
 apps/
-  web/       # Next.js приложение
-  api/       # NestJS приложение
+  web/       # Next.js приложение (Telegram Mini App)
+  api/       # NestJS API
 packages/
-  shared/    # Общие TypeScript-типы
-docker-compose.yml
+  shared/    # Общие TypeScript-типы и константы
+docs/        # Документация и changelog
+scripts/     # Вспомогательные скрипты разработки
+docker-compose.yml   # PostgreSQL + Redis
 .env.example
 ```
 
@@ -27,57 +34,63 @@ docker-compose.yml
 
 - Node.js >= 20
 - pnpm >= 10
-- Docker + Docker Compose (для PostgreSQL)
+- Docker + Docker Compose (для PostgreSQL и Redis)
 
-## Установка
+## Быстрый старт
+
+```bash
+./scripts/setup.sh
+```
+
+Скрипт скопирует файлы окружения, установит зависимости, поднимет
+PostgreSQL/Redis и сгенерирует Prisma Client. Дальше — `pnpm dev`.
+
+### Вручную
 
 ```bash
 pnpm install
-```
-
-Скопируйте файлы окружения:
-
-```bash
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
-```
-
-## База данных
-
-Запустить PostgreSQL в Docker:
-
-```bash
 docker compose up -d
+pnpm --filter @bible-arena/api run prisma:migrate
+pnpm dev
 ```
 
-Сгенерировать Prisma Client:
-
-```bash
-pnpm --filter @bible-quiz/api run prisma:generate
-```
-
-Применить миграции (после появления моделей в `apps/api/prisma/schema.prisma`):
-
-```bash
-pnpm --filter @bible-quiz/api run prisma:migrate
-```
+Для реальной авторизации через Telegram нужно указать `TELEGRAM_BOT_TOKEN`
+(из [@BotFather](https://t.me/BotFather)) в `apps/api/.env`.
 
 ## Команды разработки
 
 Из корня проекта:
 
-| Команда      | Описание                                                |
-| ------------ | ------------------------------------------------------- |
-| `pnpm dev`   | Запускает `web` и `api` в режиме разработки параллельно |
-| `pnpm build` | Собирает все приложения и пакеты                        |
-| `pnpm lint`  | Запускает линтинг во всех приложениях и пакетах         |
+| Команда       | Описание                                                |
+| ------------- | ------------------------------------------------------- |
+| `pnpm dev`    | Запускает `shared` (watch), `web` и `api` параллельно   |
+| `pnpm build`  | Собирает все приложения и пакеты (в правильном порядке) |
+| `pnpm lint`   | Запускает линтинг во всех приложениях и пакетах         |
+| `pnpm format` | Форматирует код через Prettier                          |
+
+Prisma (из `apps/api` или через `pnpm --filter @bible-arena/api run …`):
+
+| Команда           | Описание                     |
+| ----------------- | ---------------------------- |
+| `prisma:generate` | Сгенерировать Prisma Client  |
+| `prisma:migrate`  | Создать и применить миграцию |
+| `prisma:studio`   | Открыть Prisma Studio        |
 
 По умолчанию:
 
 - `apps/web` доступен на http://localhost:3000
-- `apps/api` доступен на http://localhost:3001
+- `apps/api` доступен на http://localhost:3001 (`GET /health` — проверка БД/Redis)
 
-## Статус
+Перед коммитом автоматически запускается Prettier на изменённых файлах
+(Husky + lint-staged).
 
-Это начальная структура проекта без бизнес-логики: нет Telegram-бота, пользователей, вопросов викторины и т.д. Эти части будут добавлены на следующих этапах разработки.
+## Статус разработки
+
+- ✅ Этап 1 — базовая структура монорепозитория.
+- ✅ Этап 2 — авторизация через Telegram, профиль пользователя, оболочка
+  приложения (навигация, тёмная тема, онбординг).
+- ⏳ Далее — игровые режимы, друзья, рейтинги, комнаты, турниры (см.
+  `docs/CHANGELOG.md`).

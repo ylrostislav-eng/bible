@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AppService {
-  getHello(): string {
-    return 'Hello World!';
+  getInfo() {
+    return {
+      name: 'Bible Arena API',
+      status: 'running',
+    };
   }
 }
