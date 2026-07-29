@@ -7,7 +7,7 @@ import { Button } from './ui/button';
 import { Spinner } from './ui/spinner';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { status, user, errorMessage, retry } = useAuth();
+  const { status, user, errorMessage, retry, devLogin } = useAuth();
 
   if (status === 'loading') {
     return (
@@ -24,6 +24,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         <p className="text-sm text-text-secondary">
           Это приложение работает только внутри Telegram Mini Apps.
         </p>
+        {process.env.NODE_ENV !== 'production' && (
+          <Button onClick={devLogin} className="mt-6 max-w-xs">
+            Войти как тестовый пользователь (режим разработки)
+          </Button>
+        )}
       </div>
     );
   }

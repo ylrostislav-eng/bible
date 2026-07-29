@@ -1,12 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { AuthResponse } from '@bible-arena/shared';
+import type { User } from '@prisma/client';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
 import type { JwtPayload } from './jwt-payload.interface';
 import { TelegramAuthService } from './telegram-auth.service';
 
 const ONLINE_PRESENCE_TTL_SECONDS = 60;
+/** Reserved, never issued by Telegram (real IDs are always positive). */
+const DEV_USER_TELEGRAM_ID = BigInt(-1);
 
 @Injectable()
 export class AuthService {
@@ -15,6 +19,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
   async loginWithTelegram(initData: string): Promise<AuthResponse> {
@@ -26,13 +31,40 @@ export class AuthService {
       telegramAvatarUrl: telegramUser.photo_url ?? null,
     });
 
+    return this.issueSession(user.id, user.telegramId, user);
+  }
+
+  /**
+   * Lets you try the app in a plain browser during local development,
+   * without a Telegram bot or tunnel. Always logs into the same fixed
+   * account. Disabled outside development regardless of frontend state.
+   */
+  async devLogin(): Promise<AuthResponse> {
+    if (this.configService.get<string>('NODE_ENV') === 'production') {
+      throw new ForbiddenException('Dev login is disabled in production');
+    }
+
+    const user = await this.usersService.findOrCreateByTelegramId({
+      telegramId: DEV_USER_TELEGRAM_ID,
+      telegramUsername: 'dev_user',
+      telegramAvatarUrl: null,
+    });
+
+    return this.issueSession(user.id, user.telegramId, user);
+  }
+
+  private async issueSession(
+    userId: string,
+    telegramId: bigint,
+    user: User,
+  ): Promise<AuthResponse> {
     const payload: JwtPayload = {
-      sub: user.id,
-      telegramId: user.telegramId.toString(),
+      sub: userId,
+      telegramId: telegramId.toString(),
     };
     const accessToken = await this.jwtService.signAsync(payload);
 
-    await this.markOnline(user.id);
+    await this.markOnline(userId);
 
     return {
       accessToken,

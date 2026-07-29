@@ -12,6 +12,8 @@ interface AuthContextValue {
   user: UserProfile | null;
   errorMessage: string | null;
   retry: () => void;
+  /** Local-development-only login bypass; the backend rejects it in production. */
+  devLogin: () => void;
   updateProfile: (input: UpdateProfileInput) => Promise<void>;
 }
 
@@ -22,6 +24,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [useDevLogin, setUseDevLogin] = useState(false);
+
+  const applySession = useCallback((response: AuthResponse) => {
+    setAccessToken(response.accessToken);
+    setUser(response.user);
+    setStatus('authenticated');
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +38,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function login() {
       setStatus('loading');
       setErrorMessage(null);
+
+      if (useDevLogin) {
+        try {
+          const response = await apiClient.post<AuthResponse>('/auth/dev-login');
+          if (!cancelled) applySession(response);
+        } catch (error) {
+          if (cancelled) return;
+          setErrorMessage(error instanceof ApiError ? error.message : 'Не удалось войти');
+          setStatus('error');
+        }
+        return;
+      }
 
       let initData: string | undefined;
       try {
@@ -44,10 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const response = await apiClient.post<AuthResponse>('/auth/telegram', { initData });
-        if (cancelled) return;
-        setAccessToken(response.accessToken);
-        setUser(response.user);
-        setStatus('authenticated');
+        if (!cancelled) applySession(response);
       } catch (error) {
         if (cancelled) return;
         const message =
@@ -62,9 +80,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, [attempt, useDevLogin, applySession]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const devLogin = useCallback(() => setUseDevLogin(true), []);
 
   const updateProfile = useCallback(async (input: UpdateProfileInput) => {
     const profile = await apiClient.patch<UserProfile>('/users/me', input);
@@ -72,8 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, errorMessage, retry, updateProfile }),
-    [status, user, errorMessage, retry, updateProfile],
+    () => ({ status, user, errorMessage, retry, devLogin, updateProfile }),
+    [status, user, errorMessage, retry, devLogin, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
