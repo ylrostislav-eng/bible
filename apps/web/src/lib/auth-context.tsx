@@ -41,7 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (useDevLogin) {
         try {
-          const response = await apiClient.post<AuthResponse>('/auth/dev-login');
+          const slot = Number(new URLSearchParams(window.location.search).get('devSlot')) || 1;
+          const response = await apiClient.post<AuthResponse>('/auth/dev-login', { slot });
           if (!cancelled) applySession(response);
         } catch (error) {
           if (cancelled) return;

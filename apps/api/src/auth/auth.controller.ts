@@ -1,5 +1,6 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { DevLoginDto } from './dto/dev-login.dto';
 import { TelegramLoginDto } from './dto/telegram-login.dto';
 
 @Controller('auth')
@@ -13,7 +14,7 @@ export class AuthController {
 
   /** Local-development-only login bypass — see AuthService.devLogin. */
   @Post('dev-login')
-  devLogin() {
-    return this.authService.devLogin();
+  devLogin(@Body() dto: DevLoginDto) {
+    return this.authService.devLogin(dto.slot);
   }
 }

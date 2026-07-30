@@ -9,8 +9,8 @@ import type { JwtPayload } from './jwt-payload.interface';
 import { TelegramAuthService } from './telegram-auth.service';
 
 const ONLINE_PRESENCE_TTL_SECONDS = 60;
-/** Reserved, never issued by Telegram (real IDs are always positive). */
-const DEV_USER_TELEGRAM_ID = BigInt(-1);
+/** Reserved range, never issued by Telegram (real IDs are always positive). */
+const DEV_USER_TELEGRAM_ID_BASE = -1n;
 
 @Injectable()
 export class AuthService {
@@ -36,17 +36,19 @@ export class AuthService {
 
   /**
    * Lets you try the app in a plain browser during local development,
-   * without a Telegram bot or tunnel. Always logs into the same fixed
-   * account. Disabled outside development regardless of frontend state.
+   * without a Telegram bot or tunnel. `slot` (1-5) selects between a handful
+   * of fixed accounts, so two duelling players can be simulated in two
+   * browser windows on the same machine. Disabled outside development
+   * regardless of frontend state.
    */
-  async devLogin(): Promise<AuthResponse> {
+  async devLogin(slot: number): Promise<AuthResponse> {
     if (this.configService.get<string>('NODE_ENV') === 'production') {
       throw new ForbiddenException('Dev login is disabled in production');
     }
 
     const user = await this.usersService.findOrCreateByTelegramId({
-      telegramId: DEV_USER_TELEGRAM_ID,
-      telegramUsername: 'dev_user',
+      telegramId: DEV_USER_TELEGRAM_ID_BASE - BigInt(slot - 1),
+      telegramUsername: `dev_user_${slot}`,
       telegramAvatarUrl: null,
     });
 
