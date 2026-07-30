@@ -32,7 +32,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  gameSessions GameSession[]
+  gameParticipations GameParticipant[]
 
   @@index([rating])
   @@map("users")
@@ -88,53 +88,91 @@ model Question {
 
 enum GameMode {
   SOLO
+  DUEL
 }
 
 enum GameSessionStatus {
+  WAITING_FOR_OPPONENT
   IN_PROGRESS
   COMPLETED
   ABANDONED
 }
 
-/// One played game. Only SOLO mode exists today; duels/rooms will extend
-/// this with participants rather than reusing `userId` as the sole owner.
+/// One played game — solo or a duel between two participants. Rooms/
+/// tournaments will reuse the same participants model with more than two
+/// rows per session.
 model GameSession {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
 
   mode          GameMode          @default(SOLO)
   status        GameSessionStatus @default(IN_PROGRESS)
   questionCount Int
-  correctCount  Int               @default(0)
-  score         Int               @default(0)
-  xpEarned      Int               @default(0)
-  coinsEarned   Int               @default(0)
+
+  /// 6-character code used to join a DUEL; null for SOLO sessions.
+  inviteCode String? @unique
+
+  /// Index (0-based) of the question currently being answered.
+  currentOrder Int @default(0)
+  /// Server timestamp when the current question was presented — the only
+  /// source of truth for speed-based scoring; client-reported timings are
+  /// never trusted.
+  currentQuestionStartedAt DateTime?
+  /// Seconds allowed per question in a duel; unused for SOLO.
+  timeLimitSeconds Int @default(15)
 
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
-  answers GameAnswer[]
+  participants GameParticipant[]
+  answers      GameAnswer[]
 
-  @@index([userId])
   @@map("game_sessions")
 }
 
-/// One question served within a session, in order. Created up front for the
-/// whole session; filled in as the player answers.
-model GameAnswer {
+/// One player's presence and running score within a session. SOLO sessions
+/// have exactly one; DUEL sessions have exactly two.
+model GameParticipant {
   id        String      @id @default(cuid())
   sessionId String
   session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  questionId String
-  question   Question   @relation(fields: [questionId], references: [id])
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  correctCount Int @default(0)
+  score        Int @default(0)
+  /// Current streak of consecutive correct answers, reset to 0 on a miss.
+  streak Int @default(0)
+
+  xpEarned    Int @default(0)
+  coinsEarned Int @default(0)
+
+  answers GameAnswer[]
+
+  @@unique([sessionId, userId])
+  @@map("game_participants")
+}
+
+/// One question served to one participant, in order. Created up front for
+/// the whole session (per participant); filled in as they answer. In a duel
+/// both participants get their own row for the same `questionId`/`order`.
+model GameAnswer {
+  id            String          @id @default(cuid())
+  sessionId     String
+  session       GameSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   GameParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question        @relation(fields: [questionId], references: [id])
 
   order         Int
   selectedIndex Int?
   isCorrect     Boolean?
   answeredAt    DateTime?
   timeTakenMs   Int?
+  /// Points this answer contributed to the participant's score (duels only;
+  /// solo scoring is flat and doesn't need a per-question breakdown).
+  scoreDelta Int?
 
-  @@unique([sessionId, order])
+  @@unique([participantId, order])
   @@map("game_answers")
 }

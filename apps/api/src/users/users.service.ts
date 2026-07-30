@@ -72,23 +72,36 @@ export class UsersService {
     });
   }
 
-  /** Applies XP/coin rewards from a finished game and recalculates level. */
+  /**
+   * Applies XP/coin rewards from a finished game and recalculates level.
+   * `outcome`/`ratingDelta` only apply to competitive modes (duels) — solo
+   * games leave gamesWon/gamesLost/rating untouched.
+   */
   async applyGameRewards(
     userId: string,
-    params: { xpEarned: number; coinsEarned: number },
+    params: {
+      xpEarned: number;
+      coinsEarned: number;
+      outcome?: 'win' | 'loss' | 'draw';
+      ratingDelta?: number;
+    },
   ): Promise<{ user: User; leveledUp: boolean }> {
     const user = await this.findById(userId);
     const experience = user.experience + params.xpEarned;
     const level = Math.floor(experience / XP_PER_LEVEL) + 1;
     const leveledUp = level > user.level;
+    const rating = Math.max(100, user.rating + (params.ratingDelta ?? 0));
 
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         experience,
         level,
+        rating,
         coins: { increment: params.coinsEarned },
         gamesPlayed: { increment: 1 },
+        ...(params.outcome === 'win' && { gamesWon: { increment: 1 } }),
+        ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
       },
     });
 
