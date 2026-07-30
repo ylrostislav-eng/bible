@@ -5,6 +5,8 @@
 
 Подробная архитектура — в [`docs/architecture.md`](docs/architecture.md).
 История изменений — в [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+Как выложить приложение в интернет (чтобы играть с друзьями) — в
+[`docs/deployment.md`](docs/deployment.md).
 
 ## Стек технологий
 
@@ -98,5 +100,7 @@ Prisma (из `apps/api` или через `pnpm --filter @bible-arena/api run �
   (вопрос → ответ → объяснение → итог), начисление опыта/монет/уровня.
 - ✅ Этап 4 — дуэли: приглашение по коду, живой счёт, очки за
   правильность/скорость/серию, победы/поражения и рейтинг.
+- ✅ Деплой: конфигурация для Railway (backend + PostgreSQL + Redis) и
+  Vercel (frontend) — см. `docs/deployment.md`.
 - ⏳ Далее — режим "Изучение", друзья, рейтинги, комнаты, турниры
   (см. `docs/CHANGELOG.md`).

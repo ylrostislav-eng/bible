@@ -1,0 +1,123 @@
+# Деплой в продакшен
+
+Цель — чтобы приложение было доступно по постоянной ссылке 24/7, и друзья
+могли открыть его через Telegram-бота, а не только на твоём компьютере.
+
+## Обзор
+
+| Что                            | Где размещаем                                               |
+| ------------------------------ | ----------------------------------------------------------- |
+| Frontend (`apps/web`, Next.js) | [Vercel](https://vercel.com) — бесплатно для такого проекта |
+| Backend (`apps/api`, NestJS)   | [Railway](https://railway.app)                              |
+| PostgreSQL                     | Railway (плагин в том же проекте)                           |
+| Redis                          | Railway (плагин в том же проекте)                           |
+| Точка входа для игроков        | Telegram-бот через [@BotFather](https://t.me/BotFather)     |
+
+Railway не полностью бесплатен (после пробного периода — тарифный план
+Hobby, около $5/мес.), но зато Postgres, Redis и сам сервер живут в одном
+месте и настраиваются в одном интерфейсе. Vercel для фронтенда бесплатен.
+
+Готовые файлы конфигурации уже в репозитории:
+
+- `apps/api/Dockerfile` — сборка backend для Railway.
+- `vercel.json` (в корне) — сборка frontend для Vercel (сначала собирает
+  `packages/shared`, потом `apps/web` — Next.js не соберётся без этого).
+
+## Шаг 1 — Backend, PostgreSQL, Redis на Railway
+
+1. Зарегистрируйся на [railway.app](https://railway.app) через GitHub.
+2. **New Project → Deploy from GitHub repo** → выбери репозиторий `bible`.
+3. В настройках сервиса (**Settings**):
+   - **Root Directory** — оставь пустым (`/`) — это важно, сборка идёт из
+     корня монорепозитория.
+   - **Dockerfile Path** — укажи `apps/api/Dockerfile`.
+4. В том же проекте Railway: **+ New → Database → Add PostgreSQL**, и
+   отдельно **+ New → Database → Add Redis**. Railway создаст их рядом с
+   сервисом backend.
+5. Открой сервис backend → вкладка **Variables** и добавь:
+
+   | Переменная           | Значение                                                                   |
+   | -------------------- | -------------------------------------------------------------------------- |
+   | `DATABASE_URL`       | нажми "Add Reference" → выбери Postgres → `DATABASE_URL`                   |
+   | `REDIS_URL`          | нажми "Add Reference" → выбери Redis → `REDIS_URL`                         |
+   | `NODE_ENV`           | `production`                                                               |
+   | `JWT_SECRET`         | длинная случайная строка (не используй `dev-secret-change-me`!)            |
+   | `JWT_EXPIRES_IN`     | `30d`                                                                      |
+   | `CORS_ORIGIN`        | пока поставь `http://localhost:3000` — поменяем на реальный адрес в Шаге 3 |
+   | `TELEGRAM_BOT_TOKEN` | пока оставь пустым — заполним в Шаге 4                                     |
+
+   Для `JWT_SECRET` можно сгенерировать случайную строку на своём
+   компьютере: `openssl rand -hex 32` (в PowerShell — просто попроси меня
+   сгенерировать, я пришлю строку).
+
+6. Railway соберёт и задеплоит сервис. В настройках сервиса включи
+   **Networking → Generate Domain** — получишь публичный адрес вида
+   `https://bible-api-production.up.railway.app`. Он понадобится дальше.
+7. Проверь, что всё живо: открой `<этот-адрес>/health` в браузере — должно
+   быть `{"status":"ok","database":true,"redis":true,...}`.
+
+### Заполнить базу вопросами (один раз)
+
+Миграции (создание таблиц) применяются автоматически при каждом запуске
+контейнера. А вот банк вопросов (`prisma:seed`) — нет, его нужно запустить
+один раз вручную, иначе игра будет без вопросов:
+
+1. Установи [Railway CLI](https://docs.railway.app/guides/cli) или
+   выполни это через вкладку сервиса **Settings → Deploy → Run command** /
+   или **⋮ → Command** (в интерфейсе Railway есть возможность выполнить
+   разовую команду в контексте сервиса).
+2. Команда: `pnpm --filter @bible-arena/api run prisma:seed`.
+
+## Шаг 2 — Frontend на Vercel
+
+1. Зарегистрируйся на [vercel.com](https://vercel.com) через GitHub.
+2. **Add New → Project** → выбери репозиторий `bible`.
+3. Vercel сам найдёт `vercel.json` в корне и настроит сборку — ничего в
+   Root Directory менять не нужно, оставь по умолчанию.
+4. В **Environment Variables** добавь:
+
+   | Переменная            | Значение                                              |
+   | --------------------- | ----------------------------------------------------- |
+   | `NEXT_PUBLIC_API_URL` | адрес backend с Railway (из Шага 1, без `/` на конце) |
+
+5. **Deploy**. Получишь адрес вида `https://bible-arena.vercel.app`.
+
+## Шаг 3 — Разрешить frontend обращаться к backend (CORS)
+
+Вернись в Railway → сервис backend → **Variables** → поменяй
+`CORS_ORIGIN` на реальный адрес с Vercel (`https://bible-arena.vercel.app`,
+без слэша в конце). Сервис перезапустится сам.
+
+## Шаг 4 — Telegram-бот
+
+1. В Telegram напиши [@BotFather](https://t.me/BotFather) → `/newbot` →
+   придумай имя и username (должен заканчиваться на `bot`).
+2. BotFather пришлёт токен — скопируй его.
+3. В Railway → сервис backend → **Variables** → вставь токен в
+   `TELEGRAM_BOT_TOKEN`. Сервис перезапустится.
+4. Снова у @BotFather: `/mybots` → выбери своего бота → **Bot Settings** →
+   **Menu Button** → **Configure Menu Button** → пришли адрес с Vercel
+   (`https://bible-arena.vercel.app`) и текст кнопки, например «Играть».
+
+Готово: теперь любой, кто откроет твоего бота в Telegram и нажмёт кнопку
+меню, попадёт в игру — уже как настоящий Telegram-пользователь (без
+dev-login, авторизация пройдёт по-настоящему).
+
+## Как обновлять после деплоя
+
+И Railway, и Vercel следят за веткой в GitHub и передеплоивают
+приложение автоматически при каждом `git push`. Ничего вручную запускать
+не нужно — просто пуш в ту же ветку, что подключена в настройках проекта.
+
+## Если что-то не работает
+
+- `<backend>/health` отвечает не `ok` → проверь `DATABASE_URL`/`REDIS_URL`
+  в Variables на Railway (должны быть подставлены через "Add Reference").
+- В браузере в консоли ошибка про CORS → `CORS_ORIGIN` на Railway не
+  совпадает один-в-один с адресом Vercel (проверь `https://`, отсутствие
+  слэша в конце).
+- Кнопка в Telegram не открывает игру / пишет об ошибке → проверь, что
+  Menu Button URL в BotFather — это тот же адрес, что и на Vercel, и что
+  `TELEGRAM_BOT_TOKEN` в Railway верный.
+- Игра открывается, но вопросов нет → не выполнен разовый
+  `prisma:seed` (см. конец Шага 1).

@@ -1,0 +1,5 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @bible-arena/shared build && pnpm --filter @bible-arena/web build",
+  "outputDirectory": "apps/web/.next"
+}
