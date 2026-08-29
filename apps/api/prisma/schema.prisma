@@ -29,13 +29,90 @@ model User {
   gamesWon    Int @default(0)
   gamesLost   Int @default(0)
 
+  /// Consecutive days with at least one completed chapter check-up.
+  currentStreak    Int       @default(0)
+  longestStreak    Int       @default(0)
+  lastActivityDate DateTime? @db.Date
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  gameParticipations GameParticipant[]
+  gameParticipations   GameParticipant[]
+  chapterCheckSessions ChapterCheckSession[]
 
   @@index([rating])
   @@map("users")
+}
+
+/// A quiz question checking comprehension of one specific Bible chapter
+/// (distinct from the free-form trivia bank used by solo/duel games).
+model ChapterQuestion {
+  id String @id @default(cuid())
+
+  bookId  Int
+  chapter Int
+
+  text         String
+  options      String[]
+  correctIndex Int
+  explanation  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  answers ChapterCheckAnswer[]
+
+  @@index([bookId, chapter])
+  @@map("chapter_questions")
+}
+
+/// One attempt at the comprehension check for a chapter. Timing is tracked
+/// server-side (`currentQuestionStartedAt` + `timeLimitSeconds`) so the
+/// client can't just wait indefinitely before answering.
+model ChapterCheckSession {
+  id String @id @default(cuid())
+
+  userId  String
+  bookId  Int
+  chapter Int
+
+  totalQuestions Int
+  correctCount   Int @default(0)
+
+  currentQuestionStartedAt DateTime?
+  timeLimitSeconds         Int       @default(20)
+  completedAt              DateTime?
+
+  createdAt DateTime @default(now())
+
+  user    User                 @relation(fields: [userId], references: [id])
+  answers ChapterCheckAnswer[]
+
+  @@index([userId])
+  @@map("chapter_check_sessions")
+}
+
+model ChapterCheckAnswer {
+  id String @id @default(cuid())
+
+  sessionId  String
+  questionId String
+  /// Fixed presentation order, chosen when the session starts.
+  order      Int
+
+  answered      Boolean @default(false)
+  selectedIndex Int?
+  correct       Boolean @default(false)
+  timeExpired   Boolean @default(false)
+  timeTakenMs   Int?
+
+  createdAt DateTime @default(now())
+
+  session  ChapterCheckSession @relation(fields: [sessionId], references: [id])
+  question ChapterQuestion     @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@map("chapter_check_answers")
 }
 
 enum Testament {

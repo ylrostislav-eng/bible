@@ -24,6 +24,10 @@ export interface UserProfile {
   gamesLost: number;
   winRate: number;
 
+  /** Consecutive days with at least one completed chapter check-up. */
+  currentStreak: number;
+  longestStreak: number;
+
   createdAt: string;
 
   /** True until the user picks a nickname for the first time. */

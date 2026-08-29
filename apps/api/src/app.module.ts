@@ -7,6 +7,7 @@ import { BibleModule } from './bible/bible.module';
 import { validateEnv } from './config/env.validation';
 import { GameModule } from './game/game.module';
 import { HealthModule } from './health/health.module';
+import { LearnModule } from './learn/learn.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     GameModule,
     BibleModule,
+    LearnModule,
   ],
   controllers: [AppController],
   providers: [AppService],

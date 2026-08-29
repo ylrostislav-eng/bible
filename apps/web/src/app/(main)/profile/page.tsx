@@ -60,6 +60,10 @@ export default function ProfilePage() {
           <p className="text-xs text-text-secondary">Монеты</p>
           <p className="text-lg font-bold text-primary">{user.coins}</p>
         </Card>
+        <Card className="flex-col">
+          <p className="text-xs text-text-secondary">Серия дней</p>
+          <p className="text-lg font-bold text-primary">🔥 {user.currentStreak}</p>
+        </Card>
       </div>
 
       <Card className="flex-col gap-3">

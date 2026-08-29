@@ -23,7 +23,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
-    "prisma:seed-bible": "ts-node prisma/seed-bible.ts"
+    "prisma:seed-bible": "ts-node prisma/seed-bible.ts",
+    "prisma:seed-chapter-questions": "ts-node prisma/seed-chapter-questions.ts"
   },
   "dependencies": {
     "@bible-arena/shared": "workspace:*",

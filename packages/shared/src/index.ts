@@ -4,3 +4,4 @@ export * from './user';
 export * from './game';
 export * from './duel';
 export * from './bible';
+export * from './learn';

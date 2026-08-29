@@ -16,6 +16,10 @@ import type { UpdateProfileDto } from './dto/update-profile.dto';
 const XP_PER_LEVEL = 100;
 const LEADERBOARD_SIZE = 50;
 
+const RATING_PER_CORRECT_ANSWER = 5;
+const XP_PER_CORRECT_ANSWER = 10;
+const COINS_PER_CORRECT_ANSWER = 2;
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -114,6 +118,106 @@ export class UsersService {
   }
 
   /**
+   * Rewards a completed chapter check-up: rating/XP/coins scale with
+   * `correctCount` only (so a fully-wrong attempt earns nothing), while the
+   * reading streak advances just for completing the check — matching the
+   * "did you show up today" streak model rather than requiring a perfect
+   * score.
+   */
+  async applyChapterCheckRewards(
+    userId: string,
+    params: { correctCount: number },
+  ): Promise<{
+    user: User;
+    leveledUp: boolean;
+    ratingEarned: number;
+    xpEarned: number;
+    coinsEarned: number;
+    streak: { current: number; longest: number; increased: boolean };
+  }> {
+    const user = await this.findById(userId);
+
+    const ratingEarned = params.correctCount * RATING_PER_CORRECT_ANSWER;
+    const xpEarned = params.correctCount * XP_PER_CORRECT_ANSWER;
+    const coinsEarned = params.correctCount * COINS_PER_CORRECT_ANSWER;
+
+    const experience = user.experience + xpEarned;
+    const level = Math.floor(experience / XP_PER_LEVEL) + 1;
+    const leveledUp = level > user.level;
+    const rating = user.rating + ratingEarned;
+    const streak = this.computeStreakUpdate(user);
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        experience,
+        level,
+        rating,
+        coins: { increment: coinsEarned },
+        currentStreak: streak.currentStreak,
+        longestStreak: streak.longestStreak,
+        lastActivityDate: streak.lastActivityDate,
+      },
+    });
+
+    return {
+      user: updated,
+      leveledUp,
+      ratingEarned,
+      xpEarned,
+      coinsEarned,
+      streak: {
+        current: streak.currentStreak,
+        longest: streak.longestStreak,
+        increased: streak.increased,
+      },
+    };
+  }
+
+  /** Advances the streak by one calendar day (UTC), resets on a missed day. */
+  private computeStreakUpdate(user: User): {
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityDate: Date;
+    increased: boolean;
+  } {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    if (!user.lastActivityDate) {
+      return {
+        currentStreak: 1,
+        longestStreak: Math.max(1, user.longestStreak),
+        lastActivityDate: today,
+        increased: true,
+      };
+    }
+
+    const last = new Date(user.lastActivityDate);
+    last.setUTCHours(0, 0, 0, 0);
+    const diffDays = Math.round(
+      (today.getTime() - last.getTime()) / 86_400_000,
+    );
+
+    if (diffDays === 0) {
+      return {
+        currentStreak: user.currentStreak,
+        longestStreak: user.longestStreak,
+        lastActivityDate: today,
+        increased: false,
+      };
+    }
+
+    const currentStreak = diffDays === 1 ? user.currentStreak + 1 : 1;
+    return {
+      currentStreak,
+      longestStreak: Math.max(user.longestStreak, currentStreak),
+      lastActivityDate: today,
+      increased: true,
+    };
+  }
+
+  /**
    * Top players by rating, plus the current user's own rank when they fall
    * outside that top slice. Accounts that never finished onboarding
    * (no nickname) are excluded — they'd otherwise clutter the board.
@@ -200,6 +304,8 @@ export class UsersService {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       winRate,
+      currentStreak: user.currentStreak,
+      longestStreak: user.longestStreak,
       createdAt: user.createdAt.toISOString(),
       needsOnboarding: !user.nickname,
     };

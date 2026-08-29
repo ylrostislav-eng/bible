@@ -1,12 +1,20 @@
 'use client';
 
-import type { BibleChapterResponse } from '@bible-arena/shared';
+import type {
+  BibleChapterResponse,
+  ChapterCheckQuestion,
+  ChapterCheckSummary,
+  StartChapterCheckResponse,
+  SubmitChapterCheckAnswerResult,
+} from '@bible-arena/shared';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { LearnIcon } from '@/components/icons/nav-icons';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ApiError, apiClient } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 type View = 'books' | 'chapters' | 'reader';
 
@@ -157,6 +165,19 @@ function ReaderView({
     bookId === BOOKS_BY_ORDER[BOOKS_BY_ORDER.length - 1].id &&
     chapter === BOOKS_BY_ORDER[BOOKS_BY_ORDER.length - 1].chapters;
 
+  const [checking, setChecking] = useState(false);
+
+  if (checking) {
+    return (
+      <ChapterCheckView
+        bookId={bookId}
+        chapter={chapter}
+        bookName={data?.bookName ?? ''}
+        onClose={() => setChecking(false)}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-6 pb-4">
       <div className="flex items-center gap-3">
@@ -186,6 +207,12 @@ function ReaderView({
         </Card>
       )}
 
+      {data && (
+        <Button variant="secondary" onClick={() => setChecking(true)}>
+          Пройти проверку
+        </Button>
+      )}
+
       <div className="flex gap-3">
         <button
           onClick={goPrev}
@@ -208,6 +235,269 @@ function ReaderView({
           След. глава →
         </button>
       </div>
+    </div>
+  );
+}
+
+type CheckPhase = 'loading' | 'unavailable' | 'error' | 'question' | 'summary';
+
+interface CheckFeedback {
+  correct: boolean;
+  correctIndex: number;
+  explanation: string;
+  timeExpired: boolean;
+}
+
+function ChapterCheckView({
+  bookId,
+  chapter,
+  bookName,
+  onClose,
+}: {
+  bookId: number;
+  chapter: number;
+  bookName: string;
+  onClose: () => void;
+}) {
+  const { updateProfile } = useAuth();
+
+  const [phase, setPhase] = useState<CheckPhase>('loading');
+  const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [questionNumber, setQuestionNumber] = useState(1);
+  const [question, setQuestion] = useState<ChapterCheckQuestion | null>(null);
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState(20);
+  const [secondsLeft, setSecondsLeft] = useState(20);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<CheckFeedback | null>(null);
+  const [pendingNext, setPendingNext] = useState<ChapterCheckQuestion | null>(null);
+  const [correctCount, setCorrectCount] = useState(0);
+  const [summary, setSummary] = useState<ChapterCheckSummary | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function start() {
+      setPhase('loading');
+      try {
+        const res = await apiClient.post<StartChapterCheckResponse>('/learn/check/start', {
+          bookId,
+          chapter,
+        });
+        if (cancelled) return;
+        setSessionId(res.sessionId);
+        setTotalQuestions(res.totalQuestions);
+        setQuestionNumber(res.questionNumber);
+        setQuestion(res.question);
+        setTimeLimitSeconds(res.timeLimitSeconds);
+        setSecondsLeft(res.timeLimitSeconds);
+        setPhase('question');
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setPhase('unavailable');
+        } else {
+          setError(err instanceof ApiError ? err.message : 'Не удалось начать проверку');
+          setPhase('error');
+        }
+      }
+    }
+
+    void start();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, chapter]);
+
+  const submitAnswer = useCallback(
+    async (index: number | undefined) => {
+      if (!sessionId || !question || feedback || submitting) return;
+      setSelectedIndex(index ?? null);
+      setSubmitting(true);
+      try {
+        const res = await apiClient.post<SubmitChapterCheckAnswerResult>(
+          `/learn/check/${sessionId}/answer`,
+          { questionId: question.id, ...(index !== undefined ? { answerIndex: index } : {}) },
+        );
+        setFeedback({
+          correct: res.correct,
+          correctIndex: res.correctIndex,
+          explanation: res.explanation,
+          timeExpired: res.timeExpired,
+        });
+        setCorrectCount(res.correctCount);
+        setPendingNext(res.nextQuestion);
+        if (res.finished && res.summary) {
+          setSummary(res.summary);
+          // Refresh the cached profile so Profile reflects the new streak/rating.
+          void updateProfile({});
+        }
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Не удалось отправить ответ');
+        setPhase('error');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [sessionId, question, feedback, submitting, updateProfile],
+  );
+
+  useEffect(() => {
+    if (phase !== 'question' || feedback) return;
+    if (secondsLeft <= 0) {
+      const timeout = setTimeout(() => void submitAnswer(undefined), 0);
+      return () => clearTimeout(timeout);
+    }
+    const timeout = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timeout);
+  }, [phase, feedback, secondsLeft, submitAnswer]);
+
+  const continueCheck = useCallback(() => {
+    if (summary) {
+      setPhase('summary');
+      return;
+    }
+    if (!pendingNext) return;
+    setQuestion(pendingNext);
+    setPendingNext(null);
+    setQuestionNumber((n) => n + 1);
+    setSelectedIndex(null);
+    setFeedback(null);
+    setSecondsLeft(timeLimitSeconds);
+  }, [summary, pendingNext, timeLimitSeconds]);
+
+  if (phase === 'loading') {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-10 text-center">
+        <p className="text-sm text-text-secondary">Загрузка проверки…</p>
+      </div>
+    );
+  }
+
+  if (phase === 'unavailable') {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-10 text-center">
+        <p className="text-sm text-text-secondary">Для этой главы пока нет проверочных вопросов.</p>
+        <Button onClick={onClose}>Назад к чтению</Button>
+      </div>
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-10 text-center">
+        <p className="text-sm text-danger">{error}</p>
+        <Button onClick={onClose}>Назад к чтению</Button>
+      </div>
+    );
+  }
+
+  if (phase === 'summary' && summary) {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-10 text-center">
+        <h1 className="text-2xl font-bold">Проверка завершена!</h1>
+        <p className="text-text-secondary">
+          Правильных ответов: {summary.correctCount} из {summary.totalQuestions}
+        </p>
+
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="flex-col items-center">
+            <p className="text-xs text-text-secondary">Рейтинг</p>
+            <p className="text-xl font-bold text-primary">+{summary.ratingEarned}</p>
+          </Card>
+          <Card className="flex-col items-center">
+            <p className="text-xs text-text-secondary">Опыт</p>
+            <p className="text-xl font-bold text-primary">+{summary.xpEarned}</p>
+          </Card>
+          <Card className="flex-col items-center">
+            <p className="text-xs text-text-secondary">Монеты</p>
+            <p className="text-xl font-bold text-primary">+{summary.coinsEarned}</p>
+          </Card>
+        </div>
+
+        <Card className="flex-col items-center gap-1">
+          <p className="text-sm text-text-secondary">
+            {summary.streak.increased ? 'Серия дней подряд' : 'Ваша серия'}
+          </p>
+          <p className="text-2xl font-bold text-primary">🔥 {summary.streak.current}</p>
+          {summary.streak.longest > summary.streak.current && (
+            <p className="text-xs text-text-muted">Рекорд: {summary.streak.longest}</p>
+          )}
+        </Card>
+
+        <Button onClick={onClose}>Готово</Button>
+      </div>
+    );
+  }
+
+  if (!question) return null;
+
+  return (
+    <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-6">
+      <div className="flex items-center justify-between text-sm text-text-secondary">
+        <span>
+          {bookName} {chapter} — вопрос {questionNumber} из {totalQuestions}
+        </span>
+        <span className="flex items-center gap-3">
+          <span>Верно: {correctCount}</span>
+          <span className={clsx('font-semibold', secondsLeft <= 5 && !feedback && 'text-danger')}>
+            ⏱ {secondsLeft}с
+          </span>
+        </span>
+      </div>
+
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
+        <div
+          className="h-full rounded-full bg-primary transition-all"
+          style={{ width: `${(questionNumber / totalQuestions) * 100}%` }}
+        />
+      </div>
+
+      <Card className="flex-col gap-2">
+        <p className="text-lg font-semibold">{question.text}</p>
+      </Card>
+
+      <div className="flex flex-col gap-3">
+        {question.options.map((option, index) => {
+          const isSelected = selectedIndex === index;
+          const isCorrectOption = feedback && index === feedback.correctIndex;
+          const isWrongSelected = feedback && isSelected && !feedback.correct;
+
+          return (
+            <button
+              key={index}
+              onClick={() => submitAnswer(index)}
+              disabled={selectedIndex !== null || submitting || !!feedback}
+              className={clsx(
+                'flex h-14 items-center rounded-xl border px-4 text-left text-sm font-medium transition disabled:cursor-not-allowed',
+                !feedback && 'border-border bg-surface hover:bg-surface-hover',
+                feedback && isCorrectOption && 'border-success bg-success/10 text-success',
+                feedback && isWrongSelected && 'border-danger bg-danger/10 text-danger',
+                feedback &&
+                  !isCorrectOption &&
+                  !isWrongSelected &&
+                  'border-border bg-surface text-text-muted',
+              )}
+            >
+              {option}
+            </button>
+          );
+        })}
+      </div>
+
+      {feedback && (
+        <Card className="flex-col gap-2">
+          <p className={clsx('font-semibold', feedback.correct ? 'text-success' : 'text-danger')}>
+            {feedback.timeExpired ? 'Время вышло' : feedback.correct ? 'Правильно!' : 'Неверно'}
+          </p>
+          <p className="text-sm text-text-secondary">{feedback.explanation}</p>
+          <Button onClick={continueCheck} className="mt-2">
+            {summary ? 'Смотреть результат' : 'Далее'}
+          </Button>
+        </Card>
+      )}
     </div>
   );
 }
