@@ -166,11 +166,6 @@ export class LearnService {
       };
     }
 
-    await this.prisma.chapterCheckSession.update({
-      where: { id: sessionId },
-      data: { currentQuestionStartedAt: new Date() },
-    });
-
     const next = answers[answeredCount];
 
     return {
@@ -184,5 +179,30 @@ export class LearnService {
       finished: false,
       summary: null,
     };
+  }
+
+  /**
+   * Starts the clock for the next question. Deliberately separate from
+   * `submitAnswer` — the client calls this only once the user has finished
+   * reading the previous question's feedback and is actually looking at the
+   * next one, so the timer doesn't burn down while they're still reading.
+   */
+  async advance(userId: string, sessionId: string): Promise<{ ok: true }> {
+    const session = await this.prisma.chapterCheckSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (!session || session.userId !== userId) {
+      throw new NotFoundException('Проверка не найдена');
+    }
+    if (session.completedAt) {
+      throw new ConflictException('Проверка уже завершена');
+    }
+
+    await this.prisma.chapterCheckSession.update({
+      where: { id: sessionId },
+      data: { currentQuestionStartedAt: new Date() },
+    });
+
+    return { ok: true };
   }
 }

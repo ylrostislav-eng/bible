@@ -354,19 +354,29 @@ function ChapterCheckView({
     return () => clearTimeout(timeout);
   }, [phase, feedback, secondsLeft, submitAnswer]);
 
-  const continueCheck = useCallback(() => {
+  const continueCheck = useCallback(async () => {
     if (summary) {
       setPhase('summary');
       return;
     }
-    if (!pendingNext) return;
+    if (!pendingNext || !sessionId) return;
+    try {
+      // Starts the server-side timer for the next question only now — not
+      // back when the previous answer was graded — so reading the
+      // explanation doesn't eat into the next question's time budget.
+      await apiClient.post(`/learn/check/${sessionId}/advance`, {});
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось продолжить проверку');
+      setPhase('error');
+      return;
+    }
     setQuestion(pendingNext);
     setPendingNext(null);
     setQuestionNumber((n) => n + 1);
     setSelectedIndex(null);
     setFeedback(null);
     setSecondsLeft(timeLimitSeconds);
-  }, [summary, pendingNext, timeLimitSeconds]);
+  }, [summary, pendingNext, timeLimitSeconds, sessionId]);
 
   if (phase === 'loading') {
     return (

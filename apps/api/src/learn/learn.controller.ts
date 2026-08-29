@@ -27,4 +27,12 @@ export class LearnController {
   ) {
     return this.learnService.submitAnswer(currentUser.sub, sessionId, dto);
   }
+
+  @Post('check/:sessionId/advance')
+  async advance(
+    @CurrentUser() currentUser: JwtPayload,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.learnService.advance(currentUser.sub, sessionId);
+  }
 }
