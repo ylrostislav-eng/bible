@@ -10,8 +10,9 @@ import { ApiError, apiClient } from '@/lib/api';
 
 type View = 'books' | 'chapters' | 'reader';
 
-const OLD_TESTAMENT_BOOKS = BIBLE_BOOKS.filter((b) => b.testament === 'OLD');
-const NEW_TESTAMENT_BOOKS = BIBLE_BOOKS.filter((b) => b.testament === 'NEW');
+const BOOKS_BY_ORDER = [...BIBLE_BOOKS].sort((a, b) => a.order - b.order);
+const OLD_TESTAMENT_BOOKS = BOOKS_BY_ORDER.filter((b) => b.testament === 'OLD');
+const NEW_TESTAMENT_BOOKS = BOOKS_BY_ORDER.filter((b) => b.testament === 'NEW');
 
 function BooksView({ onSelectBook }: { onSelectBook: (bookId: number) => void }) {
   return (
@@ -134,8 +135,8 @@ function ReaderView({
       onNavigate(bookId, chapter - 1);
       return;
     }
-    const bookIndex = BIBLE_BOOKS.findIndex((b) => b.id === bookId);
-    const prevBook = BIBLE_BOOKS[bookIndex - 1];
+    const bookIndex = BOOKS_BY_ORDER.findIndex((b) => b.id === bookId);
+    const prevBook = BOOKS_BY_ORDER[bookIndex - 1];
     if (prevBook) onNavigate(prevBook.id, prevBook.chapters);
   }, [bookId, chapter, onNavigate]);
 
@@ -146,15 +147,15 @@ function ReaderView({
       onNavigate(bookId, chapter + 1);
       return;
     }
-    const bookIndex = BIBLE_BOOKS.findIndex((b) => b.id === bookId);
-    const nextBook = BIBLE_BOOKS[bookIndex + 1];
+    const bookIndex = BOOKS_BY_ORDER.findIndex((b) => b.id === bookId);
+    const nextBook = BOOKS_BY_ORDER[bookIndex + 1];
     if (nextBook) onNavigate(nextBook.id, 1);
   }, [bookId, chapter, onNavigate]);
 
-  const isVeryFirst = bookId === BIBLE_BOOKS[0].id && chapter === 1;
+  const isVeryFirst = bookId === BOOKS_BY_ORDER[0].id && chapter === 1;
   const isVeryLast =
-    bookId === BIBLE_BOOKS[BIBLE_BOOKS.length - 1].id &&
-    chapter === BIBLE_BOOKS[BIBLE_BOOKS.length - 1].chapters;
+    bookId === BOOKS_BY_ORDER[BOOKS_BY_ORDER.length - 1].id &&
+    chapter === BOOKS_BY_ORDER[BOOKS_BY_ORDER.length - 1].chapters;
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-6 pb-4">
