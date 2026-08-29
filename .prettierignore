@@ -5,3 +5,4 @@ build
 out
 pnpm-lock.yaml
 apps/web/next-env.d.ts
+apps/api/prisma/rst.json

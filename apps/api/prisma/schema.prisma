@@ -54,6 +54,22 @@ enum QuestionStatus {
   APPROVED
 }
 
+/// One verse of the Synodal translation. `bookId` is the standard 1-66
+/// canonical book number (see `BIBLE_BOOKS` in packages/shared) — book
+/// metadata (name, testament, chapter count) lives there, not here.
+model BibleVerse {
+  id Int @id @default(autoincrement())
+
+  bookId  Int
+  chapter Int
+  verse   Int
+  text    String
+
+  @@unique([bookId, chapter, verse])
+  @@index([bookId, chapter])
+  @@map("bible_verses")
+}
+
 /// A single quiz question. `options` always has exactly 4 entries;
 /// `correctIndex` points into that array.
 model Question {
