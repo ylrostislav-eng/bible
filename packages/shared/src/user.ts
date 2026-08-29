@@ -41,3 +41,22 @@ export interface AuthResponse {
   accessToken: string;
   user: UserProfile;
 }
+
+export interface LeaderboardEntry {
+  rank: number;
+  id: string;
+  nickname: string | null;
+  avatarUrl: string | null;
+  country: string | null;
+  level: number;
+  rating: number;
+  gamesWon: number;
+  gamesLost: number;
+  isMe: boolean;
+}
+
+export interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  /** Present only when the current user isn't already in `entries`. */
+  me: LeaderboardEntry | null;
+}

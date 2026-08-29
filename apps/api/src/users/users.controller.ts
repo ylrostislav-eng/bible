@@ -24,4 +24,9 @@ export class UsersController {
     const user = await this.usersService.updateProfile(currentUser.sub, dto);
     return this.usersService.toProfile(user);
   }
+
+  @Get('leaderboard')
+  async getLeaderboard(@CurrentUser() currentUser: JwtPayload) {
+    return this.usersService.getLeaderboard(currentUser.sub);
+  }
 }
