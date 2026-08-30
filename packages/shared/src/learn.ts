@@ -20,6 +20,9 @@ export interface ChapterCheckSummary {
   ratingEarned: number;
   xpEarned: number;
   coinsEarned: number;
+  /** False when this chapter was already rewarded within the last 7 days —
+   * the attempt still counts as practice, just without points. */
+  pointsAwarded: boolean;
   streak: {
     current: number;
     longest: number;

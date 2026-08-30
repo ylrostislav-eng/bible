@@ -12,7 +12,7 @@ export class UsersController {
 
   @Get('me')
   async getMe(@CurrentUser() currentUser: JwtPayload) {
-    const user = await this.usersService.findById(currentUser.sub);
+    const user = await this.usersService.touchActivity(currentUser.sub);
     return this.usersService.toProfile(user);
   }
 

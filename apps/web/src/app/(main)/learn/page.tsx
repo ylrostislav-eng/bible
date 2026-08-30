@@ -405,6 +405,7 @@ function ChapterCheckView({
   }
 
   if (phase === 'summary' && summary) {
+    const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
     return (
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-10 text-center">
         <h1 className="text-2xl font-bold">Проверка завершена!</h1>
@@ -412,10 +413,26 @@ function ChapterCheckView({
           Правильных ответов: {summary.correctCount} из {summary.totalQuestions}
         </p>
 
+        {!summary.pointsAwarded && (
+          <Card className="flex-col items-center gap-1 border-primary/40 bg-primary/5">
+            <p className="text-sm text-text-secondary">
+              Очки за эту главу уже начислялись на этой неделе — это была тренировка. Попробуй ещё
+              раз через несколько дней.
+            </p>
+          </Card>
+        )}
+
         <div className="grid grid-cols-3 gap-3">
           <Card className="flex-col items-center">
-            <p className="text-xs text-text-secondary">Рейтинг</p>
-            <p className="text-xl font-bold text-primary">+{summary.ratingEarned}</p>
+            <p className="text-xs text-text-secondary">Знания</p>
+            <p
+              className={clsx(
+                'text-xl font-bold',
+                summary.ratingEarned < 0 ? 'text-danger' : 'text-primary',
+              )}
+            >
+              {signed(summary.ratingEarned)}
+            </p>
           </Card>
           <Card className="flex-col items-center">
             <p className="text-xs text-text-secondary">Опыт</p>

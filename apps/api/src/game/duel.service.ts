@@ -23,13 +23,29 @@ import {
 import { generateInviteCode } from './invite-code';
 import { QuestionsService } from './questions.service';
 
-const BASE_POINTS = 10;
-const MAX_SPEED_BONUS = 10;
-const STREAK_BONUS_PER_STEP = 2;
-const MAX_STREAK_BONUS_STEPS = 5;
-const WIN_RATING_DELTA = 15;
-const LOSS_RATING_DELTA = -10;
+const WIN_RATING_DELTA = 10;
+const LOSS_RATING_DELTA = -5;
+/** Overrides win/loss/draw rewards for a participant who got every question
+ * wrong — always a penalty, regardless of how the match otherwise went. */
+const ZERO_CORRECT_RATING_DELTA = -10;
 const CREATE_CODE_ATTEMPTS = 5;
+
+/** Draw reward scales with % correct, not raw score — the number of
+ * questions in a duel can vary. Checked in descending order. */
+const DRAW_RATING_BY_MIN_PERCENT: { minPercent: number; rating: number }[] = [
+  { minPercent: 0.7, rating: 5 },
+  { minPercent: 0.5, rating: 4 },
+  { minPercent: 0.3, rating: 3 },
+  { minPercent: 0.1, rating: 2 },
+  { minPercent: 0, rating: 1 },
+];
+
+function drawRating(percentCorrect: number): number {
+  const tier = DRAW_RATING_BY_MIN_PERCENT.find(
+    (t) => percentCorrect >= t.minPercent,
+  );
+  return tier?.rating ?? 1;
+}
 
 const sessionInclude = {
   participants: {
@@ -178,7 +194,6 @@ export class DuelService {
       dto.answerIndex,
       isCorrect,
       timeTakenMs,
-      session.timeLimitSeconds,
     );
 
     if (!isCorrect) {
@@ -244,21 +259,13 @@ export class DuelService {
     selectedIndex: number | null,
     isCorrect: boolean,
     timeTakenMs: number,
-    timeLimitSeconds: number,
   ): Promise<void> {
+    // Outcome and rating are decided purely by correctness — no bonus for
+    // answering fast or for a streak within the match. `streak` is kept as
+    // a cosmetic "you're on a roll" indicator only, it no longer affects
+    // scoring.
     const streak = isCorrect ? participant.streak + 1 : 0;
-    let scoreDelta = 0;
-    if (isCorrect) {
-      const speedBonus = Math.max(
-        0,
-        Math.round(
-          MAX_SPEED_BONUS * (1 - timeTakenMs / (timeLimitSeconds * 1000)),
-        ),
-      );
-      const streakBonus =
-        STREAK_BONUS_PER_STEP * Math.min(streak - 1, MAX_STREAK_BONUS_STEPS);
-      scoreDelta = BASE_POINTS + speedBonus + streakBonus;
-    }
+    const scoreDelta = isCorrect ? 1 : 0;
 
     await this.prisma.$transaction([
       this.prisma.gameAnswer.update({
@@ -311,7 +318,6 @@ export class DuelService {
           null,
           false,
           session.timeLimitSeconds * 1000,
-          session.timeLimitSeconds,
         );
       }
     }
@@ -345,6 +351,22 @@ export class DuelService {
             : 'draw';
       const xpEarned = participant.correctCount * XP_PER_CORRECT_ANSWER;
       const coinsEarned = participant.correctCount * COINS_PER_CORRECT_ANSWER;
+      const percentCorrect =
+        session.questionCount > 0
+          ? participant.correctCount / session.questionCount
+          : 0;
+
+      // A participant who got every question wrong always takes the -10
+      // penalty, regardless of outcome — this is what keeps a 0/0 draw
+      // (both sides all wrong) from being a rating-neutral shrug.
+      const ratingDelta =
+        percentCorrect === 0
+          ? ZERO_CORRECT_RATING_DELTA
+          : outcome === 'win'
+            ? WIN_RATING_DELTA
+            : outcome === 'loss'
+              ? LOSS_RATING_DELTA
+              : drawRating(percentCorrect);
 
       await this.prisma.gameParticipant.update({
         where: { id: participant.id },
@@ -355,12 +377,8 @@ export class DuelService {
         xpEarned,
         coinsEarned,
         outcome,
-        ratingDelta:
-          outcome === 'win'
-            ? WIN_RATING_DELTA
-            : outcome === 'loss'
-              ? LOSS_RATING_DELTA
-              : 0,
+        ratingDelta,
+        cappedWin: outcome === 'win',
       });
     }
   }

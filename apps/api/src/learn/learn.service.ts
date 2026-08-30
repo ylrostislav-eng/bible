@@ -5,15 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  ChapterCheckQuestion,
   StartChapterCheckResponse,
   SubmitChapterCheckAnswerResult,
 } from '@bible-arena/shared';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
+import type { ChapterQuestion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { UsersService } from '../users/users.service';
+import {
+  CHAPTER_CHECK_COOLDOWN_DAYS,
+  UsersService,
+} from '../users/users.service';
 import type { StartChapterCheckDto } from './dto/start-chapter-check.dto';
 import type { SubmitChapterCheckAnswerDto } from './dto/submit-chapter-check-answer.dto';
-import { toPublicChapterQuestion } from './learn.mapper';
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -22,6 +26,19 @@ function shuffle<T>(items: T[]): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+/** Shuffles one question's options and remaps `correctIndex` to match, so
+ * the answer position can't be memorized across attempts. */
+function shuffleOptions(question: ChapterQuestion): {
+  options: string[];
+  correctIndex: number;
+} {
+  const order = shuffle([0, 1, 2, 3]);
+  return {
+    options: order.map((i) => question.options[i]),
+    correctIndex: order.indexOf(question.correctIndex),
+  };
 }
 
 @Injectable()
@@ -52,23 +69,29 @@ export class LearnService {
       );
     }
 
-    const shuffled = shuffle(questions);
+    const order = shuffle(questions);
+    const shuffledPerQuestion = order.map((question) => ({
+      question,
+      ...shuffleOptions(question),
+    }));
 
     const session = await this.prisma.chapterCheckSession.create({
       data: {
         userId,
         bookId: dto.bookId,
         chapter: dto.chapter,
-        totalQuestions: shuffled.length,
+        totalQuestions: order.length,
         currentQuestionStartedAt: new Date(),
       },
     });
 
     await this.prisma.chapterCheckAnswer.createMany({
-      data: shuffled.map((question, index) => ({
+      data: shuffledPerQuestion.map((item, index) => ({
         sessionId: session.id,
-        questionId: question.id,
+        questionId: item.question.id,
         order: index,
+        shuffledOptions: item.options,
+        shuffledCorrectIndex: item.correctIndex,
       })),
     });
 
@@ -76,9 +99,12 @@ export class LearnService {
       sessionId: session.id,
       bookId: dto.bookId,
       chapter: dto.chapter,
-      totalQuestions: shuffled.length,
+      totalQuestions: order.length,
       questionNumber: 1,
-      question: toPublicChapterQuestion(shuffled[0]),
+      question: this.toPublicQuestion(
+        shuffledPerQuestion[0].question,
+        shuffledPerQuestion[0].options,
+      ),
       timeLimitSeconds: session.timeLimitSeconds,
     };
   }
@@ -118,7 +144,7 @@ export class LearnService {
     const isCorrect =
       !timeExpired &&
       dto.answerIndex !== undefined &&
-      dto.answerIndex === current.question.correctIndex;
+      dto.answerIndex === current.shuffledCorrectIndex;
 
     await this.prisma.chapterCheckAnswer.update({
       where: { id: current.id },
@@ -138,17 +164,27 @@ export class LearnService {
     const finished = answeredCount >= session.totalQuestions;
 
     if (finished) {
+      const wrongCount = session.totalQuestions - correctCount;
+      const awardsPoints = await this.canAwardPoints(
+        userId,
+        session.bookId,
+        session.chapter,
+        sessionId,
+      );
+
       const rewards = await this.usersService.applyChapterCheckRewards(userId, {
         correctCount,
+        wrongCount,
+        awardsPoints,
       });
       await this.prisma.chapterCheckSession.update({
         where: { id: sessionId },
-        data: { correctCount, completedAt: new Date() },
+        data: { correctCount, completedAt: new Date(), rewarded: awardsPoints },
       });
 
       return {
         correct: isCorrect,
-        correctIndex: current.question.correctIndex,
+        correctIndex: current.shuffledCorrectIndex,
         explanation: current.question.explanation,
         timeExpired,
         correctCount,
@@ -161,6 +197,7 @@ export class LearnService {
           ratingEarned: rewards.ratingEarned,
           xpEarned: rewards.xpEarned,
           coinsEarned: rewards.coinsEarned,
+          pointsAwarded: awardsPoints,
           streak: rewards.streak,
         },
       };
@@ -170,12 +207,12 @@ export class LearnService {
 
     return {
       correct: isCorrect,
-      correctIndex: current.question.correctIndex,
+      correctIndex: current.shuffledCorrectIndex,
       explanation: current.question.explanation,
       timeExpired,
       correctCount,
       questionNumber: answeredCount,
-      nextQuestion: toPublicChapterQuestion(next.question),
+      nextQuestion: this.toPublicQuestion(next.question, next.shuffledOptions),
       finished: false,
       summary: null,
     };
@@ -204,5 +241,38 @@ export class LearnService {
     });
 
     return { ok: true };
+  }
+
+  /** Points are awarded only if this chapter wasn't already rewarded for
+   * this user within the cooldown window — otherwise it's a free replay. */
+  private async canAwardPoints(
+    userId: string,
+    bookId: number,
+    chapter: number,
+    excludingSessionId: string,
+  ): Promise<boolean> {
+    const lastRewarded = await this.prisma.chapterCheckSession.findFirst({
+      where: {
+        userId,
+        bookId,
+        chapter,
+        rewarded: true,
+        id: { not: excludingSessionId },
+      },
+      orderBy: { completedAt: 'desc' },
+    });
+    if (!lastRewarded?.completedAt) {
+      return true;
+    }
+
+    const cooldownMs = CHAPTER_CHECK_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+    return Date.now() - lastRewarded.completedAt.getTime() >= cooldownMs;
+  }
+
+  private toPublicQuestion(
+    question: ChapterQuestion,
+    options: string[],
+  ): ChapterCheckQuestion {
+    return { id: question.id, text: question.text, options };
   }
 }

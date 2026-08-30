@@ -23,7 +23,9 @@ model User {
   level      Int @default(1)
   experience Int @default(0)
   coins      Int @default(0)
-  rating     Int @default(1000)
+  /// Drives both the leaderboard and the title ladder (see TITLES in
+  /// packages/shared) — can go negative, titles account for that.
+  rating     Int @default(100)
 
   gamesPlayed Int @default(0)
   gamesWon    Int @default(0)
@@ -33,6 +35,16 @@ model User {
   currentStreak    Int       @default(0)
   longestStreak    Int       @default(0)
   lastActivityDate DateTime? @db.Date
+
+  /// Last time the app was opened at all (touched on every profile fetch) —
+  /// separate from `lastActivityDate`, which only tracks the daily-streak
+  /// activity. Used for the inactivity rating decay.
+  lastActiveAt DateTime @default(now())
+
+  /// Daily cap on rating earned from duel wins, so a title can't be farmed
+  /// by chain-dueling. Reset whenever `duelRatingCapDate` isn't today.
+  duelRatingWinsToday Int       @default(0)
+  duelRatingCapDate   DateTime? @db.Date
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,6 +94,9 @@ model ChapterCheckSession {
   currentQuestionStartedAt DateTime?
   timeLimitSeconds         Int       @default(20)
   completedAt              DateTime?
+  /// True if this completion actually paid out rating/XP/coins — false for
+  /// a practice replay still within the 7-day cooldown for this chapter.
+  rewarded                 Boolean   @default(false)
 
   createdAt DateTime @default(now())
 
@@ -106,10 +121,16 @@ model ChapterCheckAnswer {
   timeExpired   Boolean @default(false)
   timeTakenMs   Int?
 
+  /// This question's 4 options, shuffled once when the session starts (so
+  /// the answer position can't be memorized), with `correctIndex` remapped
+  /// to match. The underlying `ChapterQuestion.options` order is untouched.
+  shuffledOptions      String[]
+  shuffledCorrectIndex Int      @default(0)
+
   createdAt DateTime @default(now())
 
-  session  ChapterCheckSession @relation(fields: [sessionId], references: [id])
-  question ChapterQuestion     @relation(fields: [questionId], references: [id])
+  session  ChapterCheckSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question ChapterQuestion     @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, questionId])
   @@map("chapter_check_answers")

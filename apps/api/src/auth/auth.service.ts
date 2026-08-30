@@ -2,7 +2,6 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { AuthResponse } from '@bible-arena/shared';
-import type { User } from '@prisma/client';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
 import type { JwtPayload } from './jwt-payload.interface';
@@ -31,7 +30,7 @@ export class AuthService {
       telegramAvatarUrl: telegramUser.photo_url ?? null,
     });
 
-    return this.issueSession(user.id, user.telegramId, user);
+    return this.issueSession(user.id, user.telegramId);
   }
 
   /**
@@ -52,13 +51,12 @@ export class AuthService {
       telegramAvatarUrl: null,
     });
 
-    return this.issueSession(user.id, user.telegramId, user);
+    return this.issueSession(user.id, user.telegramId);
   }
 
   private async issueSession(
     userId: string,
     telegramId: bigint,
-    user: User,
   ): Promise<AuthResponse> {
     const payload: JwtPayload = {
       sub: userId,
@@ -67,10 +65,11 @@ export class AuthService {
     const accessToken = await this.jwtService.signAsync(payload);
 
     await this.markOnline(userId);
+    const freshUser = await this.usersService.touchActivity(userId);
 
     return {
       accessToken,
-      user: this.usersService.toProfile(user),
+      user: this.usersService.toProfile(freshUser),
     };
   }
 

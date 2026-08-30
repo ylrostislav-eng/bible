@@ -38,8 +38,8 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
       <Avatar entry={entry} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{entry.nickname}</p>
-        <p className="text-xs text-text-secondary">
-          Уровень {entry.level} · {entry.gamesWon}W/{entry.gamesLost}L
+        <p className="truncate text-xs text-text-secondary">
+          {entry.title} · {entry.gamesWon}W/{entry.gamesLost}L
         </p>
       </div>
       <span className="shrink-0 text-sm font-bold text-primary">{entry.rating}</span>
@@ -83,8 +83,8 @@ export default function RatingPage() {
           <RatingIcon className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">Рейтинг</h1>
-          <p className="text-sm text-text-secondary">Лучшие игроки по рейтингу дуэлей</p>
+          <h1 className="text-xl font-bold">Знания</h1>
+          <p className="text-sm text-text-secondary">Лучшие по знанию Библии</p>
         </div>
       </div>
 

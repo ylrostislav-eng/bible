@@ -20,7 +20,12 @@ export default function HomePage() {
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
       <div>
         <p className="text-sm text-text-secondary">Мир вам,</p>
-        <h1 className="text-2xl font-bold">{user.nickname}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold">{user.nickname}</h1>
+          <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs font-semibold text-primary">
+            {user.title}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -29,7 +34,7 @@ export default function HomePage() {
           <p className="mt-1 text-xl font-bold text-primary">{user.level}</p>
         </Card>
         <Card className="flex-col items-center text-center">
-          <p className="text-xs text-text-secondary">Рейтинг</p>
+          <p className="text-xs text-text-secondary">Знания</p>
           <p className="mt-1 text-xl font-bold text-primary">{user.rating}</p>
         </Card>
         <Card className="flex-col items-center text-center">

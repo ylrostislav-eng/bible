@@ -5,6 +5,9 @@ export const NICKNAME_MAX_LENGTH = 20;
 /** Letters (any script), digits, and underscores only. */
 export const NICKNAME_PATTERN = /^[\p{L}0-9_]+$/u;
 
+/** XP required per level; level = floor(experience / XP_PER_LEVEL) + 1. */
+export const XP_PER_LEVEL = 100;
+
 export interface UserProfile {
   id: string;
   telegramId: string;
@@ -18,6 +21,8 @@ export interface UserProfile {
   experience: number;
   coins: number;
   rating: number;
+  /** Title for the current `rating` — see `getTitleForRating`. */
+  title: string;
 
   gamesPlayed: number;
   gamesWon: number;
@@ -54,6 +59,7 @@ export interface LeaderboardEntry {
   country: string | null;
   level: number;
   rating: number;
+  title: string;
   gamesWon: number;
   gamesLost: number;
   isMe: boolean;

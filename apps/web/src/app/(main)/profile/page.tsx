@@ -34,7 +34,12 @@ export default function ProfilePage() {
           )}
         </div>
         <div>
-          <h1 className="text-xl font-bold">{user.nickname}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold">{user.nickname}</h1>
+            <span className="rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-semibold text-primary">
+              {user.title}
+            </span>
+          </div>
           <p className="text-sm text-text-secondary">
             {user.telegramUsername ? `@${user.telegramUsername}` : 'Уровень ' + user.level}
             {country ? ` · ${country.nameRu}` : ''}
@@ -53,7 +58,7 @@ export default function ProfilePage() {
           <p className="text-lg font-bold text-primary">{user.experience}</p>
         </Card>
         <Card className="flex-col">
-          <p className="text-xs text-text-secondary">Рейтинг</p>
+          <p className="text-xs text-text-secondary">Знания</p>
           <p className="text-lg font-bold text-primary">{user.rating}</p>
         </Card>
         <Card className="flex-col">

@@ -8,17 +8,27 @@ import type {
   LeaderboardEntry,
   UserProfile,
 } from '@bible-arena/shared';
+import { getTitleForRating, XP_PER_LEVEL } from '@bible-arena/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 
-/** XP required per level; level = floor(experience / XP_PER_LEVEL) + 1. */
-const XP_PER_LEVEL = 100;
 const LEADERBOARD_SIZE = 50;
 
 const RATING_PER_CORRECT_ANSWER = 5;
+const RATING_PENALTY_PER_WRONG_ANSWER = 3;
 const XP_PER_CORRECT_ANSWER = 10;
 const COINS_PER_CORRECT_ANSWER = 2;
+
+/** How often the same chapter's check can earn points again. */
+export const CHAPTER_CHECK_COOLDOWN_DAYS = 7;
+
+/** Duel wins beyond this many per day still count as wins, but earn no rating. */
+const DAILY_DUEL_RATING_WIN_CAP = 10;
+
+/** Grace period before inactivity starts costing rating, and the daily rate after that. */
+const INACTIVITY_GRACE_DAYS = 30;
+const INACTIVITY_DECAY_PER_DAY = 1;
 
 @Injectable()
 export class UsersService {
@@ -82,9 +92,46 @@ export class UsersService {
   }
 
   /**
-   * Applies XP/coin rewards from a finished game and recalculates level.
-   * `outcome`/`ratingDelta` only apply to competitive modes (duels) — solo
-   * games leave gamesWon/gamesLost/rating untouched.
+   * Call whenever the app is confirmed open (login, profile fetch). Applies
+   * the inactivity rating decay once, lazily — there's no background job,
+   * so a long absence is settled the moment the user comes back, not
+   * day-by-day while they're gone. Skips the write entirely on repeat calls
+   * within the same day so this doesn't hammer the DB on every request.
+   */
+  async touchActivity(userId: string): Promise<User> {
+    const user = await this.findById(userId);
+    const now = new Date();
+    const daysSinceActive = Math.floor(
+      (now.getTime() - user.lastActiveAt.getTime()) / 86_400_000,
+    );
+
+    if (daysSinceActive < 1) {
+      return user;
+    }
+    if (daysSinceActive <= INACTIVITY_GRACE_DAYS) {
+      return this.prisma.user.update({
+        where: { id: userId },
+        data: { lastActiveAt: now },
+      });
+    }
+
+    const decayDays = daysSinceActive - INACTIVITY_GRACE_DAYS;
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        rating: user.rating - decayDays * INACTIVITY_DECAY_PER_DAY,
+        lastActiveAt: now,
+      },
+    });
+  }
+
+  /**
+   * Applies XP/coin/rating rewards from a finished game and recalculates
+   * level. `outcome`/`ratingDelta` only apply to competitive modes (duels) —
+   * solo games leave gamesWon/gamesLost/rating untouched. `cappedWin`
+   * enforces the daily duel-win rating cap: past the cap, the win still
+   * counts for gamesWon/streak-style stats, just not for rating, so title
+   * can't be farmed by chain-dueling.
    */
   async applyGameRewards(
     userId: string,
@@ -93,13 +140,40 @@ export class UsersService {
       coinsEarned: number;
       outcome?: 'win' | 'loss' | 'draw';
       ratingDelta?: number;
+      cappedWin?: boolean;
     },
-  ): Promise<{ user: User; leveledUp: boolean }> {
+  ): Promise<{ user: User; leveledUp: boolean; ratingCapped: boolean }> {
     const user = await this.findById(userId);
+
+    let ratingDelta = params.ratingDelta ?? 0;
+    let ratingCapped = false;
+    let duelRatingWinsToday = user.duelRatingWinsToday;
+    let duelRatingCapDate = user.duelRatingCapDate;
+
+    if (params.cappedWin) {
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const capDate = user.duelRatingCapDate
+        ? new Date(user.duelRatingCapDate)
+        : null;
+      if (capDate) capDate.setUTCHours(0, 0, 0, 0);
+      const isNewDay = !capDate || capDate.getTime() !== today.getTime();
+
+      duelRatingWinsToday = isNewDay ? 0 : user.duelRatingWinsToday;
+      duelRatingCapDate = today;
+
+      if (duelRatingWinsToday >= DAILY_DUEL_RATING_WIN_CAP) {
+        ratingDelta = 0;
+        ratingCapped = true;
+      } else {
+        duelRatingWinsToday += 1;
+      }
+    }
+
     const experience = user.experience + params.xpEarned;
     const level = Math.floor(experience / XP_PER_LEVEL) + 1;
     const leveledUp = level > user.level;
-    const rating = Math.max(100, user.rating + (params.ratingDelta ?? 0));
+    const rating = user.rating + ratingDelta;
 
     const updated = await this.prisma.user.update({
       where: { id: userId },
@@ -111,22 +185,24 @@ export class UsersService {
         gamesPlayed: { increment: 1 },
         ...(params.outcome === 'win' && { gamesWon: { increment: 1 } }),
         ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
+        ...(params.cappedWin && { duelRatingWinsToday, duelRatingCapDate }),
       },
     });
 
-    return { user: updated, leveledUp };
+    return { user: updated, leveledUp, ratingCapped };
   }
 
   /**
-   * Rewards a completed chapter check-up: rating/XP/coins scale with
-   * `correctCount` only (so a fully-wrong attempt earns nothing), while the
-   * reading streak advances just for completing the check — matching the
-   * "did you show up today" streak model rather than requiring a perfect
-   * score.
+   * Rewards a completed chapter check-up: `+5` rating per correct answer,
+   * `-3` per wrong/expired one — but only when `awardsPoints` is true (the
+   * caller enforces the 7-day-per-chapter cooldown; past it, this is a free
+   * practice replay). The streak advances regardless of `awardsPoints` —
+   * it's about showing up, matching the "did today's exercise" model, not
+   * about the score.
    */
   async applyChapterCheckRewards(
     userId: string,
-    params: { correctCount: number },
+    params: { correctCount: number; wrongCount: number; awardsPoints: boolean },
   ): Promise<{
     user: User;
     leveledUp: boolean;
@@ -137,9 +213,16 @@ export class UsersService {
   }> {
     const user = await this.findById(userId);
 
-    const ratingEarned = params.correctCount * RATING_PER_CORRECT_ANSWER;
-    const xpEarned = params.correctCount * XP_PER_CORRECT_ANSWER;
-    const coinsEarned = params.correctCount * COINS_PER_CORRECT_ANSWER;
+    const ratingEarned = params.awardsPoints
+      ? params.correctCount * RATING_PER_CORRECT_ANSWER -
+        params.wrongCount * RATING_PENALTY_PER_WRONG_ANSWER
+      : 0;
+    const xpEarned = params.awardsPoints
+      ? params.correctCount * XP_PER_CORRECT_ANSWER
+      : 0;
+    const coinsEarned = params.awardsPoints
+      ? params.correctCount * COINS_PER_CORRECT_ANSWER
+      : 0;
 
     const experience = user.experience + xpEarned;
     const level = Math.floor(experience / XP_PER_LEVEL) + 1;
@@ -276,6 +359,7 @@ export class UsersService {
       country: user.country,
       level: user.level,
       rating: user.rating,
+      title: getTitleForRating(user.rating),
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       isMe: user.id === currentUserId,
@@ -300,6 +384,7 @@ export class UsersService {
       experience: user.experience,
       coins: user.coins,
       rating: user.rating,
+      title: getTitleForRating(user.rating),
       gamesPlayed: user.gamesPlayed,
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,

@@ -5,3 +5,4 @@ export * from './game';
 export * from './duel';
 export * from './bible';
 export * from './learn';
+export * from './titles';
