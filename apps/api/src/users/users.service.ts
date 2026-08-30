@@ -193,6 +193,11 @@ export class UsersService {
         rating,
         coins: { increment: params.coinsEarned },
         gamesPlayed: { increment: 1 },
+        // `outcome` is only ever passed for duels — solo games leave it
+        // undefined, so this is how a duel is told apart from a solo game.
+        ...(params.outcome !== undefined && {
+          duelsPlayed: { increment: 1 },
+        }),
         ...(params.outcome === 'win' && { gamesWon: { increment: 1 } }),
         ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
         ...(params.cappedWin && { duelRatingWinsToday, duelRatingCapDate }),
@@ -434,10 +439,12 @@ export class UsersService {
   }
 
   toProfile(user: User): UserProfile {
+    // gamesPlayed also counts solo games, which never set an outcome (only
+    // duels do) — dividing by it would silently deflate the rate with games
+    // that were never "won" or "lost" to begin with. Decisive duels only.
+    const decidedDuels = user.gamesWon + user.gamesLost;
     const winRate =
-      user.gamesPlayed > 0
-        ? Math.round((user.gamesWon / user.gamesPlayed) * 1000) / 10
-        : 0;
+      decidedDuels > 0 ? Math.round((user.gamesWon / decidedDuels) * 100) : 0;
 
     return {
       id: user.id,
@@ -453,6 +460,7 @@ export class UsersService {
       rating: user.rating,
       title: getTitleForRating(user.rating),
       gamesPlayed: user.gamesPlayed,
+      duelsPlayed: user.duelsPlayed,
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       winRate,

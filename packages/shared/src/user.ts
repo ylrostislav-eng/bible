@@ -25,8 +25,11 @@ export interface UserProfile {
   title: string;
 
   gamesPlayed: number;
+  /** Completed duels only (win, loss, or draw) — see `winRate`. */
+  duelsPlayed: number;
   gamesWon: number;
   gamesLost: number;
+  /** % of decided duels (win or loss, draws excluded) that were won. */
   winRate: number;
 
   /** Consecutive days with at least one completed chapter check-up. */

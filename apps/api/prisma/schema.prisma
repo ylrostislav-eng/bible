@@ -27,9 +27,17 @@ model User {
   /// packages/shared) — can go negative, titles account for that.
   rating     Int @default(100)
 
+  /// All completed games, solo and duel alike — kept for potential future
+  /// use but not shown on its own; the profile's duel stats card uses
+  /// `duelsPlayed`/`gamesWon`/`gamesLost` instead, since those are the only
+  /// counters with a win/loss outcome to begin with.
   gamesPlayed Int @default(0)
   gamesWon    Int @default(0)
   gamesLost   Int @default(0)
+  /// Completed duels only (win, loss, or draw) — the denominator for the
+  /// profile's duel stats card. Unlike `gamesPlayed`, never incremented by
+  /// solo games.
+  duelsPlayed Int @default(0)
 
   /// Consecutive days with at least one completed chapter check-up.
   currentStreak    Int       @default(0)
