@@ -73,8 +73,56 @@ model User {
   gameParticipations   GameParticipant[]
   chapterCheckSessions ChapterCheckSession[]
 
+  sentFriendRequests     FriendRequest[] @relation("SentFriendRequests")
+  receivedFriendRequests FriendRequest[] @relation("ReceivedFriendRequests")
+  /// One row per direction of a friendship — see `Friendship` doc comment.
+  friendships            Friendship[]    @relation("FriendshipOwner")
+
   @@index([rating])
   @@map("users")
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+/// A friend request from one user to another. Kept (not deleted) after
+/// acceptance/decline so a re-send after a decline has something to upsert
+/// onto instead of hitting the unique constraint — see `FriendsService.sendRequest`.
+model FriendRequest {
+  id String @id @default(cuid())
+
+  fromUserId String
+  fromUser   User   @relation("SentFriendRequests", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId   String
+  toUser     User   @relation("ReceivedFriendRequests", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  status      FriendRequestStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  respondedAt DateTime?
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+  @@map("friend_requests")
+}
+
+/// Friendship is stored as two rows, one per direction (userId -> friendId
+/// and friendId -> userId), created together in a transaction on accept.
+/// Trades a little duplication for a trivial "my friends" query
+/// (`where userId = me`) instead of an OR-across-both-columns query.
+model Friendship {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation("FriendshipOwner", fields: [userId], references: [id], onDelete: Cascade)
+  friendId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, friendId])
+  @@index([friendId])
+  @@map("friendships")
 }
 
 /// A quiz question checking comprehension of one specific Bible chapter

@@ -2,12 +2,11 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { AuthResponse } from '@bible-arena/shared';
-import { RedisService } from '../redis/redis.service';
+import { PresenceService } from '../presence/presence.service';
 import { UsersService } from '../users/users.service';
 import type { JwtPayload } from './jwt-payload.interface';
 import { TelegramAuthService } from './telegram-auth.service';
 
-const ONLINE_PRESENCE_TTL_SECONDS = 60;
 /** Reserved range, never issued by Telegram (real IDs are always positive). */
 const DEV_USER_TELEGRAM_ID_BASE = -1n;
 
@@ -17,7 +16,7 @@ export class AuthService {
     private readonly telegramAuthService: TelegramAuthService,
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
-    private readonly redisService: RedisService,
+    private readonly presenceService: PresenceService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -64,26 +63,12 @@ export class AuthService {
     };
     const accessToken = await this.jwtService.signAsync(payload);
 
-    await this.markOnline(userId);
+    await this.presenceService.markOnline(userId);
     const freshUser = await this.usersService.touchActivity(userId);
 
     return {
       accessToken,
       user: this.usersService.toProfile(freshUser),
     };
-  }
-
-  /** Marks the user as online in Redis so future presence features (friends, rooms) can read it. */
-  private async markOnline(userId: string): Promise<void> {
-    try {
-      await this.redisService.client.set(
-        `presence:${userId}`,
-        Date.now().toString(),
-        'EX',
-        ONLINE_PRESENCE_TTL_SECONDS,
-      );
-    } catch {
-      // Presence tracking is best-effort and must never block login.
-    }
   }
 }

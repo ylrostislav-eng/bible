@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/lib/auth-context';
+import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { BottomNav } from './navigation/bottom-nav';
 import { OnboardingForm } from './onboarding/onboarding-form';
 import { Button } from './ui/button';
@@ -8,6 +9,7 @@ import { Spinner } from './ui/spinner';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { status, user, errorMessage, retry, devLogin } = useAuth();
+  usePresenceHeartbeat(status === 'authenticated' && !user?.needsOnboarding);
 
   if (status === 'loading') {
     return (

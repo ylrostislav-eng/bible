@@ -30,3 +30,7 @@ export function pluralLosses(n: number): string {
 export function pluralDraws(n: number): string {
   return pluralize(n, ['ничья', 'ничьи', 'ничьих']);
 }
+
+export function pluralFriends(n: number): string {
+  return pluralize(n, ['друг', 'друга', 'друзей']);
+}

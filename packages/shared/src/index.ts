@@ -7,3 +7,4 @@ export * from './bible';
 export * from './learn';
 export * from './titles';
 export * from './streak';
+export * from './friends';

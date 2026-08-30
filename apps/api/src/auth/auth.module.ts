@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { PresenceModule } from '../presence/presence.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -9,6 +10,7 @@ import { TelegramAuthService } from './telegram-auth.service';
 @Module({
   imports: [
     UsersModule,
+    PresenceModule,
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],
