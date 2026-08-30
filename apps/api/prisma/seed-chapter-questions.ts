@@ -10,6 +10,7 @@ import { firstTimothy } from './chapter-questions/first-timothy';
 import { galatians } from './chapter-questions/galatians';
 import { james } from './chapter-questions/james';
 import { jude } from './chapter-questions/jude';
+import { philemon } from './chapter-questions/philemon';
 import { philippians } from './chapter-questions/philippians';
 import { romans } from './chapter-questions/romans';
 import { secondCorinthians } from './chapter-questions/second-corinthians';
@@ -53,6 +54,7 @@ const books: BookQuestionSeed[] = [
   firstTimothy,
   secondTimothy,
   titus,
+  philemon,
 ];
 
 function sourceTag(bookId: number): string {
