@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
 import { firstPeter } from './chapter-questions/first-peter';
 import { james } from './chapter-questions/james';
+import { secondPeter } from './chapter-questions/second-peter';
 import type { BookQuestionSeed } from './chapter-questions/types';
 
 const prisma = new PrismaClient();
@@ -16,7 +17,7 @@ const prisma = new PrismaClient();
  * touches rows it created, never the hand-written trivia bank from
  * `seed.ts`).
  */
-const books: BookQuestionSeed[] = [james, firstPeter];
+const books: BookQuestionSeed[] = [james, firstPeter, secondPeter];
 
 function sourceTag(bookId: number): string {
   return `chapter-check:${bookId}`;
