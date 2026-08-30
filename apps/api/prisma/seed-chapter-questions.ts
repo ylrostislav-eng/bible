@@ -5,6 +5,7 @@ import { ephesians } from './chapter-questions/ephesians';
 import { firstCorinthians } from './chapter-questions/first-corinthians';
 import { firstJohn } from './chapter-questions/first-john';
 import { firstPeter } from './chapter-questions/first-peter';
+import { firstThessalonians } from './chapter-questions/first-thessalonians';
 import { galatians } from './chapter-questions/galatians';
 import { james } from './chapter-questions/james';
 import { jude } from './chapter-questions/jude';
@@ -43,6 +44,7 @@ const books: BookQuestionSeed[] = [
   ephesians,
   philippians,
   colossians,
+  firstThessalonians,
 ];
 
 function sourceTag(bookId: number): string {
