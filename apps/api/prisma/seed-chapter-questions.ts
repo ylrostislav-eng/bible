@@ -10,6 +10,7 @@ import { firstTimothy } from './chapter-questions/first-timothy';
 import { galatians } from './chapter-questions/galatians';
 import { hebrews } from './chapter-questions/hebrews';
 import { james } from './chapter-questions/james';
+import { john } from './chapter-questions/john';
 import { jude } from './chapter-questions/jude';
 import { luke } from './chapter-questions/luke';
 import { mark } from './chapter-questions/mark';
@@ -65,6 +66,7 @@ const books: BookQuestionSeed[] = [
   matthew,
   mark,
   luke,
+  john,
 ];
 
 function sourceTag(bookId: number): string {
