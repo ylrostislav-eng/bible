@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
+import { ephesians } from './chapter-questions/ephesians';
 import { firstCorinthians } from './chapter-questions/first-corinthians';
 import { firstJohn } from './chapter-questions/first-john';
 import { firstPeter } from './chapter-questions/first-peter';
@@ -37,6 +38,7 @@ const books: BookQuestionSeed[] = [
   firstCorinthians,
   secondCorinthians,
   galatians,
+  ephesians,
 ];
 
 function sourceTag(bookId: number): string {
