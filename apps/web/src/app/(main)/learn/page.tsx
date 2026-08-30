@@ -13,6 +13,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { LearnIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CompletionHero } from '@/components/ui/completion-hero';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -408,7 +410,10 @@ function ChapterCheckView({
     const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
     return (
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-10 text-center">
-        <h1 className="text-2xl font-bold">Проверка завершена!</h1>
+        <CompletionHero
+          correctCount={summary.correctCount}
+          totalQuestions={summary.totalQuestions}
+        />
         <p className="text-text-secondary">
           Правильных ответов: {summary.correctCount} из {summary.totalQuestions}
         </p>
@@ -448,7 +453,10 @@ function ChapterCheckView({
           <p className="text-sm text-text-secondary">
             {summary.streak.increased ? 'Серия дней подряд' : 'Ваша серия'}
           </p>
-          <p className="text-2xl font-bold text-primary">🔥 {summary.streak.current}</p>
+          <div className="flex items-center gap-2">
+            <OilLampFlame size={26} glow={false} />
+            <p className="text-2xl font-bold text-primary">{summary.streak.current}</p>
+          </div>
           {summary.streak.longest > summary.streak.current && (
             <p className="text-xs text-text-muted">Рекорд: {summary.streak.longest}</p>
           )}

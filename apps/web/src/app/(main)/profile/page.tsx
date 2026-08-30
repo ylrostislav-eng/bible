@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { COUNTRIES } from '@bible-arena/shared';
 
 function formatDate(iso: string): string {
@@ -67,7 +68,10 @@ export default function ProfilePage() {
         </Card>
         <Card className="flex-col">
           <p className="text-xs text-text-secondary">Серия дней</p>
-          <p className="text-lg font-bold text-primary">🔥 {user.currentStreak}</p>
+          <div className="flex items-center gap-1.5">
+            <OilLampFlame size={18} glow={false} />
+            <p className="text-lg font-bold text-primary">{user.currentStreak}</p>
+          </div>
         </Card>
       </div>
 

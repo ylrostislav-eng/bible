@@ -17,6 +17,7 @@ import { useCallback, useState } from 'react';
 import { PlayIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CompletionHero } from '@/components/ui/completion-hero';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -186,7 +187,10 @@ export default function PlayPage() {
   if (phase === 'summary' && summary) {
     return (
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-10 text-center">
-        <h1 className="text-2xl font-bold">Игра завершена!</h1>
+        <CompletionHero
+          correctCount={summary.correctCount}
+          totalQuestions={summary.totalQuestions}
+        />
         <p className="text-text-secondary">
           Правильных ответов: {summary.correctCount} из {summary.totalQuestions}
         </p>

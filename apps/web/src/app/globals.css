@@ -56,3 +56,61 @@ a {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* Oil-lamp flame mascot (components/ui/oil-lamp-flame.tsx) */
+@keyframes flame-outer {
+  0%,
+  100% {
+    transform: scaleY(1) scaleX(1) rotate(0deg);
+  }
+  25% {
+    transform: scaleY(1.07) scaleX(0.95) rotate(-2deg);
+  }
+  50% {
+    transform: scaleY(0.93) scaleX(1.06) rotate(1.5deg);
+  }
+  75% {
+    transform: scaleY(1.04) scaleX(0.97) rotate(-1deg);
+  }
+}
+@keyframes flame-inner {
+  0%,
+  100% {
+    transform: scaleY(1) rotate(0deg);
+  }
+  30% {
+    transform: scaleY(0.9) rotate(2.5deg);
+  }
+  60% {
+    transform: scaleY(1.08) rotate(-2deg);
+  }
+}
+@keyframes flame-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.18);
+  }
+}
+.flame-outer {
+  animation: flame-outer 2.6s ease-in-out infinite;
+}
+.flame-inner {
+  animation: flame-inner 1.9s ease-in-out infinite;
+}
+.flame-glow {
+  animation: flame-glow-pulse 3.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flame-outer,
+  .flame-inner,
+  .flame-glow {
+    animation: none;
+  }
+}

@@ -8,12 +8,14 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { pickEncouragement } from '@/lib/encouragement';
 
 const POLL_INTERVAL_MS = 1200;
 
@@ -32,6 +34,15 @@ export default function DuelPage() {
   const [duelState, setDuelState] = useState<DuelState | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [, setRewardsApplied] = useState(false);
+
+  // Recomputed only when the result actually changes (a new duel, or your
+  // correct count settling once the match ends) — stays put while the
+  // completed screen is being viewed, even though polling keeps re-fetching.
+  const completionPercent =
+    duelState && duelState.questionCount > 0
+      ? duelState.you.correctCount / duelState.questionCount
+      : 0;
+  const completionPhrase = useMemo(() => pickEncouragement(completionPercent), [completionPercent]);
 
   useEffect(() => {
     if (!sessionId) return undefined;
@@ -196,7 +207,11 @@ export default function DuelPage() {
 
       return (
         <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-10 text-center">
-          <h1 className={clsx('text-2xl font-bold', outcomeColor)}>{outcomeLabel}</h1>
+          <div className="flex flex-col items-center gap-2">
+            <OilLampFlame size={80} />
+            <h1 className={clsx('text-2xl font-bold', outcomeColor)}>{outcomeLabel}</h1>
+            <p className="text-sm text-text-secondary text-balance">{completionPhrase}</p>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Card className="flex-col items-center gap-1">
