@@ -11,6 +11,7 @@ import { galatians } from './chapter-questions/galatians';
 import { hebrews } from './chapter-questions/hebrews';
 import { james } from './chapter-questions/james';
 import { jude } from './chapter-questions/jude';
+import { mark } from './chapter-questions/mark';
 import { matthew } from './chapter-questions/matthew';
 import { philemon } from './chapter-questions/philemon';
 import { philippians } from './chapter-questions/philippians';
@@ -61,6 +62,7 @@ const books: BookQuestionSeed[] = [
   hebrews,
   revelation,
   matthew,
+  mark,
 ];
 
 function sourceTag(bookId: number): string {
