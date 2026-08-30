@@ -291,8 +291,15 @@ model GameSession {
   status        GameSessionStatus @default(IN_PROGRESS)
   questionCount Int
 
-  /// 6-character code used to join a DUEL; null for SOLO sessions.
+  /// 6-character code used to join a DUEL; null for SOLO sessions. Doubles
+  /// as a fallback/share code for a friend challenge, but only `targetUserId`
+  /// (when set) may actually join via it — see `DuelService.join`.
   inviteCode String? @unique
+
+  /// Set only when this DUEL was created as a direct challenge to a
+  /// specific friend (`DuelService.challenge`) rather than an open invite
+  /// code anyone can join with.
+  targetUserId String?
 
   /// Index (0-based) of the question currently being answered.
   currentOrder Int @default(0)
@@ -309,6 +316,7 @@ model GameSession {
   participants GameParticipant[]
   answers      GameAnswer[]
 
+  @@index([targetUserId, status])
   @@map("game_sessions")
 }
 

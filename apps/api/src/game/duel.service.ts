@@ -6,18 +6,22 @@ import {
 } from '@nestjs/common';
 import {
   DUEL_QUESTION_COUNT_MIN,
+  type ChallengeFriendResponse,
   type CreateDuelResponse,
   type DuelParticipantView,
   type DuelPreviewResponse,
   type DuelState,
   type DuelStateStatus,
+  type PendingChallenge,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import type { ChallengeFriendDto } from './dto/challenge-friend.dto';
 import type { CreateDuelDto } from './dto/create-duel.dto';
 import type { DuelAnswerDto } from './dto/duel-answer.dto';
 import type { JoinDuelDto } from './dto/join-duel.dto';
+import type { RespondToChallengeDto } from './dto/respond-to-challenge.dto';
 import { toPublicQuestion } from './game.mapper';
 import {
   COINS_PER_CORRECT_ANSWER,
@@ -103,6 +107,99 @@ export class DuelService {
     throw new ConflictException('Не удалось создать дуэль, попробуйте ещё раз');
   }
 
+  /** Like `create`, but pre-targeted at a specific friend instead of an open
+   * invite code — surfaces on their duel screen as a pending challenge
+   * instead of requiring them to be handed a code out of band. The code is
+   * still generated as a fallback/share option. */
+  async challenge(
+    userId: string,
+    dto: ChallengeFriendDto,
+  ): Promise<ChallengeFriendResponse> {
+    if (dto.friendUserId === userId) {
+      throw new BadRequestException('Нельзя бросить вызов самому себе');
+    }
+    const friendship = await this.prisma.friendship.findUnique({
+      where: {
+        userId_friendId: { userId, friendId: dto.friendUserId },
+      },
+    });
+    if (!friendship) {
+      throw new ConflictException('Можно бросить вызов только другу');
+    }
+
+    for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {
+      const inviteCode = generateInviteCode();
+      try {
+        const session = await this.prisma.gameSession.create({
+          data: {
+            mode: 'DUEL',
+            status: 'WAITING_FOR_OPPONENT',
+            questionCount: dto.questionCount,
+            inviteCode,
+            targetUserId: dto.friendUserId,
+            participants: { create: { userId } },
+          },
+        });
+        return { sessionId: session.id, inviteCode };
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new ConflictException('Не удалось создать вызов, попробуйте ещё раз');
+  }
+
+  /** Challenges sent to `userId` that haven't been accepted/declined yet —
+   * shown on their duel screen so they don't need the fallback code. */
+  async pendingChallenges(userId: string): Promise<PendingChallenge[]> {
+    const sessions = await this.prisma.gameSession.findMany({
+      where: {
+        mode: 'DUEL',
+        status: 'WAITING_FOR_OPPONENT',
+        targetUserId: userId,
+      },
+      include: sessionInclude,
+      orderBy: { startedAt: 'desc' },
+    });
+
+    return sessions.map((session) => ({
+      sessionId: session.id,
+      fromUserId: session.participants[0]?.userId ?? '',
+      fromNickname: session.participants[0]?.user.nickname ?? null,
+      questionCount: session.questionCount,
+      createdAt: session.startedAt.toISOString(),
+    }));
+  }
+
+  async respondToChallenge(
+    userId: string,
+    sessionId: string,
+    dto: RespondToChallengeDto,
+  ): Promise<{ sessionId: string } | { declined: true }> {
+    const session = await this.loadSession(sessionId);
+    if (session.targetUserId !== userId) {
+      throw new NotFoundException('Вызов не найден');
+    }
+    if (session.status !== 'WAITING_FOR_OPPONENT') {
+      throw new ConflictException('Этот вызов уже обработан');
+    }
+
+    if (dto.action === 'DECLINE') {
+      await this.prisma.gameSession.update({
+        where: { id: sessionId },
+        data: { status: 'ABANDONED', finishedAt: new Date() },
+      });
+      return { declined: true };
+    }
+
+    return this.startDuel(session, userId, dto.questionCount);
+  }
+
   /** Looked up by the joiner right after typing in the code, before they
    * commit — shows the host's chosen question count so it can be lowered
    * (never raised) on the join screen. */
@@ -135,6 +232,12 @@ export class DuelService {
     if (!session || session.mode !== 'DUEL') {
       throw new NotFoundException('Дуэль с таким кодом не найдена');
     }
+    // A friend-challenge's code is a fallback/share option for its target
+    // only — it doesn't turn the challenge into an open invite anyone can
+    // join with.
+    if (session.targetUserId && session.targetUserId !== userId) {
+      throw new ConflictException('Эта дуэль предназначена другому игроку');
+    }
     if (session.status !== 'WAITING_FOR_OPPONENT') {
       throw new ConflictException('Эта дуэль уже началась или завершена');
     }
@@ -142,20 +245,31 @@ export class DuelService {
       throw new ConflictException('Нельзя присоединиться к собственной дуэли');
     }
 
+    return this.startDuel(session, userId, dto.questionCount);
+  }
+
+  /** Shared by `join` (open code) and `respondToChallenge` (targeted
+   * invite) — generates the question set, creates the joiner's participant
+   * row, and flips the session to IN_PROGRESS. */
+  private async startDuel(
+    session: LoadedSession,
+    joinerId: string,
+    requestedQuestionCount: number | undefined,
+  ): Promise<{ sessionId: string }> {
     // The joiner may shrink the host's question count, never grow it —
     // validated here since the host's actual count isn't known client-side
     // until the preview call.
     let questionCount = session.questionCount;
-    if (dto.questionCount !== undefined) {
+    if (requestedQuestionCount !== undefined) {
       if (
-        dto.questionCount < DUEL_QUESTION_COUNT_MIN ||
-        dto.questionCount > session.questionCount
+        requestedQuestionCount < DUEL_QUESTION_COUNT_MIN ||
+        requestedQuestionCount > session.questionCount
       ) {
         throw new BadRequestException(
           `Количество вопросов должно быть от ${DUEL_QUESTION_COUNT_MIN} до ${session.questionCount}`,
         );
       }
-      questionCount = dto.questionCount;
+      questionCount = requestedQuestionCount;
     }
 
     const questions = await this.questionsService.pickRandom({
@@ -163,7 +277,7 @@ export class DuelService {
     });
     const creator = session.participants[0];
     const joiner = await this.prisma.gameParticipant.create({
-      data: { sessionId: session.id, userId },
+      data: { sessionId: session.id, userId: joinerId },
     });
 
     // Shuffled independently per participant, so the two sides see the same

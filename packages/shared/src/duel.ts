@@ -34,6 +34,35 @@ export interface JoinDuelResponse {
   sessionId: string;
 }
 
+export interface ChallengeFriendInput {
+  friendUserId: string;
+  questionCount: number;
+}
+
+export interface ChallengeFriendResponse {
+  sessionId: string;
+  inviteCode: string;
+}
+
+/** A challenge someone sent you, sitting in `WAITING_FOR_OPPONENT` until you
+ * respond — surfaced on the duel screen so you don't have to go dig up the
+ * invite code they'd otherwise have to send you separately. */
+export interface PendingChallenge {
+  sessionId: string;
+  fromUserId: string;
+  fromNickname: string | null;
+  questionCount: number;
+  createdAt: string;
+}
+
+export type RespondToChallengeAction = 'ACCEPT' | 'DECLINE';
+
+export interface RespondToChallengeInput {
+  action: RespondToChallengeAction;
+  /** Only for ACCEPT — same shrink-only rule as `JoinDuelInput.questionCount`. */
+  questionCount?: number;
+}
+
 export interface DuelParticipantView {
   userId: string;
   nickname: string | null;

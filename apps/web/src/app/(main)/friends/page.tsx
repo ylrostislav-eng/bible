@@ -1,16 +1,36 @@
 'use client';
 
-import type { FriendSearchResult, FriendsListResponse } from '@bible-arena/shared';
+import type {
+  ChallengeFriendResponse,
+  FriendSearchResult,
+  FriendsListResponse,
+} from '@bible-arena/shared';
+import {
+  DUEL_QUESTION_COUNT_DEFAULT,
+  DUEL_QUESTION_COUNT_MAX,
+  DUEL_QUESTION_COUNT_MIN,
+} from '@bible-arena/shared';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Card } from '@/components/ui/card';
+import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { pluralFriends } from '@/lib/plural';
 
 const SEARCH_DEBOUNCE_MS = 350;
+/** Online status can change at any moment (a friend opens/closes the app),
+ * and this page has no other signal to refetch on — poll like the duel
+ * page's pending-challenges check does. */
+const OVERVIEW_POLL_MS = 15000;
+/** Matches the key `/play/duel` reads on mount to pick up a
+ * challenge-created session without a URL param. */
+const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
 export default function FriendsPage() {
+  const router = useRouter();
+
   const [overview, setOverview] = useState<FriendsListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -18,6 +38,12 @@ export default function FriendsPage() {
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+
+  const [challengingFriendId, setChallengingFriendId] = useState<string | null>(null);
+  const [challengeQuestionCount, setChallengeQuestionCount] = useState(DUEL_QUESTION_COUNT_DEFAULT);
+  const [challengeSending, setChallengeSending] = useState(false);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
+  const [sentChallenge, setSentChallenge] = useState<ChallengeFriendResponse | null>(null);
 
   // Reusable from mutation handlers (accept/decline/unfriend/etc.) below —
   // those aren't effect bodies, so calling it there doesn't hit the same
@@ -48,8 +74,10 @@ export default function FriendsPage() {
       }
     }
     void load();
+    const interval = setInterval(() => void load(), OVERVIEW_POLL_MS);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
@@ -125,6 +153,36 @@ export default function FriendsPage() {
     () => overview?.friends.filter((f) => f.online).length ?? 0,
     [overview],
   );
+
+  const openChallenge = (friendId: string) => {
+    setChallengingFriendId(friendId);
+    setChallengeQuestionCount(DUEL_QUESTION_COUNT_DEFAULT);
+    setChallengeError(null);
+    setSentChallenge(null);
+  };
+
+  const sendChallenge = async () => {
+    if (!challengingFriendId) return;
+    setChallengeSending(true);
+    setChallengeError(null);
+    try {
+      const res = await apiClient.post<ChallengeFriendResponse>('/game/duel/challenge', {
+        friendUserId: challengingFriendId,
+        questionCount: challengeQuestionCount,
+      });
+      setSentChallenge(res);
+    } catch (err) {
+      setChallengeError(err instanceof ApiError ? err.message : 'Не удалось отправить вызов');
+    } finally {
+      setChallengeSending(false);
+    }
+  };
+
+  const goToDuel = () => {
+    if (!sentChallenge) return;
+    sessionStorage.setItem(PENDING_SESSION_STORAGE_KEY, sentChallenge.sessionId);
+    router.push('/play/duel');
+  };
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
@@ -238,30 +296,90 @@ export default function FriendsPage() {
       ) : (
         <Card className="flex-col gap-3">
           {overview.friends.map((friend) => (
-            <div key={friend.userId} className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span
-                  className={
-                    friend.online
-                      ? 'h-2 w-2 shrink-0 rounded-full bg-success'
-                      : 'h-2 w-2 shrink-0 rounded-full bg-text-muted'
-                  }
-                  aria-label={friend.online ? 'В сети' : 'Не в сети'}
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{friend.nickname}</p>
-                  <p className="text-xs text-text-muted">
-                    {friend.title} · ур. {friend.level}
-                  </p>
+            <div key={friend.userId} className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={
+                      friend.online
+                        ? 'h-2 w-2 shrink-0 rounded-full bg-success'
+                        : 'h-2 w-2 shrink-0 rounded-full bg-text-muted'
+                    }
+                    aria-label={friend.online ? 'В сети' : 'Не в сети'}
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{friend.nickname}</p>
+                    <p className="text-xs text-text-muted">
+                      {friend.title} · ур. {friend.level}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  {friend.online && (
+                    <button
+                      onClick={() => openChallenge(friend.userId)}
+                      className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary"
+                    >
+                      Вызвать
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void unfriend(friend.userId)}
+                    disabled={busyId === friend.userId}
+                    className="text-xs text-text-muted hover:text-danger disabled:opacity-50"
+                  >
+                    Удалить
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => void unfriend(friend.userId)}
-                disabled={busyId === friend.userId}
-                className="shrink-0 text-xs text-text-muted hover:text-danger disabled:opacity-50"
-              >
-                Удалить
-              </button>
+
+              {challengingFriendId === friend.userId && (
+                <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-hover p-3">
+                  {sentChallenge ? (
+                    <>
+                      <p className="text-sm text-success">Вызов отправлен!</p>
+                      <p className="text-xs text-text-muted">
+                        Код на всякий случай:{' '}
+                        <span className="font-mono font-semibold tracking-widest text-text-primary">
+                          {sentChallenge.inviteCode}
+                        </span>
+                      </p>
+                      <button
+                        onClick={goToDuel}
+                        className="h-10 rounded-lg bg-primary text-sm font-semibold text-on-primary"
+                      >
+                        Перейти к дуэли
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <QuestionCountSlider
+                        label="Количество вопросов"
+                        value={challengeQuestionCount}
+                        min={DUEL_QUESTION_COUNT_MIN}
+                        max={DUEL_QUESTION_COUNT_MAX}
+                        onChange={setChallengeQuestionCount}
+                      />
+                      {challengeError && <p className="text-sm text-danger">{challengeError}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => void sendChallenge()}
+                          disabled={challengeSending}
+                          className="h-10 flex-1 rounded-lg bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
+                        >
+                          {challengeSending ? 'Отправка…' : 'Бросить вызов'}
+                        </button>
+                        <button
+                          onClick={() => setChallengingFriendId(null)}
+                          className="h-10 rounded-lg bg-surface px-3 text-sm text-text-secondary"
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </Card>

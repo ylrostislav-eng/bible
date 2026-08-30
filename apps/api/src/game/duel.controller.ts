@@ -2,9 +2,11 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { ChallengeFriendDto } from './dto/challenge-friend.dto';
 import { CreateDuelDto } from './dto/create-duel.dto';
 import { DuelAnswerDto } from './dto/duel-answer.dto';
 import { JoinDuelDto } from './dto/join-duel.dto';
+import { RespondToChallengeDto } from './dto/respond-to-challenge.dto';
 import { DuelService } from './duel.service';
 
 @UseGuards(JwtAuthGuard)
@@ -25,6 +27,25 @@ export class DuelController {
   @Get('preview/:inviteCode')
   preview(@Param('inviteCode') inviteCode: string) {
     return this.duelService.preview(inviteCode);
+  }
+
+  @Post('challenge')
+  challenge(@CurrentUser() user: JwtPayload, @Body() dto: ChallengeFriendDto) {
+    return this.duelService.challenge(user.sub, dto);
+  }
+
+  @Get('pending-challenges')
+  pendingChallenges(@CurrentUser() user: JwtPayload) {
+    return this.duelService.pendingChallenges(user.sub);
+  }
+
+  @Post(':sessionId/respond')
+  respondToChallenge(
+    @CurrentUser() user: JwtPayload,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: RespondToChallengeDto,
+  ) {
+    return this.duelService.respondToChallenge(user.sub, sessionId, dto);
   }
 
   @Get(':sessionId')

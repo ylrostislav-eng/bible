@@ -5,6 +5,7 @@ import type {
   DuelPreviewResponse,
   DuelState,
   JoinDuelResponse,
+  PendingChallenge,
 } from '@bible-arena/shared';
 import {
   DIFFICULTY_NAMES,
@@ -26,6 +27,12 @@ import { useAuth } from '@/lib/auth-context';
 import { pickEncouragement } from '@/lib/encouragement';
 
 const POLL_INTERVAL_MS = 1200;
+const PENDING_CHALLENGES_POLL_MS = 4000;
+/** Set by the friends-tab "Вызвать" flow right before it navigates here, so
+ * this page can pick the freshly created session up without a URL param
+ * (which would force a Suspense boundary around an otherwise fully static
+ * page for no real benefit — this is a one-shot handoff, not shareable state). */
+const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
 type Menu = 'menu' | 'create' | 'join';
 
@@ -40,10 +47,22 @@ export default function DuelPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // Lazy initializer (not an effect) so a challenge-created session is
+  // picked up on the very first render, with no extra render round-trip —
+  // and no "setState in an effect" concern, since it never runs again.
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stashed = sessionStorage.getItem(PENDING_SESSION_STORAGE_KEY);
+    if (stashed) sessionStorage.removeItem(PENDING_SESSION_STORAGE_KEY);
+    return stashed;
+  });
   const [duelState, setDuelState] = useState<DuelState | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [, setRewardsApplied] = useState(false);
+
+  const [pendingChallenges, setPendingChallenges] = useState<PendingChallenge[]>([]);
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+  const [respondQuestionCount, setRespondQuestionCount] = useState<number>(DUEL_QUESTION_COUNT_MIN);
 
   // Recomputed only when the result actually changes (a new duel, or your
   // correct count settling once the match ends) — stays put while the
@@ -84,6 +103,67 @@ export default function DuelPage() {
       clearInterval(interval);
     };
   }, [sessionId, updateProfile]);
+
+  // Only worth checking while sitting on the main menu with no active
+  // session — once you're in a duel there's nothing to accept from here.
+  useEffect(() => {
+    if (sessionId || menu !== 'menu') return undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const challenges = await apiClient.get<PendingChallenge[]>('/game/duel/pending-challenges');
+        if (!cancelled) setPendingChallenges(challenges);
+      } catch {
+        // Transient poll failures are ignored — the next tick will retry.
+      }
+    };
+
+    void poll();
+    const interval = setInterval(() => void poll(), PENDING_CHALLENGES_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId, menu]);
+
+  const startResponding = useCallback((challenge: PendingChallenge) => {
+    setRespondingTo(challenge.sessionId);
+    setRespondQuestionCount(challenge.questionCount);
+    setError(null);
+  }, []);
+
+  const acceptChallenge = useCallback(async () => {
+    if (!respondingTo) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.post<{ sessionId: string }>(
+        `/game/duel/${respondingTo}/respond`,
+        { action: 'ACCEPT', questionCount: respondQuestionCount },
+      );
+      setSessionId(res.sessionId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось принять вызов');
+    } finally {
+      setLoading(false);
+    }
+  }, [respondingTo, respondQuestionCount]);
+
+  const declineChallenge = useCallback(async (challengeSessionId: string) => {
+    setLoading(true);
+    try {
+      await apiClient.post(`/game/duel/${challengeSessionId}/respond`, {
+        action: 'DECLINE',
+      });
+      setPendingChallenges((cs) => cs.filter((c) => c.sessionId !== challengeSessionId));
+      setRespondingTo((current) => (current === challengeSessionId ? null : current));
+    } catch {
+      // The next poll will re-sync the list either way.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const createDuel = useCallback(async () => {
     setLoading(true);
@@ -518,6 +598,59 @@ export default function DuelPage() {
           <p className="text-sm text-text-secondary">Сразитесь с другом в реальном времени</p>
         </div>
       </div>
+
+      {pendingChallenges.length > 0 && (
+        <Card className="flex-col gap-3">
+          <p className="text-sm font-semibold text-text-secondary">Входящие вызовы</p>
+          {pendingChallenges.map((challenge) =>
+            respondingTo === challenge.sessionId ? (
+              <div key={challenge.sessionId} className="flex flex-col gap-3">
+                <p className="text-sm">
+                  <span className="font-semibold">{challenge.fromNickname ?? 'Соперник'}</span>{' '}
+                  бросает вам вызов
+                </p>
+                <QuestionCountSlider
+                  label="Количество вопросов"
+                  value={respondQuestionCount}
+                  min={DUEL_QUESTION_COUNT_MIN}
+                  max={challenge.questionCount}
+                  onChange={setRespondQuestionCount}
+                />
+                {error && <p className="text-sm text-danger">{error}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={acceptChallenge}
+                    disabled={loading}
+                    className="h-10 flex-1 rounded-lg bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
+                  >
+                    {loading ? 'Подключение…' : 'Принять'}
+                  </button>
+                  <button
+                    onClick={() => void declineChallenge(challenge.sessionId)}
+                    disabled={loading}
+                    className="h-10 flex-1 rounded-lg bg-surface-hover text-sm font-semibold text-text-secondary disabled:opacity-50"
+                  >
+                    Отклонить
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={challenge.sessionId} className="flex items-center justify-between gap-2">
+                <p className="truncate text-sm">
+                  <span className="font-semibold">{challenge.fromNickname ?? 'Соперник'}</span> ·{' '}
+                  {challenge.questionCount} вопросов
+                </p>
+                <button
+                  onClick={() => startResponding(challenge)}
+                  className="h-9 shrink-0 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary"
+                >
+                  Ответить
+                </button>
+              </div>
+            ),
+          )}
+        </Card>
+      )}
 
       <Button onClick={() => setMenu('create')}>Создать дуэль</Button>
       <Button onClick={() => setMenu('join')} variant="secondary">
