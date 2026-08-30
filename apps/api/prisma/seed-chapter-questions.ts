@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
+import { acts } from './chapter-questions/acts';
 import { colossians } from './chapter-questions/colossians';
 import { ephesians } from './chapter-questions/ephesians';
 import { firstCorinthians } from './chapter-questions/first-corinthians';
@@ -67,6 +68,7 @@ const books: BookQuestionSeed[] = [
   mark,
   luke,
   john,
+  acts,
 ];
 
 function sourceTag(bookId: number): string {
