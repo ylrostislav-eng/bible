@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
+import { firstPeter } from './chapter-questions/first-peter';
 import { james } from './chapter-questions/james';
 import type { BookQuestionSeed } from './chapter-questions/types';
 
@@ -15,7 +16,7 @@ const prisma = new PrismaClient();
  * touches rows it created, never the hand-written trivia bank from
  * `seed.ts`).
  */
-const books: BookQuestionSeed[] = [james];
+const books: BookQuestionSeed[] = [james, firstPeter];
 
 function sourceTag(bookId: number): string {
   return `chapter-check:${bookId}`;
@@ -26,6 +27,22 @@ async function main() {
 
   await prisma.chapterQuestion.deleteMany({
     where: { bookId: { in: bookIds } },
+  });
+
+  // GameAnswer has no cascade to Question (a solo/duel answer shouldn't
+  // silently vanish just because someone edited the trivia bank) — but
+  // that means re-running this seed after anyone has actually played a
+  // chapter-check-sourced question would otherwise fail on the FK. Since
+  // these rows are wholly owned by this seed (tagged by `source`), clear
+  // the dependent answers first so re-seeding stays idempotent.
+  const taggedQuestionIds = (
+    await prisma.question.findMany({
+      where: { source: { in: bookIds.map(sourceTag) } },
+      select: { id: true },
+    })
+  ).map((q) => q.id);
+  await prisma.gameAnswer.deleteMany({
+    where: { questionId: { in: taggedQuestionIds } },
   });
   await prisma.question.deleteMany({
     where: { source: { in: bookIds.map(sourceTag) } },
