@@ -259,6 +259,10 @@ model GameParticipant {
 
   xpEarned    Int @default(0)
   coinsEarned Int @default(0)
+  /// Rating actually applied for this game (duels only; solo never touches
+  /// rating). Zero if `ratingCapped` — the daily duel-win cap zeroed it out.
+  ratingDelta  Int     @default(0)
+  ratingCapped Boolean @default(false)
 
   answers GameAnswer[]
 

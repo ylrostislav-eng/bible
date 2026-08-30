@@ -129,6 +129,15 @@ export default function DuelPage() {
     }
   }, [sessionId]);
 
+  // Auto-advance ~5s after both players' answers are revealed, so the duel
+  // doesn't stall waiting for someone to notice and click "Далее" — the
+  // button still works too, for anyone who wants to move on sooner.
+  useEffect(() => {
+    if (!sessionId || !duelState?.roundResolved) return undefined;
+    const timeout = setTimeout(() => void next(), 5000);
+    return () => clearTimeout(timeout);
+  }, [sessionId, duelState?.roundResolved, duelState?.questionNumber, next]);
+
   const reset = useCallback(() => {
     setSessionId(null);
     setDuelState(null);
@@ -183,6 +192,8 @@ export default function DuelPage() {
             ? 'text-danger'
             : 'text-text-primary';
 
+      const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
       return (
         <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-10 text-center">
           <h1 className={clsx('text-2xl font-bold', outcomeColor)}>{outcomeLabel}</h1>
@@ -190,19 +201,50 @@ export default function DuelPage() {
           <div className="grid grid-cols-2 gap-3">
             <Card className="flex-col items-center gap-1">
               <p className="text-xs text-text-secondary">Вы</p>
-              <p className="text-2xl font-bold text-primary">{duelState.you.score}</p>
-              <p className="text-xs text-text-muted">{duelState.you.correctCount} правильных</p>
+              <p className="text-2xl font-bold text-primary">
+                {duelState.you.correctCount}/{duelState.questionCount}
+              </p>
+              <p className="text-xs text-text-muted">правильных</p>
             </Card>
             <Card className="flex-col items-center gap-1">
               <p className="text-xs text-text-secondary">
                 {duelState.opponent?.nickname ?? 'Соперник'}
               </p>
-              <p className="text-2xl font-bold">{duelState.opponent?.score ?? 0}</p>
-              <p className="text-xs text-text-muted">
-                {duelState.opponent?.correctCount ?? 0} правильных
+              <p className="text-2xl font-bold">
+                {duelState.opponent?.correctCount ?? 0}/{duelState.questionCount}
               </p>
+              <p className="text-xs text-text-muted">правильных</p>
             </Card>
           </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="flex-col items-center">
+              <p className="text-xs text-text-secondary">Знания</p>
+              <p
+                className={clsx(
+                  'text-xl font-bold',
+                  duelState.you.ratingDelta < 0 ? 'text-danger' : 'text-primary',
+                )}
+              >
+                {signed(duelState.you.ratingDelta)}
+              </p>
+            </Card>
+            <Card className="flex-col items-center">
+              <p className="text-xs text-text-secondary">Опыт</p>
+              <p className="text-xl font-bold text-primary">+{duelState.you.xpEarned}</p>
+            </Card>
+            <Card className="flex-col items-center">
+              <p className="text-xs text-text-secondary">Монеты</p>
+              <p className="text-xl font-bold text-primary">+{duelState.you.coinsEarned}</p>
+            </Card>
+          </div>
+
+          {duelState.you.ratingCapped && (
+            <p className="text-xs text-text-muted">
+              Дневной лимит очков «Знаний» с побед в дуэлях достигнут — победа засчитана, но без
+              очков. Завтра лимит обновится.
+            </p>
+          )}
 
           <Button onClick={reset}>Новая дуэль</Button>
           <Link href="/" className="text-center text-sm text-text-secondary">

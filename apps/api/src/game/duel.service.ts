@@ -368,17 +368,27 @@ export class DuelService {
               ? LOSS_RATING_DELTA
               : drawRating(percentCorrect);
 
+      const reward = await this.usersService.applyGameRewards(
+        participant.userId,
+        {
+          xpEarned,
+          coinsEarned,
+          outcome,
+          ratingDelta,
+          cappedWin: outcome === 'win',
+        },
+      );
+
+      // Persisted so the completed-duel screen can show exactly what was
+      // applied (the daily win cap can zero `ratingDelta` out).
       await this.prisma.gameParticipant.update({
         where: { id: participant.id },
-        data: { xpEarned, coinsEarned },
-      });
-
-      await this.usersService.applyGameRewards(participant.userId, {
-        xpEarned,
-        coinsEarned,
-        outcome,
-        ratingDelta,
-        cappedWin: outcome === 'win',
+        data: {
+          xpEarned,
+          coinsEarned,
+          ratingDelta: reward.ratingDelta,
+          ratingCapped: reward.ratingCapped,
+        },
       });
     }
   }
@@ -395,6 +405,10 @@ export class DuelService {
       correctCount: p.correctCount,
       score: p.score,
       streak: p.streak,
+      xpEarned: p.xpEarned,
+      coinsEarned: p.coinsEarned,
+      ratingDelta: p.ratingDelta,
+      ratingCapped: p.ratingCapped,
     });
 
     const base: DuelState = {

@@ -142,7 +142,12 @@ export class UsersService {
       ratingDelta?: number;
       cappedWin?: boolean;
     },
-  ): Promise<{ user: User; leveledUp: boolean; ratingCapped: boolean }> {
+  ): Promise<{
+    user: User;
+    leveledUp: boolean;
+    ratingDelta: number;
+    ratingCapped: boolean;
+  }> {
     const user = await this.findById(userId);
 
     let ratingDelta = params.ratingDelta ?? 0;
@@ -189,7 +194,7 @@ export class UsersService {
       },
     });
 
-    return { user: updated, leveledUp, ratingCapped };
+    return { user: updated, leveledUp, ratingDelta, ratingCapped };
   }
 
   /**

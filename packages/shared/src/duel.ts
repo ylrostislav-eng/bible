@@ -26,6 +26,12 @@ export interface DuelParticipantView {
   correctCount: number;
   score: number;
   streak: number;
+  /** Meaningful only once the duel is COMPLETED — 0 while in progress. */
+  xpEarned: number;
+  coinsEarned: number;
+  ratingDelta: number;
+  /** True if the daily duel-win rating cap zeroed `ratingDelta` out. */
+  ratingCapped: boolean;
 }
 
 export interface DuelRoundAnswer {
