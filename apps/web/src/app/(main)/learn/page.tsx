@@ -469,7 +469,7 @@ function ChapterCheckView({
         <StreakSection
           current={summary.streak.current}
           longest={summary.streak.longest}
-          goalDays={summary.streak.goalDays}
+          goalDays={user?.streakGoalDays ?? summary.streak.goalDays}
           goalRewarded={user?.streakGoalRewarded ?? false}
           goalReachedNow={summary.streak.goalReachedNow}
           goalCoinsEarned={summary.streak.goalCoinsEarned}

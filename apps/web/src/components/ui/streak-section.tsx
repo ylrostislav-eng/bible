@@ -11,6 +11,24 @@ import { OilLampFlame } from './oil-lamp-flame';
 
 const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
+/** Russian noun declension for "день" after a count (1 день, 2 дня, 5 дней). */
+function pluralDays(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'день';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'дня';
+  return 'дней';
+}
+
+/** Russian noun declension for "монета" after a count (1 монета, 2 монеты, 5 монет). */
+function pluralCoins(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'монета';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'монеты';
+  return 'монет';
+}
+
 function buildWeekStrip(currentStreak: number): { label: string; done: boolean }[] {
   const today = new Date();
   const cells: { label: string; done: boolean }[] = [];
@@ -58,9 +76,7 @@ export function StreakSection({
       <OilLampFlame size={56} />
       <div className="flex flex-col items-center">
         <p className="text-3xl font-bold text-primary">{current}</p>
-        <p className="text-sm text-text-secondary">
-          {current === 1 ? 'день подряд' : 'дней подряд'}
-        </p>
+        <p className="text-sm text-text-secondary">{pluralDays(current)} подряд</p>
         {longest > current && <p className="text-xs text-text-muted">Рекорд: {longest}</p>}
       </div>
 
@@ -83,7 +99,8 @@ export function StreakSection({
       {goalReachedNow && (
         <div className="w-full rounded-xl border border-primary bg-primary/10 px-3 py-2 text-center">
           <p className="text-sm font-semibold text-primary">
-            Цель по серии {goalDays} дней достигнута — +{goalCoinsEarned} монет!
+            Цель по серии {goalDays} {pluralDays(goalDays ?? 0)} достигнута — +{goalCoinsEarned}{' '}
+            {pluralCoins(goalCoinsEarned)}!
           </p>
         </div>
       )}
@@ -94,8 +111,9 @@ export function StreakSection({
         daysToGoal !== null &&
         daysToGoal > 0 && (
           <p className="text-xs text-text-muted">
-            Ещё {daysToGoal} {daysToGoal === 1 ? 'день' : 'дней'} до цели «{goalDays} дней» — +
-            {STREAK_GOAL_COIN_REWARD[goalDays as StreakGoalDays]} монет
+            Ещё {daysToGoal} {pluralDays(daysToGoal)} до цели «{goalDays} {pluralDays(goalDays)}» —
+            +{STREAK_GOAL_COIN_REWARD[goalDays as StreakGoalDays]}{' '}
+            {pluralCoins(STREAK_GOAL_COIN_REWARD[goalDays as StreakGoalDays])}
           </p>
         )}
 
@@ -106,13 +124,16 @@ export function StreakSection({
             {STREAK_GOAL_OPTIONS.map((days) => (
               <button
                 key={days}
+                type="button"
                 onClick={() => onSetGoal(days)}
                 disabled={settingGoal}
-                className="flex flex-col items-center rounded-lg border border-border bg-surface-hover px-1 py-2 text-center transition hover:border-primary disabled:opacity-50"
+                className="flex flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-hover px-1 py-2 text-center transition hover:border-primary hover:bg-primary/10 disabled:opacity-50"
               >
-                <span className="text-sm font-bold text-text-primary">{days}</span>
+                <span className="text-sm font-bold text-text-primary">
+                  {days} {pluralDays(days)}
+                </span>
                 <span className="text-[10px] text-text-muted">
-                  +{STREAK_GOAL_COIN_REWARD[days]}
+                  +{STREAK_GOAL_COIN_REWARD[days]} {pluralCoins(STREAK_GOAL_COIN_REWARD[days])}
                 </span>
               </button>
             ))}
