@@ -14,6 +14,7 @@ import { romans } from './chapter-questions/romans';
 import { secondCorinthians } from './chapter-questions/second-corinthians';
 import { secondJohn } from './chapter-questions/second-john';
 import { secondPeter } from './chapter-questions/second-peter';
+import { secondThessalonians } from './chapter-questions/second-thessalonians';
 import { thirdJohn } from './chapter-questions/third-john';
 import type { BookQuestionSeed } from './chapter-questions/types';
 
@@ -45,6 +46,7 @@ const books: BookQuestionSeed[] = [
   philippians,
   colossians,
   firstThessalonians,
+  secondThessalonians,
 ];
 
 function sourceTag(bookId: number): string {
