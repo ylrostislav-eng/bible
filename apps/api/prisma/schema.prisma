@@ -291,6 +291,13 @@ model GameAnswer {
   /// solo scoring is flat and doesn't need a per-question breakdown).
   scoreDelta Int?
 
+  /// This question's 4 options, shuffled independently per participant when
+  /// the round is set up (so the answer position can't be memorized or
+  /// called out to a duel opponent), with `correctIndex` remapped to match.
+  /// The underlying `Question.options` order is untouched.
+  shuffledOptions      String[]
+  shuffledCorrectIndex Int      @default(0)
+
   @@unique([participantId, order])
   @@map("game_answers")
 }

@@ -13,7 +13,7 @@ import { UsersService } from '../users/users.service';
 import type { StartSoloGameDto } from './dto/start-solo-game.dto';
 import type { SubmitAnswerDto } from './dto/submit-answer.dto';
 import { toPublicQuestion } from './game.mapper';
-import { QuestionsService } from './questions.service';
+import { QuestionsService, shuffleOptions } from './questions.service';
 
 export const XP_PER_CORRECT_ANSWER = 5;
 export const COINS_PER_CORRECT_ANSWER = 2;
@@ -47,12 +47,19 @@ export class GameService {
     });
     const participant = session.participants[0];
 
+    const shuffledPerQuestion = questions.map((question) => ({
+      question,
+      ...shuffleOptions(question),
+    }));
+
     await this.prisma.gameAnswer.createMany({
-      data: questions.map((question, index) => ({
+      data: shuffledPerQuestion.map((item, index) => ({
         sessionId: session.id,
         participantId: participant.id,
-        questionId: question.id,
+        questionId: item.question.id,
         order: index,
+        shuffledOptions: item.options,
+        shuffledCorrectIndex: item.correctIndex,
       })),
     });
 
@@ -62,7 +69,10 @@ export class GameService {
       sessionId: session.id,
       totalQuestions: questions.length,
       questionNumber: 1,
-      question: toPublicQuestion(questions[0]),
+      question: toPublicQuestion(
+        shuffledPerQuestion[0].question,
+        shuffledPerQuestion[0].options,
+      ),
     };
   }
 
@@ -104,7 +114,7 @@ export class GameService {
     }
 
     const { question } = currentAnswer;
-    const isCorrect = dto.answerIndex === question.correctIndex;
+    const isCorrect = dto.answerIndex === currentAnswer.shuffledCorrectIndex;
 
     await this.prisma.gameAnswer.update({
       where: { id: currentAnswer.id },
@@ -129,12 +139,14 @@ export class GameService {
       const next = participant.answers.find(
         (answer) => answer.order === questionNumber,
       );
-      nextQuestion = next ? toPublicQuestion(next.question) : null;
+      nextQuestion = next
+        ? toPublicQuestion(next.question, next.shuffledOptions)
+        : null;
     }
 
     const result: SubmitAnswerResult = {
       correct: isCorrect,
-      correctIndex: question.correctIndex,
+      correctIndex: currentAnswer.shuffledCorrectIndex,
       explanation: question.explanation,
       book: question.book,
       chapter: question.chapter,

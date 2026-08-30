@@ -12,6 +12,20 @@ function shuffle<T>(items: T[]): T[] {
   return result;
 }
 
+/** Shuffles one question's options and remaps `correctIndex` to match, so
+ * the answer position can't be memorized (or, in a duel, called out to the
+ * opponent) across attempts. */
+export function shuffleOptions(question: Question): {
+  options: string[];
+  correctIndex: number;
+} {
+  const order = shuffle(question.options.map((_, i) => i));
+  return {
+    options: order.map((i) => question.options[i]),
+    correctIndex: order.indexOf(question.correctIndex),
+  };
+}
+
 @Injectable()
 export class QuestionsService {
   constructor(private readonly prisma: PrismaService) {}

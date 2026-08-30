@@ -21,7 +21,7 @@ import {
   XP_PER_CORRECT_ANSWER,
 } from './game.service';
 import { generateInviteCode } from './invite-code';
-import { QuestionsService } from './questions.service';
+import { QuestionsService, shuffleOptions } from './questions.service';
 
 const WIN_RATING_DELTA = 10;
 const LOSS_RATING_DELTA = -5;
@@ -124,20 +124,31 @@ export class DuelService {
       data: { sessionId: session.id, userId },
     });
 
-    const answerRows = questions.flatMap((question, index) => [
-      {
-        sessionId: session.id,
-        participantId: creator.id,
-        questionId: question.id,
-        order: index,
-      },
-      {
-        sessionId: session.id,
-        participantId: joiner.id,
-        questionId: question.id,
-        order: index,
-      },
-    ]);
+    // Shuffled independently per participant, so the two sides see the same
+    // question with different option orders — the correct answer can't just
+    // be called out to the opponent ("it's C!").
+    const answerRows = questions.flatMap((question, index) => {
+      const forCreator = shuffleOptions(question);
+      const forJoiner = shuffleOptions(question);
+      return [
+        {
+          sessionId: session.id,
+          participantId: creator.id,
+          questionId: question.id,
+          order: index,
+          shuffledOptions: forCreator.options,
+          shuffledCorrectIndex: forCreator.correctIndex,
+        },
+        {
+          sessionId: session.id,
+          participantId: joiner.id,
+          questionId: question.id,
+          order: index,
+          shuffledOptions: forJoiner.options,
+          shuffledCorrectIndex: forJoiner.correctIndex,
+        },
+      ];
+    });
     await this.prisma.gameAnswer.createMany({ data: answerRows });
     await this.questionsService.markUsed(questions.map((q) => q.id));
 
@@ -186,7 +197,7 @@ export class DuelService {
 
     const startedAt = session.currentQuestionStartedAt ?? session.startedAt;
     const timeTakenMs = Math.max(0, Date.now() - startedAt.getTime());
-    const isCorrect = dto.answerIndex === currentAnswer.question.correctIndex;
+    const isCorrect = dto.answerIndex === currentAnswer.shuffledCorrectIndex;
 
     await this.recordAnswer(
       participant,
@@ -469,14 +480,14 @@ export class DuelService {
     return {
       ...base,
       questionNumber: order + 1,
-      question: toPublicQuestion(myAnswer.question),
+      question: toPublicQuestion(myAnswer.question, myAnswer.shuffledOptions),
       secondsRemaining,
       youAnswered,
       opponentAnswered,
       roundResolved,
       reveal: roundResolved
         ? {
-            correctIndex: myAnswer.question.correctIndex,
+            correctIndex: myAnswer.shuffledCorrectIndex,
             explanation: myAnswer.question.explanation,
             book: myAnswer.question.book,
             chapter: myAnswer.question.chapter,
