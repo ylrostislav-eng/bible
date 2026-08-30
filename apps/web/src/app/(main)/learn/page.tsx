@@ -5,6 +5,7 @@ import type {
   ChapterCheckQuestion,
   ChapterCheckSummary,
   StartChapterCheckResponse,
+  StreakGoalDays,
   SubmitChapterCheckAnswerResult,
 } from '@bible-arena/shared';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
@@ -14,7 +15,7 @@ import { LearnIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CompletionHero } from '@/components/ui/completion-hero';
-import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
+import { StreakSection } from '@/components/ui/streak-section';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -261,9 +262,10 @@ function ChapterCheckView({
   bookName: string;
   onClose: () => void;
 }) {
-  const { updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
 
   const [phase, setPhase] = useState<CheckPhase>('loading');
+  const [settingGoal, setSettingGoal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [totalQuestions, setTotalQuestions] = useState(0);
@@ -344,6 +346,21 @@ function ChapterCheckView({
       }
     },
     [sessionId, question, feedback, submitting, updateProfile],
+  );
+
+  const setStreakGoal = useCallback(
+    async (days: StreakGoalDays) => {
+      setSettingGoal(true);
+      try {
+        await apiClient.patch('/users/me/streak-goal', { days });
+        await updateProfile({});
+      } catch {
+        // Non-critical — the goal picker just stays put for another try.
+      } finally {
+        setSettingGoal(false);
+      }
+    },
+    [updateProfile],
   );
 
   useEffect(() => {
@@ -449,18 +466,16 @@ function ChapterCheckView({
           </Card>
         </div>
 
-        <Card className="flex-col items-center gap-1">
-          <p className="text-sm text-text-secondary">
-            {summary.streak.increased ? 'Серия дней подряд' : 'Ваша серия'}
-          </p>
-          <div className="flex items-center gap-2">
-            <OilLampFlame size={26} glow={false} />
-            <p className="text-2xl font-bold text-primary">{summary.streak.current}</p>
-          </div>
-          {summary.streak.longest > summary.streak.current && (
-            <p className="text-xs text-text-muted">Рекорд: {summary.streak.longest}</p>
-          )}
-        </Card>
+        <StreakSection
+          current={summary.streak.current}
+          longest={summary.streak.longest}
+          goalDays={summary.streak.goalDays}
+          goalRewarded={user?.streakGoalRewarded ?? false}
+          goalReachedNow={summary.streak.goalReachedNow}
+          goalCoinsEarned={summary.streak.goalCoinsEarned}
+          onSetGoal={setStreakGoal}
+          settingGoal={settingGoal}
+        />
 
         <Button onClick={onClose}>Готово</Button>
       </div>

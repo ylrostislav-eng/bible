@@ -27,6 +27,13 @@ export interface ChapterCheckSummary {
     current: number;
     longest: number;
     increased: boolean;
+    /** The user's chosen streak-goal target, or null if none set. */
+    goalDays: number | null;
+    /** True only on the submit that pushed `current` across `goalDays` for
+     * the first time — `goalCoinsEarned` was granted as part of this
+     * result (on top of, not instead of, `coinsEarned`). */
+    goalReachedNow: boolean;
+    goalCoinsEarned: number;
   };
 }
 

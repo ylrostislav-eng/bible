@@ -32,6 +32,11 @@ export interface UserProfile {
   /** Consecutive days with at least one completed chapter check-up. */
   currentStreak: number;
   longestStreak: number;
+  /** Chosen streak-goal target in days (see `STREAK_GOAL_OPTIONS`), or null
+   * if none set yet. */
+  streakGoalDays: number | null;
+  /** True once the coin reward for `streakGoalDays` has been granted. */
+  streakGoalRewarded: boolean;
 
   createdAt: string;
 

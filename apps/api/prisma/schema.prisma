@@ -36,6 +36,15 @@ model User {
   longestStreak    Int       @default(0)
   lastActivityDate DateTime? @db.Date
 
+  /// Streak-goal feature: the day-target the user picked (7/14/30/50), or
+  /// null if none set. `streakGoalRewardedAt` is set once the coin reward
+  /// for reaching it has been granted — a goal is a one-time achievement,
+  /// not re-granted after a later streak reset and regrowth past the same
+  /// number. Picking a new goal clears it (unless the current streak
+  /// already meets the new goal, which grants immediately).
+  streakGoalDays       Int?
+  streakGoalRewardedAt DateTime?
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.

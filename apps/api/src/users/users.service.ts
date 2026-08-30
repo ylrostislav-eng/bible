@@ -6,9 +6,14 @@ import {
 import type {
   LanguageCode,
   LeaderboardEntry,
+  StreakGoalDays,
   UserProfile,
 } from '@bible-arena/shared';
-import { getTitleForRating, XP_PER_LEVEL } from '@bible-arena/shared';
+import {
+  getTitleForRating,
+  STREAK_GOAL_COIN_REWARD,
+  XP_PER_LEVEL,
+} from '@bible-arena/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
@@ -214,7 +219,14 @@ export class UsersService {
     ratingEarned: number;
     xpEarned: number;
     coinsEarned: number;
-    streak: { current: number; longest: number; increased: boolean };
+    streak: {
+      current: number;
+      longest: number;
+      increased: boolean;
+      goalDays: number | null;
+      goalReachedNow: boolean;
+      goalCoinsEarned: number;
+    };
   }> {
     const user = await this.findById(userId);
 
@@ -234,6 +246,7 @@ export class UsersService {
     const leveledUp = level > user.level;
     const rating = user.rating + ratingEarned;
     const streak = this.computeStreakUpdate(user);
+    const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
 
     const updated = await this.prisma.user.update({
       where: { id: userId },
@@ -241,10 +254,11 @@ export class UsersService {
         experience,
         level,
         rating,
-        coins: { increment: coinsEarned },
+        coins: { increment: coinsEarned + goalReward.coins },
         currentStreak: streak.currentStreak,
         longestStreak: streak.longestStreak,
         lastActivityDate: streak.lastActivityDate,
+        ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
       },
     });
 
@@ -258,8 +272,56 @@ export class UsersService {
         current: streak.currentStreak,
         longest: streak.longestStreak,
         increased: streak.increased,
+        goalDays: user.streakGoalDays,
+        goalReachedNow: goalReward.reachedNow,
+        goalCoinsEarned: goalReward.coins,
       },
     };
+  }
+
+  /** A streak goal pays out once — the first time `newStreak` reaches it
+   * while it hasn't already been rewarded. Shared by the chapter-check
+   * reward path and by picking a goal that the current streak already meets. */
+  private checkStreakGoalReward(
+    user: User,
+    newStreak: number,
+  ): { reachedNow: boolean; coins: number } {
+    if (
+      user.streakGoalDays === null ||
+      user.streakGoalRewardedAt !== null ||
+      newStreak < user.streakGoalDays
+    ) {
+      return { reachedNow: false, coins: 0 };
+    }
+    const coins =
+      STREAK_GOAL_COIN_REWARD[user.streakGoalDays as StreakGoalDays] ?? 0;
+    return { reachedNow: true, coins };
+  }
+
+  /** Sets (or replaces) the user's streak-goal target. If the current
+   * streak already meets it, the coin reward is granted immediately. */
+  async setStreakGoal(userId: string, days: StreakGoalDays): Promise<User> {
+    const user = await this.findById(userId);
+
+    // Re-picking the same goal that's already been rewarded is a no-op —
+    // otherwise resubmitting the same choice would re-grant the coins.
+    if (user.streakGoalDays === days && user.streakGoalRewardedAt !== null) {
+      return user;
+    }
+
+    const goalReward = this.checkStreakGoalReward(
+      { ...user, streakGoalDays: days, streakGoalRewardedAt: null },
+      user.currentStreak,
+    );
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        streakGoalDays: days,
+        streakGoalRewardedAt: goalReward.reachedNow ? new Date() : null,
+        ...(goalReward.coins > 0 && { coins: { increment: goalReward.coins } }),
+      },
+    });
   }
 
   /** Advances the streak by one calendar day (UTC), resets on a missed day. */
@@ -396,6 +458,8 @@ export class UsersService {
       winRate,
       currentStreak: user.currentStreak,
       longestStreak: user.longestStreak,
+      streakGoalDays: user.streakGoalDays,
+      streakGoalRewarded: user.streakGoalRewardedAt !== null,
       createdAt: user.createdAt.toISOString(),
       needsOnboarding: !user.nickname,
     };
