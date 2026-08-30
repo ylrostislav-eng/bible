@@ -1,250 +1,81 @@
 import { PrismaClient } from '@prisma/client';
+import { BIBLE_BOOKS } from '@bible-arena/shared';
+import { james } from './chapter-questions/james';
+import type { BookQuestionSeed } from './chapter-questions/types';
 
 const prisma = new PrismaClient();
 
-interface SeedChapterQuestion {
-  bookId: number;
-  chapter: number;
-  text: string;
-  options: [string, string, string, string];
-  correctIndex: number;
-  explanation: string;
+/**
+ * Comprehension questions tied to a specific chapter, used by the
+ * "Проверка" button in the reader — one module per book (see
+ * `chapter-questions/`). Each question is seeded twice: into
+ * `ChapterQuestion` (the per-chapter check) and into `Question` (the
+ * free-form trivia bank used by solo games and duels, tagged with
+ * `source: "chapter-check:<bookId>"` so re-running this script only ever
+ * touches rows it created, never the hand-written trivia bank from
+ * `seed.ts`).
+ */
+const books: BookQuestionSeed[] = [james];
+
+function sourceTag(bookId: number): string {
+  return `chapter-check:${bookId}`;
 }
 
-/**
- * Comprehension questions tied to a specific chapter, used by the "Проверка"
- * button in the reader (distinct from the free-form trivia bank in
- * seed.ts). Start with Послание Иакова (bookId 59) as the first fully
- * covered book — more books get added the same way in later passes.
- *
- * Options are deliberately similar in length and tone — one distractor per
- * question is a plausible "near miss" (a real nearby idea, a subtly wrong
- * paraphrase, or an inverted claim) rather than an obviously-off filler, so
- * skimming for "the long detailed one" or "the short odd one out" doesn't
- * work. The actual serving order is re-shuffled per attempt regardless
- * (see LearnService), so `correctIndex` here is just the authoring order.
- */
-const questions: SeedChapterQuestion[] = [
-  // --- Послание Иакова, глава 1 ---
-  {
-    bookId: 59,
-    chapter: 1,
-    text: 'Что Иаков советует делать тому, кому недостаёт мудрости?',
-    options: [
-      'Просить у Бога с верою, нимало не сомневаясь',
-      'Просить у Бога, но без особой уверенности в ответе',
-      'Терпеливо ждать, пока мудрость придёт сама собой',
-      'Искать наставника среди книжников и учителей закона',
-    ],
-    correctIndex: 0,
-    explanation:
-      '«Да просит у Бога... Но да просит с верою, нимало не сомневаясь» (Иак. 1:5–6).',
-  },
-  {
-    bookId: 59,
-    chapter: 1,
-    text: 'Откуда, по словам Иакова, берётся искушение, ведущее ко греху?',
-    options: [
-      'От собственной похоти, которая увлекает и обольщает человека',
-      'От Бога, испытывающего веру человека через трудности',
-      'От диавола, действующего независимо от человека',
-      'От дурного окружения и плохих примеров вокруг',
-    ],
-    correctIndex: 0,
-    explanation:
-      '«Бог не искушается злом и Сам не искушает никого... но каждый искушается, увлекаясь и обольщаясь собственною похотью» (Иак. 1:13–14).',
-  },
-  {
-    bookId: 59,
-    chapter: 1,
-    text: 'Какое благочестие Иаков называет чистым и непорочным перед Богом?',
-    options: [
-      'Заботиться о сиротах и вдовах и хранить себя чистым от мира',
-      'Строго поститься и совершать частые жертвоприношения',
-      'Регулярно и подолгу молиться в людных местах напоказ',
-      'Изучать Писание каждый день без единого пропуска',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 1:27.',
-  },
-
-  // --- Послание Иакова, глава 2 ---
-  {
-    bookId: 59,
-    chapter: 2,
-    text: 'Против чего предостерегает Иаков в начале 2-й главы, приводя пример с богатым и бедным в собрании?',
-    options: [
-      'Против лицеприятия — разного отношения к людям по их богатству',
-      'Против участия верующих в судебных тяжбах друг с другом',
-      'Против ношения дорогой одежды и золотых украшений',
-      'Против споров о верном понимании закона Моисеева',
-    ],
-    correctIndex: 0,
-    explanation:
-      'Иак. 2:1–4, 9 («если поступаете с лицеприятием, то грех делаете»).',
-  },
-  {
-    bookId: 59,
-    chapter: 2,
-    text: 'Что, по словам Иакова, происходит с верой, если она не имеет дел?',
-    options: [
-      'Она мертва сама по себе, как тело без духа',
-      'Она слабеет со временем, но не исчезает совсем',
-      'Она остаётся прежней силы, ни слабее и ни сильнее',
-      'Она превращается в простое знание фактов о Боге',
-    ],
-    correctIndex: 0,
-    explanation:
-      '«Так и вера, если не имеет дел, мертва сама по себе» (Иак. 2:17, см. также 2:26).',
-  },
-  {
-    bookId: 59,
-    chapter: 2,
-    text: 'Что сделал Авраам, что, согласно этой главе, показало действие его веры через дела?',
-    options: [
-      'Возложил на жертвенник Исаака, сына своего',
-      'Оставил дом и родню по одному лишь слову Господа',
-      'Заключил завет обрезания со всем своим родом',
-      'Построил жертвенник и призвал на нём имя Господа',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 2:21–22.',
-  },
-
-  // --- Послание Иакова, глава 3 ---
-  {
-    bookId: 59,
-    chapter: 3,
-    text: 'С чем Иаков сравнивает язык человека, говоря о его разрушительной силе?',
-    options: [
-      'С огнём, который малым пламенем зажигает много вещества',
-      'С мечом обоюдоострым, разящим без пощады',
-      'С ядом, медленно отравляющим тело изнутри',
-      'С бурей, внезапно поднимающейся посреди моря',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 3:5–6.',
-  },
-  {
-    bookId: 59,
-    chapter: 3,
-    text: 'Что, по словам Иакова, не должно происходить, но исходит из одних и тех же уст?',
-    options: [
-      'Благословение и проклятие',
-      'Мудрость и безрассудство',
-      'Правда и льстивая похвала',
-      'Похвала и тайная зависть',
-    ],
-    correctIndex: 0,
-    explanation:
-      '«Из тех же уст исходит благословение и проклятие: не должно, братия мои, сему так быть» (Иак. 3:10).',
-  },
-  {
-    bookId: 59,
-    chapter: 3,
-    text: 'Какими Иаков описывает свойства мудрости, сходящей свыше?',
-    options: [
-      'Чиста, мирна, скромна, полна милосердия и добрых плодов',
-      'Строга, взыскательна и не терпит возражений',
-      'Быстра в решениях и смела в поступках',
-      'Скрыта от многих и открывается лишь немногим избранным',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 3:17.',
-  },
-
-  // --- Послание Иакова, глава 4 ---
-  {
-    bookId: 59,
-    chapter: 4,
-    text: 'Откуда, по мнению Иакова, происходят вражды и распри между людьми?',
-    options: [
-      'От вожделений, воюющих в членах человека',
-      'От внешних врагов, притесняющих верующих',
-      'От недостатка знания закона Божьего',
-      'От бедности и нехватки самого необходимого',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 4:1.',
-  },
-  {
-    bookId: 59,
-    chapter: 4,
-    text: 'Как Иаков описывает человеческую жизнь, предостерегая от самонадеянных планов на будущее?',
-    options: [
-      'Пар, являющийся на малое время, а потом исчезающий',
-      'Крепкое здание, способное простоять века',
-      'Долгое путешествие с ясной целью впереди',
-      'Посеянное семя, дающее плод в своё время',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 4:14.',
-  },
-  {
-    bookId: 59,
-    chapter: 4,
-    text: 'Кому, согласно 4-й главе, Бог противится, а кому даёт благодать?',
-    options: [
-      'Противится гордым, даёт благодать смиренным',
-      'Противится бедным, даёт благодать богатым',
-      'Противится грешникам без исключения, даёт благодать праведным',
-      'Противится молодым, даёт благодать одним лишь старшим',
-    ],
-    correctIndex: 0,
-    explanation:
-      '«Бог гордым противится, а смиренным дает благодать» (Иак. 4:6).',
-  },
-
-  // --- Послание Иакова, глава 5 ---
-  {
-    bookId: 59,
-    chapter: 5,
-    text: 'Что советует Иаков, если кто-то из христиан болен?',
-    options: [
-      'Призвать пресвитеров Церкви, чтобы помолились, помазав елеем',
-      'Скрывать болезнь и терпеть страдание в одиночестве',
-      'Немедленно наложить на себя долгий и строгий пост',
-      'Обращаться только к врачам, не тревожа Церковь молитвой',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 5:14.',
-  },
-  {
-    bookId: 59,
-    chapter: 5,
-    text: 'Какой пример приводится в конце 5-й главы как пример силы усиленной молитвы праведного?',
-    options: [
-      'Илия, по молитве которого не было дождя три года и шесть месяцев',
-      'Моисей, разделивший морские воды силой молитвы',
-      'Давид, победивший Голиафа благодаря своей вере',
-      'Ной, спасший свою семью постройкой ковчега',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 5:17–18.',
-  },
-  {
-    bookId: 59,
-    chapter: 5,
-    text: 'Что Иаков советует вместо клятв?',
-    options: [
-      'Пусть ваше «да» будет «да», а «нет» — «нет»',
-      'Клянитесь именем Господним, если дело действительно важное',
-      'Клянитесь небом и землёй, раз вы уверены в своих словах',
-      'Просите свидетелей заверять каждое данное обещание',
-    ],
-    correctIndex: 0,
-    explanation: 'Иак. 5:12.',
-  },
-];
-
 async function main() {
-  const bookIds = [...new Set(questions.map((q) => q.bookId))];
+  const bookIds = books.map((b) => b.bookId);
+
   await prisma.chapterQuestion.deleteMany({
     where: { bookId: { in: bookIds } },
   });
-  await prisma.chapterQuestion.createMany({ data: questions });
+  await prisma.question.deleteMany({
+    where: { source: { in: bookIds.map(sourceTag) } },
+  });
+
+  let totalQuestions = 0;
+
+  for (const book of books) {
+    const meta = BIBLE_BOOKS.find((b) => b.id === book.bookId);
+    if (!meta) {
+      throw new Error(
+        `Unknown bookId ${book.bookId} in chapter-questions seed`,
+      );
+    }
+
+    await prisma.chapterQuestion.createMany({
+      data: book.questions.map((q) => ({
+        bookId: book.bookId,
+        chapter: q.chapter,
+        text: q.text,
+        options: q.options,
+        correctIndex: q.correctIndex,
+        explanation: q.explanation,
+      })),
+    });
+
+    await prisma.question.createMany({
+      data: book.questions.map((q) => ({
+        text: q.text,
+        options: q.options,
+        correctIndex: q.correctIndex,
+        explanation: q.explanation,
+        testament: meta.testament,
+        book: meta.name,
+        chapter: q.chapter,
+        verses: q.verses,
+        topic: meta.name,
+        difficulty: 'MEDIUM',
+        status: 'APPROVED',
+        source: sourceTag(book.bookId),
+      })),
+    });
+
+    totalQuestions += book.questions.length;
+  }
+
   console.log(
-    `Seeded ${questions.length} chapter questions for book(s) ${bookIds.join(', ')}.`,
+    `Seeded ${totalQuestions} chapter questions (into ChapterQuestion and the solo/duel Question bank) for ${books.length} book(s): ${books
+      .map((b) => BIBLE_BOOKS.find((meta) => meta.id === b.bookId)?.name)
+      .join(', ')}.`,
   );
 }
 
