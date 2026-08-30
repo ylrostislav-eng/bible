@@ -246,7 +246,10 @@ export default function PlayPage() {
         <div className="flex gap-2 text-xs text-text-muted">
           <span>{TESTAMENT_NAMES[question.testament]}</span>
           <span>·</span>
-          <span>{question.book}</span>
+          <span>
+            {question.book}
+            {question.chapter ? `, гл. ${question.chapter}` : ''}
+          </span>
           <span>·</span>
           <span>{DIFFICULTY_NAMES[question.difficulty]}</span>
         </div>
