@@ -34,6 +34,10 @@ model User {
   gamesPlayed Int @default(0)
   gamesWon    Int @default(0)
   gamesLost   Int @default(0)
+  /// A duel where both sides tied — the third possible outcome alongside
+  /// `gamesWon`/`gamesLost`. `duelsPlayed` always equals the sum of all
+  /// three.
+  gamesDrawn  Int @default(0)
   /// Completed duels only (win, loss, or draw) — the denominator for the
   /// profile's duel stats card. Unlike `gamesPlayed`, never incremented by
   /// solo games.

@@ -15,10 +15,6 @@ export function pluralCoins(n: number): string {
   return pluralize(n, ['монета', 'монеты', 'монет']);
 }
 
-export function pluralGames(n: number): string {
-  return pluralize(n, ['игра', 'игры', 'игр']);
-}
-
 export function pluralDuels(n: number): string {
   return pluralize(n, ['дуэль', 'дуэли', 'дуэлей']);
 }
@@ -29,4 +25,8 @@ export function pluralWins(n: number): string {
 
 export function pluralLosses(n: number): string {
   return pluralize(n, ['поражение', 'поражения', 'поражений']);
+}
+
+export function pluralDraws(n: number): string {
+  return pluralize(n, ['ничья', 'ничьи', 'ничьих']);
 }

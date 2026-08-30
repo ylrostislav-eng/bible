@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
-import { pluralDuels, pluralLosses, pluralWins } from '@/lib/plural';
+import { pluralDraws, pluralDuels, pluralLosses, pluralWins } from '@/lib/plural';
 import { COUNTRIES } from '@bible-arena/shared';
 
 function formatDate(iso: string): string {
@@ -77,15 +77,20 @@ export default function ProfilePage() {
       </div>
 
       <Card className="flex-col gap-3">
-        <h2 className="text-sm font-semibold text-text-secondary">Статистика дуэлей</h2>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-text-secondary">Статистика дуэлей</h2>
+          <p className="text-xs text-text-muted">
+            {user.duelsPlayed} {pluralDuels(user.duelsPlayed)}
+          </p>
+        </div>
         <div className="grid grid-cols-4 gap-2 text-center">
-          <div>
-            <p className="text-lg font-bold">{user.duelsPlayed}</p>
-            <p className="text-xs text-text-secondary">{pluralDuels(user.duelsPlayed)}</p>
-          </div>
           <div>
             <p className="text-lg font-bold text-success">{user.gamesWon}</p>
             <p className="text-xs text-text-secondary">{pluralWins(user.gamesWon)}</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold text-text-muted">{user.gamesDrawn}</p>
+            <p className="text-xs text-text-secondary">{pluralDraws(user.gamesDrawn)}</p>
           </div>
           <div>
             <p className="text-lg font-bold text-danger">{user.gamesLost}</p>

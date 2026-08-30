@@ -200,6 +200,7 @@ export class UsersService {
         }),
         ...(params.outcome === 'win' && { gamesWon: { increment: 1 } }),
         ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
+        ...(params.outcome === 'draw' && { gamesDrawn: { increment: 1 } }),
         ...(params.cappedWin && { duelRatingWinsToday, duelRatingCapDate }),
       },
     });
@@ -463,6 +464,7 @@ export class UsersService {
       duelsPlayed: user.duelsPlayed,
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
+      gamesDrawn: user.gamesDrawn,
       winRate,
       currentStreak: user.currentStreak,
       longestStreak: user.longestStreak,

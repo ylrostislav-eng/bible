@@ -29,6 +29,7 @@ export interface UserProfile {
   duelsPlayed: number;
   gamesWon: number;
   gamesLost: number;
+  gamesDrawn: number;
   /** % of decided duels (win or loss, draws excluded) that were won. */
   winRate: number;
 
