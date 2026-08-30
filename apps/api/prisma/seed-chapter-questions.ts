@@ -16,6 +16,7 @@ import { secondCorinthians } from './chapter-questions/second-corinthians';
 import { secondJohn } from './chapter-questions/second-john';
 import { secondPeter } from './chapter-questions/second-peter';
 import { secondThessalonians } from './chapter-questions/second-thessalonians';
+import { secondTimothy } from './chapter-questions/second-timothy';
 import { thirdJohn } from './chapter-questions/third-john';
 import type { BookQuestionSeed } from './chapter-questions/types';
 
@@ -49,6 +50,7 @@ const books: BookQuestionSeed[] = [
   firstThessalonians,
   secondThessalonians,
   firstTimothy,
+  secondTimothy,
 ];
 
 function sourceTag(bookId: number): string {
