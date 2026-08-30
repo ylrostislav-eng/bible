@@ -3,6 +3,7 @@ import { BIBLE_BOOKS } from '@bible-arena/shared';
 import { firstCorinthians } from './chapter-questions/first-corinthians';
 import { firstJohn } from './chapter-questions/first-john';
 import { firstPeter } from './chapter-questions/first-peter';
+import { galatians } from './chapter-questions/galatians';
 import { james } from './chapter-questions/james';
 import { jude } from './chapter-questions/jude';
 import { romans } from './chapter-questions/romans';
@@ -35,6 +36,7 @@ const books: BookQuestionSeed[] = [
   romans,
   firstCorinthians,
   secondCorinthians,
+  galatians,
 ];
 
 function sourceTag(bookId: number): string {
