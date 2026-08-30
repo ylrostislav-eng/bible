@@ -13,6 +13,7 @@ import { james } from './chapter-questions/james';
 import { jude } from './chapter-questions/jude';
 import { philemon } from './chapter-questions/philemon';
 import { philippians } from './chapter-questions/philippians';
+import { revelation } from './chapter-questions/revelation';
 import { romans } from './chapter-questions/romans';
 import { secondCorinthians } from './chapter-questions/second-corinthians';
 import { secondJohn } from './chapter-questions/second-john';
@@ -57,6 +58,7 @@ const books: BookQuestionSeed[] = [
   titus,
   philemon,
   hebrews,
+  revelation,
 ];
 
 function sourceTag(bookId: number): string {
