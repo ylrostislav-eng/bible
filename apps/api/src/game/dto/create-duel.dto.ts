@@ -1,12 +1,12 @@
 import {
-  SOLO_QUESTION_COUNT_MAX,
-  SOLO_QUESTION_COUNT_MIN,
+  DUEL_QUESTION_COUNT_MAX,
+  DUEL_QUESTION_COUNT_MIN,
 } from '@bible-arena/shared';
 import { IsInt, Max, Min } from 'class-validator';
 
 export class CreateDuelDto {
   @IsInt()
-  @Min(SOLO_QUESTION_COUNT_MIN)
-  @Max(SOLO_QUESTION_COUNT_MAX)
+  @Min(DUEL_QUESTION_COUNT_MIN)
+  @Max(DUEL_QUESTION_COUNT_MAX)
   questionCount!: number;
 }

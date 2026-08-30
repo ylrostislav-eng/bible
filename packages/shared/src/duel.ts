@@ -1,6 +1,8 @@
 import type { GameQuestion } from './game';
 
-export const DUEL_QUESTION_COUNT_OPTIONS = [5, 10, 15] as const;
+export const DUEL_QUESTION_COUNT_MIN = 5;
+export const DUEL_QUESTION_COUNT_MAX = 50;
+export const DUEL_QUESTION_COUNT_DEFAULT = 10;
 
 export interface CreateDuelInput {
   questionCount: number;
@@ -11,8 +13,21 @@ export interface CreateDuelResponse {
   inviteCode: string;
 }
 
+/** Fetched by the joiner after entering an invite code, before committing to
+ * join — lets them see the host's chosen question count and lower it (never
+ * raise it) before the duel actually starts. */
+export interface DuelPreviewResponse {
+  sessionId: string;
+  hostNickname: string | null;
+  questionCount: number;
+}
+
 export interface JoinDuelInput {
   inviteCode: string;
+  /** Only meaningful if lower than the host's original count — the joiner
+   * can shrink the duel, never grow it. Omit to accept the host's count
+   * as-is. */
+  questionCount?: number;
 }
 
 export interface JoinDuelResponse {

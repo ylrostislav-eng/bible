@@ -1,9 +1,16 @@
 'use client';
 
-import type { CreateDuelResponse, DuelState, JoinDuelResponse } from '@bible-arena/shared';
+import type {
+  CreateDuelResponse,
+  DuelPreviewResponse,
+  DuelState,
+  JoinDuelResponse,
+} from '@bible-arena/shared';
 import {
   DIFFICULTY_NAMES,
-  DUEL_QUESTION_COUNT_OPTIONS,
+  DUEL_QUESTION_COUNT_DEFAULT,
+  DUEL_QUESTION_COUNT_MAX,
+  DUEL_QUESTION_COUNT_MIN,
   TESTAMENT_NAMES,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
@@ -13,6 +20,7 @@ import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
+import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { pickEncouragement } from '@/lib/encouragement';
@@ -25,8 +33,10 @@ export default function DuelPage() {
   const { updateProfile } = useAuth();
 
   const [menu, setMenu] = useState<Menu>('menu');
-  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [questionCount, setQuestionCount] = useState<number>(DUEL_QUESTION_COUNT_DEFAULT);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [joinPreview, setJoinPreview] = useState<DuelPreviewResponse | null>(null);
+  const [joinQuestionCount, setJoinQuestionCount] = useState<number>(DUEL_QUESTION_COUNT_MIN);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,13 +98,30 @@ export default function DuelPage() {
     }
   }, [questionCount]);
 
-  const joinDuel = useCallback(async () => {
+  const fetchJoinPreview = useCallback(async () => {
     if (inviteCodeInput.length !== 6) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const preview = await apiClient.get<DuelPreviewResponse>(
+        `/game/duel/preview/${inviteCodeInput.toUpperCase()}`,
+      );
+      setJoinPreview(preview);
+      setJoinQuestionCount(preview.questionCount);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Дуэль с таким кодом не найдена');
+    } finally {
+      setLoading(false);
+    }
+  }, [inviteCodeInput]);
+
+  const confirmJoin = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await apiClient.post<JoinDuelResponse>('/game/duel/join', {
         inviteCode: inviteCodeInput.toUpperCase(),
+        questionCount: joinQuestionCount,
       });
       setSessionId(res.sessionId);
     } catch (err) {
@@ -102,7 +129,7 @@ export default function DuelPage() {
     } finally {
       setLoading(false);
     }
-  }, [inviteCodeInput]);
+  }, [inviteCodeInput, joinQuestionCount]);
 
   const answer = useCallback(
     async (index: number) => {
@@ -155,6 +182,8 @@ export default function DuelPage() {
     setSelectedIndex(null);
     setError(null);
     setRewardsApplied(false);
+    setJoinPreview(null);
+    setInviteCodeInput('');
     setMenu('menu');
   }, []);
 
@@ -394,23 +423,13 @@ export default function DuelPage() {
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Создать дуэль</h1>
         <Card className="flex-col gap-3">
-          <p className="text-sm font-medium text-text-secondary">Количество вопросов</p>
-          <div className="grid grid-cols-3 gap-2">
-            {DUEL_QUESTION_COUNT_OPTIONS.map((count) => (
-              <button
-                key={count}
-                onClick={() => setQuestionCount(count)}
-                className={clsx(
-                  'h-11 rounded-xl border text-sm font-semibold transition',
-                  count === questionCount
-                    ? 'border-primary bg-primary text-on-primary'
-                    : 'border-border bg-surface-hover text-text-primary',
-                )}
-              >
-                {count}
-              </button>
-            ))}
-          </div>
+          <QuestionCountSlider
+            label="Количество вопросов"
+            value={questionCount}
+            min={DUEL_QUESTION_COUNT_MIN}
+            max={DUEL_QUESTION_COUNT_MAX}
+            onChange={setQuestionCount}
+          />
         </Card>
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={createDuel} disabled={loading}>
@@ -424,6 +443,47 @@ export default function DuelPage() {
   }
 
   if (menu === 'join') {
+    // Step 2: code accepted — the joiner can see the host's question count
+    // and shrink it (never grow it) before actually starting the duel.
+    if (joinPreview) {
+      return (
+        <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+          <h1 className="text-xl font-bold">Присоединиться к дуэли</h1>
+          <p className="text-sm text-text-secondary">
+            Вызов от{' '}
+            <span className="font-semibold text-text-primary">
+              {joinPreview.hostNickname ?? 'соперника'}
+            </span>
+          </p>
+          <Card className="flex-col gap-3">
+            <QuestionCountSlider
+              label="Количество вопросов"
+              value={joinQuestionCount}
+              min={DUEL_QUESTION_COUNT_MIN}
+              max={joinPreview.questionCount}
+              onChange={setJoinQuestionCount}
+            />
+            {joinQuestionCount < joinPreview.questionCount && (
+              <p className="text-xs text-text-muted">
+                Вы уменьшили дуэль с {joinPreview.questionCount} до {joinQuestionCount} вопросов
+              </p>
+            )}
+          </Card>
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <Button onClick={confirmJoin} disabled={loading}>
+            {loading ? 'Подключение…' : 'Присоединиться'}
+          </Button>
+          <button
+            onClick={() => setJoinPreview(null)}
+            className="text-center text-sm text-text-secondary"
+          >
+            Назад
+          </button>
+        </div>
+      );
+    }
+
+    // Step 1: enter the code.
     return (
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Присоединиться к дуэли</h1>
@@ -437,8 +497,8 @@ export default function DuelPage() {
           />
         </label>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <Button onClick={joinDuel} disabled={loading || inviteCodeInput.length !== 6}>
-          {loading ? 'Подключение…' : 'Присоединиться'}
+        <Button onClick={fetchJoinPreview} disabled={loading || inviteCodeInput.length !== 6}>
+          {loading ? 'Проверка…' : 'Далее'}
         </Button>
         <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
           Назад

@@ -1,13 +1,16 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type {
-  CreateDuelResponse,
-  DuelParticipantView,
-  DuelState,
-  DuelStateStatus,
+import {
+  DUEL_QUESTION_COUNT_MIN,
+  type CreateDuelResponse,
+  type DuelParticipantView,
+  type DuelPreviewResponse,
+  type DuelState,
+  type DuelStateStatus,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -100,6 +103,29 @@ export class DuelService {
     throw new ConflictException('Не удалось создать дуэль, попробуйте ещё раз');
   }
 
+  /** Looked up by the joiner right after typing in the code, before they
+   * commit — shows the host's chosen question count so it can be lowered
+   * (never raised) on the join screen. */
+  async preview(inviteCode: string): Promise<DuelPreviewResponse> {
+    const session = await this.prisma.gameSession.findUnique({
+      where: { inviteCode: inviteCode.toUpperCase() },
+      include: sessionInclude,
+    });
+
+    if (!session || session.mode !== 'DUEL') {
+      throw new NotFoundException('Дуэль с таким кодом не найдена');
+    }
+    if (session.status !== 'WAITING_FOR_OPPONENT') {
+      throw new ConflictException('Эта дуэль уже началась или завершена');
+    }
+
+    return {
+      sessionId: session.id,
+      hostNickname: session.participants[0]?.user.nickname ?? null,
+      questionCount: session.questionCount,
+    };
+  }
+
   async join(userId: string, dto: JoinDuelDto): Promise<{ sessionId: string }> {
     const session = await this.prisma.gameSession.findUnique({
       where: { inviteCode: dto.inviteCode.toUpperCase() },
@@ -116,8 +142,24 @@ export class DuelService {
       throw new ConflictException('Нельзя присоединиться к собственной дуэли');
     }
 
+    // The joiner may shrink the host's question count, never grow it —
+    // validated here since the host's actual count isn't known client-side
+    // until the preview call.
+    let questionCount = session.questionCount;
+    if (dto.questionCount !== undefined) {
+      if (
+        dto.questionCount < DUEL_QUESTION_COUNT_MIN ||
+        dto.questionCount > session.questionCount
+      ) {
+        throw new BadRequestException(
+          `Количество вопросов должно быть от ${DUEL_QUESTION_COUNT_MIN} до ${session.questionCount}`,
+        );
+      }
+      questionCount = dto.questionCount;
+    }
+
     const questions = await this.questionsService.pickRandom({
-      count: session.questionCount,
+      count: questionCount,
     });
     const creator = session.participants[0];
     const joiner = await this.prisma.gameParticipant.create({

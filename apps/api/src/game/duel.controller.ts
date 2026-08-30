@@ -22,6 +22,11 @@ export class DuelController {
     return this.duelService.join(user.sub, dto);
   }
 
+  @Get('preview/:inviteCode')
+  preview(@Param('inviteCode') inviteCode: string) {
+    return this.duelService.preview(inviteCode);
+  }
+
   @Get(':sessionId')
   getState(
     @CurrentUser() user: JwtPayload,
