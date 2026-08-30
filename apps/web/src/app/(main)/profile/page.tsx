@@ -98,7 +98,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <p className="text-lg font-bold">{user.winRate}%</p>
-            <p className="text-xs text-text-secondary">% побед</p>
+            <p className="text-xs text-text-secondary">побед</p>
           </div>
         </div>
       </Card>
