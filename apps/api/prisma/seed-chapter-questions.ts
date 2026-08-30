@@ -4,6 +4,7 @@ import { firstJohn } from './chapter-questions/first-john';
 import { firstPeter } from './chapter-questions/first-peter';
 import { james } from './chapter-questions/james';
 import { jude } from './chapter-questions/jude';
+import { romans } from './chapter-questions/romans';
 import { secondJohn } from './chapter-questions/second-john';
 import { secondPeter } from './chapter-questions/second-peter';
 import { thirdJohn } from './chapter-questions/third-john';
@@ -29,6 +30,7 @@ const books: BookQuestionSeed[] = [
   secondJohn,
   thirdJohn,
   jude,
+  romans,
 ];
 
 function sourceTag(bookId: number): string {
