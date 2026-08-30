@@ -18,6 +18,7 @@ import { secondPeter } from './chapter-questions/second-peter';
 import { secondThessalonians } from './chapter-questions/second-thessalonians';
 import { secondTimothy } from './chapter-questions/second-timothy';
 import { thirdJohn } from './chapter-questions/third-john';
+import { titus } from './chapter-questions/titus';
 import type { BookQuestionSeed } from './chapter-questions/types';
 
 const prisma = new PrismaClient();
@@ -51,6 +52,7 @@ const books: BookQuestionSeed[] = [
   secondThessalonians,
   firstTimothy,
   secondTimothy,
+  titus,
 ];
 
 function sourceTag(bookId: number): string {
