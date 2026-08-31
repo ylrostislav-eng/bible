@@ -2,10 +2,12 @@
 
 import type { CreateRoomResponse, JoinRoomResponse, RoomSummary } from '@bible-arena/shared';
 import {
+  DIFFICULTY_NAMES,
   DUEL_QUESTION_COUNT_DEFAULT,
   DUEL_QUESTION_COUNT_MAX,
   DUEL_QUESTION_COUNT_MIN,
   ROOM_MAX_PARTICIPANTS,
+  TESTAMENT_NAMES,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
@@ -224,8 +226,11 @@ export default function RoomPage() {
     bounceToMenu();
   }, [unavailable, reset]);
 
-  const copy = useCallback((text: string) => {
+  const [copiedField, setCopiedField] = useState<'code' | 'password' | null>(null);
+  const copy = useCallback((text: string, field: 'code' | 'password') => {
     void navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1500);
   }, []);
 
   // --- Removed from the room ---
@@ -283,24 +288,24 @@ export default function RoomPage() {
           </div>
 
           <Card className="flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-text-secondary">Код комнаты</span>
-              <button
-                onClick={() => roomState.inviteCode && copy(roomState.inviteCode)}
-                className="font-mono text-lg font-bold tracking-[0.2em] text-primary"
-              >
-                {roomState.inviteCode}
-              </button>
-            </div>
+            {roomState.inviteCode && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-text-secondary">Код комнаты</span>
+                <CopyRow
+                  value={roomState.inviteCode}
+                  copied={copiedField === 'code'}
+                  onCopy={() => roomState.inviteCode && copy(roomState.inviteCode, 'code')}
+                />
+              </div>
+            )}
             {roomState.password && (
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-sm text-text-secondary">Пароль</span>
-                <button
-                  onClick={() => roomState.password && copy(roomState.password)}
-                  className="font-mono text-lg font-bold tracking-[0.2em] text-primary"
-                >
-                  {roomState.password}
-                </button>
+                <CopyRow
+                  value={roomState.password}
+                  copied={copiedField === 'password'}
+                  onCopy={() => roomState.password && copy(roomState.password, 'password')}
+                />
               </div>
             )}
           </Card>
@@ -512,6 +517,16 @@ export default function RoomPage() {
         </div>
 
         <Card className="flex-col gap-2">
+          <div className="flex gap-2 text-xs text-text-muted">
+            <span>{TESTAMENT_NAMES[question.testament]}</span>
+            <span>·</span>
+            <span>
+              {question.book}
+              {question.chapter ? `, гл. ${question.chapter}` : ''}
+            </span>
+            <span>·</span>
+            <span>{DIFFICULTY_NAMES[question.difficulty]}</span>
+          </div>
           <p className="text-lg font-semibold">{question.text}</p>
         </Card>
 
@@ -725,5 +740,54 @@ export default function RoomPage() {
         Назад
       </Link>
     </div>
+  );
+}
+
+function CopyRow({
+  value,
+  copied,
+  onCopy,
+}: {
+  value: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <button
+      onClick={onCopy}
+      className="flex shrink-0 items-center gap-2 rounded-lg border border-border bg-surface-hover py-1 pl-3 pr-2 transition hover:border-primary"
+    >
+      <span className="font-mono text-base font-bold tracking-[0.2em] text-primary">{value}</span>
+      <span className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary">
+        {copied ? (
+          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-success">
+            <path
+              d="M4 10.5l3.5 3.5L16 5.5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+            <rect
+              x="7"
+              y="7"
+              width="10"
+              height="10"
+              rx="2"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            />
+            <path
+              d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            />
+          </svg>
+        )}
+      </span>
+    </button>
   );
 }

@@ -2,8 +2,10 @@
 
 import { ActiveGameProvider } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
+import { ChatProvider } from '@/lib/chat-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
+import { ChatWidget } from './chat-widget';
 import { IncomingChallengeModal } from './incoming-challenge-modal';
 import { BottomNav } from './navigation/bottom-nav';
 import { OnboardingForm } from './onboarding/onboarding-form';
@@ -57,9 +59,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <ActiveGameProvider>
       <IncomingChallengesProvider>
-        <div className="pt-safe pb-24">{children}</div>
-        <IncomingChallengeModal />
-        <BottomNav />
+        <ChatProvider>
+          <div className="pt-safe pb-24">{children}</div>
+          <IncomingChallengeModal />
+          <ChatWidget />
+          <BottomNav />
+        </ChatProvider>
       </IncomingChallengesProvider>
     </ActiveGameProvider>
   );

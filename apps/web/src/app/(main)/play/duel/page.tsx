@@ -18,6 +18,7 @@ import {
 import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -36,7 +37,7 @@ const POLL_INTERVAL_MS = 1200;
  * page for no real benefit — this is a one-shot handoff, not shareable state). */
 const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
-type Menu = 'menu' | 'create' | 'join';
+type Menu = 'menu' | 'create' | 'createByCode' | 'join';
 
 export default function DuelPage() {
   const { updateProfile } = useAuth();
@@ -598,7 +599,32 @@ export default function DuelPage() {
   if (menu === 'create') {
     return (
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
-        <h1 className="text-xl font-bold">Создать дуэль</h1>
+        <h1 className="text-xl font-bold">Кого вызвать?</h1>
+        <p className="-mt-3 text-sm text-text-secondary">
+          Выберите друга или найдите игрока по нику — вопрос о количестве вопросов появится сразу
+          после
+        </p>
+        <FriendChallengeList
+          onChallengeSent={(newSessionId) => setSessionId(newSessionId)}
+          emptyMessage="Пока нет друзей — найдите соперника по нику выше, или создайте дуэль по коду ниже."
+        />
+        <button
+          onClick={() => setMenu('createByCode')}
+          className="text-center text-sm text-text-secondary"
+        >
+          …или создать по коду
+        </button>
+        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
+          Назад
+        </button>
+      </div>
+    );
+  }
+
+  if (menu === 'createByCode') {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+        <h1 className="text-xl font-bold">Создать дуэль по коду</h1>
         <Card className="flex-col gap-3">
           <QuestionCountSlider
             label="Количество вопросов"
@@ -612,7 +638,10 @@ export default function DuelPage() {
         <Button onClick={createDuel} disabled={loading}>
           {loading ? 'Создание…' : 'Создать дуэль'}
         </Button>
-        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
+        <button
+          onClick={() => setMenu('create')}
+          className="text-center text-sm text-text-secondary"
+        >
           Назад
         </button>
       </div>

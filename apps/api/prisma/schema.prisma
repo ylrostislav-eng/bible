@@ -90,6 +90,9 @@ model User {
   roomBansIssued   RoomBan[] @relation("RoomBansIssued")
   roomBansReceived RoomBan[] @relation("RoomBansReceived")
 
+  sentChatMessages     ChatMessage[] @relation("ChatMessagesSent")
+  receivedChatMessages ChatMessage[] @relation("ChatMessagesReceived")
+
   @@index([rating])
   @@map("users")
 }
@@ -135,6 +138,34 @@ model Friendship {
   @@unique([userId, friendId])
   @@index([friendId])
   @@map("friendships")
+}
+
+/// A single direct message between two friends. `conversationKey` is the two
+/// user ids sorted and joined with `_` — one shared value per pair regardless
+/// of who sent to whom, so a whole thread can be fetched with a single
+/// `where conversationKey = ...` instead of an OR-across-both-directions
+/// query. Messaging is friends-only (enforced in `ChatService`, not here).
+model ChatMessage {
+  id String @id @default(cuid())
+
+  conversationKey String
+
+  senderId String
+  sender   User   @relation("ChatMessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+
+  recipientId String
+  recipient   User   @relation("ChatMessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  body String
+
+  createdAt DateTime  @default(now())
+  /// Set when the recipient has fetched/viewed this message — drives the
+  /// unread badge and the conversation list's unread counts.
+  readAt    DateTime?
+
+  @@index([conversationKey, createdAt])
+  @@index([recipientId, readAt])
+  @@map("chat_messages")
 }
 
 /// A quiz question checking comprehension of one specific Bible chapter
