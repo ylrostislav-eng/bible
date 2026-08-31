@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -116,6 +117,13 @@ export default function ProfilePage() {
           Появятся автоматически на основе ваших результатов в режиме изучения.
         </p>
       </Card>
+
+      <Link href="/profile/blacklist">
+        <Card className="flex-row items-center justify-between">
+          <h2 className="text-sm font-semibold text-text-secondary">Чёрный список</h2>
+          <span className="text-text-muted">›</span>
+        </Card>
+      </Link>
     </div>
   );
 }

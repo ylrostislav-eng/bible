@@ -34,3 +34,7 @@ export function pluralDraws(n: number): string {
 export function pluralFriends(n: number): string {
   return pluralize(n, ['друг', 'друга', 'друзей']);
 }
+
+export function pluralPlayers(n: number): string {
+  return pluralize(n, ['игрок', 'игрока', 'игроков']);
+}

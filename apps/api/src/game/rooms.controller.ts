@@ -1,7 +1,16 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { BanUserDto } from './dto/ban-user.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RoomsService } from './rooms.service';
@@ -29,5 +38,22 @@ export class RoomsController {
   @Post('join')
   join(@CurrentUser() user: JwtPayload, @Body() dto: JoinRoomDto) {
     return this.roomsService.join(user.sub, dto);
+  }
+
+  // ---- blacklist (leader-scoped, independent of any specific room) ----
+
+  @Get('banned')
+  listBanned(@CurrentUser() user: JwtPayload) {
+    return this.roomsService.listBanned(user.sub);
+  }
+
+  @Post('banned')
+  banUser(@CurrentUser() user: JwtPayload, @Body() dto: BanUserDto) {
+    return this.roomsService.banUser(user.sub, dto.userId);
+  }
+
+  @Delete('banned/:userId')
+  unbanUser(@CurrentUser() user: JwtPayload, @Param('userId') userId: string) {
+    return this.roomsService.unbanUser(user.sub, userId);
   }
 }

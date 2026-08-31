@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -125,6 +126,21 @@ export class DuelService {
     });
     if (!friendship) {
       throw new ConflictException('Можно бросить вызов только другу');
+    }
+
+    // A room ban is a general "don't let this person reach me" block, not
+    // scoped to rooms alone — someone banned from the target's rooms can't
+    // sidestep that by challenging them to a 1v1 duel instead.
+    const ban = await this.prisma.roomBan.findUnique({
+      where: {
+        leaderId_bannedUserId: {
+          leaderId: dto.friendUserId,
+          bannedUserId: userId,
+        },
+      },
+    });
+    if (ban) {
+      throw new ForbiddenException('Этот игрок заблокировал вас');
     }
 
     for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {

@@ -8,6 +8,8 @@ import {
 import {
   ROOM_MAX_PARTICIPANTS,
   ROOM_MIN_PARTICIPANTS_FOR_RATING,
+  getTitleForRating,
+  type BannedUserView,
   type CreateRoomResponse,
   type JoinRoomResponse,
   type RoomParticipantView,
@@ -294,6 +296,48 @@ export class RoomsService {
     }
 
     return this.buildState(await this.loadSession(sessionId), leaderId);
+  }
+
+  /** Standalone leader-scoped ban, independent of any specific room — the
+   * profile's blacklist screen uses this to pre-emptively block someone who
+   * isn't (or isn't yet) sitting in any of this leader's rooms. Idempotent:
+   * banning an already-banned user is a no-op, not an error. */
+  async banUser(leaderId: string, targetUserId: string): Promise<void> {
+    if (targetUserId === leaderId) {
+      throw new BadRequestException('Нельзя заблокировать самого себя');
+    }
+    await this.prisma.roomBan.upsert({
+      where: {
+        leaderId_bannedUserId: { leaderId, bannedUserId: targetUserId },
+      },
+      create: { leaderId, bannedUserId: targetUserId },
+      update: {},
+    });
+  }
+
+  /** Lets the target join this leader's rooms again. Existing rooms are
+   * unaffected either way — a ban only ever blocks future joins. */
+  async unbanUser(leaderId: string, targetUserId: string): Promise<void> {
+    await this.prisma.roomBan.deleteMany({
+      where: { leaderId, bannedUserId: targetUserId },
+    });
+  }
+
+  async listBanned(leaderId: string): Promise<BannedUserView[]> {
+    const bans = await this.prisma.roomBan.findMany({
+      where: { leaderId },
+      include: { bannedUser: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return bans.map((b) => ({
+      userId: b.bannedUser.id,
+      nickname: b.bannedUser.nickname,
+      avatarUrl: b.bannedUser.avatarUrl,
+      level: b.bannedUser.level,
+      rating: b.bannedUser.rating,
+      title: getTitleForRating(b.bannedUser.rating),
+      bannedAt: b.createdAt.toISOString(),
+    }));
   }
 
   /** LOBBY-only. The leader leaving closes the room entirely (no leadership

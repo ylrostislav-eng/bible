@@ -169,3 +169,20 @@ export const ROOM_WS_SERVER_EVENTS = {
   banned: 'room:banned',
   unavailable: 'room:unavailable',
 } as const;
+
+/** One entry in the current user's room blacklist (as leader) — this user
+ * can never join any room they lead until unbanned. Independent of any
+ * specific room; managed from the profile, not from inside a room. */
+export interface BannedUserView {
+  userId: string;
+  nickname: string | null;
+  avatarUrl: string | null;
+  level: number;
+  rating: number;
+  title: string;
+  bannedAt: string;
+}
+
+export interface BanUserInput {
+  userId: string;
+}
