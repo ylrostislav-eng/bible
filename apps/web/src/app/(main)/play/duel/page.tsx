@@ -22,12 +22,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
+import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { pickEncouragement } from '@/lib/encouragement';
+import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 
 const POLL_INTERVAL_MS = 1200;
-const PENDING_CHALLENGES_POLL_MS = 4000;
 /** Set by the friends-tab "Вызвать" flow right before it navigates here, so
  * this page can pick the freshly created session up without a URL param
  * (which would force a Suspense boundary around an otherwise fully static
@@ -38,6 +39,8 @@ type Menu = 'menu' | 'create' | 'join';
 
 export default function DuelPage() {
   const { updateProfile } = useAuth();
+  const { activeGame, setActiveGame } = useActiveGame();
+  const { challenges: pendingChallenges, removeChallenge } = useIncomingChallenges();
 
   const [menu, setMenu] = useState<Menu>('menu');
   const [questionCount, setQuestionCount] = useState<number>(DUEL_QUESTION_COUNT_DEFAULT);
@@ -47,22 +50,38 @@ export default function DuelPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Lazy initializer (not an effect) so a challenge-created session is
-  // picked up on the very first render, with no extra render round-trip —
-  // and no "setState in an effect" concern, since it never runs again.
+  // Lazy initializer (not an effect) so a challenge-created session — or an
+  // already-in-progress duel from before the user navigated away — is
+  // picked up on the very first render, with no extra render round-trip and
+  // no "setState in an effect" concern, since it never runs again.
   const [sessionId, setSessionId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const stashed = sessionStorage.getItem(PENDING_SESSION_STORAGE_KEY);
-    if (stashed) sessionStorage.removeItem(PENDING_SESSION_STORAGE_KEY);
-    return stashed;
+    if (stashed) {
+      sessionStorage.removeItem(PENDING_SESSION_STORAGE_KEY);
+      return stashed;
+    }
+    return activeGame?.type === 'duel' ? activeGame.sessionId : null;
   });
   const [duelState, setDuelState] = useState<DuelState | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [, setRewardsApplied] = useState(false);
 
-  const [pendingChallenges, setPendingChallenges] = useState<PendingChallenge[]>([]);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [respondQuestionCount, setRespondQuestionCount] = useState<number>(DUEL_QUESTION_COUNT_MIN);
+
+  // Keeps the app-wide "active game" record in sync with whichever session
+  // this page is actually showing, however it got here (create/join/accept/
+  // resumed-from-storage) — this is what lets `BottomNav` route "Играть"
+  // straight back here, and what survives a navigate-away-and-back.
+  useEffect(() => {
+    function syncActiveGame() {
+      if (sessionId && (activeGame?.type !== 'duel' || activeGame.sessionId !== sessionId)) {
+        setActiveGame({ type: 'duel', sessionId });
+      }
+    }
+    syncActiveGame();
+  }, [sessionId, activeGame, setActiveGame]);
 
   // Recomputed only when the result actually changes (a new duel, or your
   // correct count settling once the match ends) — stays put while the
@@ -104,29 +123,6 @@ export default function DuelPage() {
     };
   }, [sessionId, updateProfile]);
 
-  // Only worth checking while sitting on the main menu with no active
-  // session — once you're in a duel there's nothing to accept from here.
-  useEffect(() => {
-    if (sessionId || menu !== 'menu') return undefined;
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const challenges = await apiClient.get<PendingChallenge[]>('/game/duel/pending-challenges');
-        if (!cancelled) setPendingChallenges(challenges);
-      } catch {
-        // Transient poll failures are ignored — the next tick will retry.
-      }
-    };
-
-    void poll();
-    const interval = setInterval(() => void poll(), PENDING_CHALLENGES_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [sessionId, menu]);
-
   const startResponding = useCallback((challenge: PendingChallenge) => {
     setRespondingTo(challenge.sessionId);
     setRespondQuestionCount(challenge.questionCount);
@@ -142,28 +138,32 @@ export default function DuelPage() {
         `/game/duel/${respondingTo}/respond`,
         { action: 'ACCEPT', questionCount: respondQuestionCount },
       );
+      removeChallenge(respondingTo);
       setSessionId(res.sessionId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось принять вызов');
     } finally {
       setLoading(false);
     }
-  }, [respondingTo, respondQuestionCount]);
+  }, [respondingTo, respondQuestionCount, removeChallenge]);
 
-  const declineChallenge = useCallback(async (challengeSessionId: string) => {
-    setLoading(true);
-    try {
-      await apiClient.post(`/game/duel/${challengeSessionId}/respond`, {
-        action: 'DECLINE',
-      });
-      setPendingChallenges((cs) => cs.filter((c) => c.sessionId !== challengeSessionId));
-      setRespondingTo((current) => (current === challengeSessionId ? null : current));
-    } catch {
-      // The next poll will re-sync the list either way.
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const declineChallenge = useCallback(
+    async (challengeSessionId: string) => {
+      setLoading(true);
+      try {
+        await apiClient.post(`/game/duel/${challengeSessionId}/respond`, {
+          action: 'DECLINE',
+        });
+        removeChallenge(challengeSessionId);
+        setRespondingTo((current) => (current === challengeSessionId ? null : current));
+      } catch {
+        // The next poll will re-sync the list either way.
+      } finally {
+        setLoading(false);
+      }
+    },
+    [removeChallenge],
+  );
 
   const createDuel = useCallback(async () => {
     setLoading(true);
@@ -258,6 +258,7 @@ export default function DuelPage() {
 
   const reset = useCallback(() => {
     setSessionId(null);
+    setActiveGame(null);
     setDuelState(null);
     setSelectedIndex(null);
     setError(null);
@@ -265,7 +266,7 @@ export default function DuelPage() {
     setJoinPreview(null);
     setInviteCodeInput('');
     setMenu('menu');
-  }, []);
+  }, [setActiveGame]);
 
   const copyInviteCode = useCallback(() => {
     if (duelState?.inviteCode) {

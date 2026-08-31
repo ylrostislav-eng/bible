@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { Spinner } from '@/components/ui/spinner';
+import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useRoomSocket } from '@/lib/use-room-socket';
@@ -25,6 +26,7 @@ type Menu = 'menu' | 'create' | 'join';
 
 export default function RoomPage() {
   const { updateProfile } = useAuth();
+  const { activeGame, setActiveGame } = useActiveGame();
 
   const [menu, setMenu] = useState<Menu>('menu');
   const [publicRooms, setPublicRooms] = useState<RoomSummary[]>([]);
@@ -39,8 +41,23 @@ export default function RoomPage() {
   const [joinCode, setJoinCode] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // Picks up an already-in-progress room from before the user navigated
+  // away — see `ActiveGameProvider` and the sync effect below.
+  const [sessionId, setSessionId] = useState<string | null>(() =>
+    activeGame?.type === 'room' ? activeGame.sessionId : null,
+  );
   const [, setRewardsApplied] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [displaySeconds, setDisplaySeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    function syncActiveGame() {
+      if (sessionId && (activeGame?.type !== 'room' || activeGame.sessionId !== sessionId)) {
+        setActiveGame({ type: 'room', sessionId });
+      }
+    }
+    syncActiveGame();
+  }, [sessionId, activeGame, setActiveGame]);
 
   const {
     roomState,
@@ -53,6 +70,16 @@ export default function RoomPage() {
     answer,
     leave,
   } = useRoomSocket(sessionId);
+
+  // Clear the global "active game" record the instant we're removed, not
+  // just once the user taps "Назад" — otherwise the "Играть" tab would keep
+  // routing back into a room that no longer wants them.
+  useEffect(() => {
+    function clearOnRemoval() {
+      if (removed) setActiveGame(null);
+    }
+    clearOnRemoval();
+  }, [removed, setActiveGame]);
 
   useEffect(() => {
     if (sessionId || menu !== 'menu') return undefined;
@@ -85,6 +112,35 @@ export default function RoomPage() {
     }
     applyRewardsOnce();
   }, [roomState?.status, updateProfile]);
+
+  // A new question means a fresh choice — clear any highlight left over
+  // from the previous round.
+  useEffect(() => {
+    function resetSelection() {
+      setSelectedIndex(null);
+    }
+    resetSelection();
+  }, [roomState?.questionNumber]);
+
+  // The server only pushes a fresh `secondsRemaining` on discrete events
+  // (an answer, the round resolving, a new question) — there's no polling
+  // to naturally tick it down in between like the 1v1 duel screen has.
+  // Resync a local display clock to whatever the server just sent, then
+  // count it down ourselves once a second until the next push corrects it.
+  useEffect(() => {
+    if (roomState?.status !== 'IN_PROGRESS' || roomState.secondsRemaining === null) {
+      return undefined;
+    }
+    const initialSeconds = roomState.secondsRemaining;
+    function resync() {
+      setDisplaySeconds(initialSeconds);
+    }
+    resync();
+    const interval = setInterval(() => {
+      setDisplaySeconds((s) => (s === null ? null : Math.max(0, s - 1)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [roomState?.status, roomState?.secondsRemaining, roomState?.questionNumber]);
 
   const createRoom = useCallback(async () => {
     setLoading(true);
@@ -122,13 +178,16 @@ export default function RoomPage() {
 
   const reset = useCallback(() => {
     setSessionId(null);
+    setActiveGame(null);
     setRewardsApplied(false);
+    setSelectedIndex(null);
+    setDisplaySeconds(null);
     setError(null);
     setJoinCode('');
     setJoinPassword('');
     setRoomName('');
     setMenu('menu');
-  }, []);
+  }, [setActiveGame]);
 
   const copy = useCallback((text: string) => {
     void navigator.clipboard.writeText(text);
@@ -387,7 +446,7 @@ export default function RoomPage() {
             <p>
               Вопрос {roomState.questionNumber} из {roomState.questionCount}
             </p>
-            <p className="text-xs">{roomState.secondsRemaining}с</p>
+            <p className="text-xs">{displaySeconds ?? roomState.secondsRemaining}с</p>
           </div>
           <p className="text-text-secondary">
             Ответили {roomState.answeredUserIds.length}/{roomState.participants.length}
@@ -399,7 +458,8 @@ export default function RoomPage() {
             className="h-full rounded-full bg-primary transition-all"
             style={{
               width: `${
-                ((roomState.timeLimitSeconds - (roomState.secondsRemaining ?? 0)) /
+                ((roomState.timeLimitSeconds -
+                  (displaySeconds ?? roomState.secondsRemaining ?? 0)) /
                   roomState.timeLimitSeconds) *
                 100
               }%`,
@@ -415,13 +475,18 @@ export default function RoomPage() {
           {question.options.map((option, index) => {
             const reveal = roomState.reveal;
             const isCorrectOption = reveal && index === reveal.correctIndex;
-            const isMySelection = reveal ? myReveal?.selectedIndex === index : false;
+            const isMySelection = reveal
+              ? myReveal?.selectedIndex === index
+              : selectedIndex === index;
             const isWrongSelection = reveal && isMySelection && myReveal && !myReveal.isCorrect;
 
             return (
               <button
                 key={index}
-                onClick={() => answer({ questionId: question.id, answerIndex: index })}
+                onClick={() => {
+                  setSelectedIndex(index);
+                  answer({ questionId: question.id, answerIndex: index });
+                }}
                 disabled={roomState.answeredUserIds.includes(me.userId) || !!reveal}
                 className={clsx(
                   'flex h-14 items-center rounded-xl border px-4 text-left text-sm font-medium transition disabled:cursor-not-allowed',

@@ -206,10 +206,14 @@ export default function FriendsPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Введите никнейм…"
+          placeholder="Введите игровой никнейм…"
           className="h-12 rounded-xl border border-border bg-surface px-4 text-sm outline-none focus:border-primary"
         />
       </label>
+
+      {query.trim().length === 1 && (
+        <p className="-mt-3 text-xs text-text-muted">Введите ещё хотя бы один символ</p>
+      )}
 
       {query.trim().length >= 2 && (
         <Card className="flex-col gap-2">
@@ -218,7 +222,10 @@ export default function FriendsPage() {
               <Spinner />
             </div>
           ) : searchResults.length === 0 ? (
-            <p className="py-2 text-center text-sm text-text-muted">Никто не найден</p>
+            <p className="py-2 text-center text-sm text-text-muted">
+              Никто не найден — проверьте, что ищете по игровому нику друга (его можно посмотреть в
+              профиле), а не по имени в Telegram
+            </p>
           ) : (
             searchResults.map((result) => (
               <div key={result.userId} className="flex items-center justify-between gap-2 py-1">

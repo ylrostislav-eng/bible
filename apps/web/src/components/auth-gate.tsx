@@ -1,7 +1,10 @@
 'use client';
 
+import { ActiveGameProvider } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
+import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
+import { IncomingChallengeModal } from './incoming-challenge-modal';
 import { BottomNav } from './navigation/bottom-nav';
 import { OnboardingForm } from './onboarding/onboarding-form';
 import { Button } from './ui/button';
@@ -52,9 +55,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <>
-      <div className="pt-safe pb-24">{children}</div>
-      <BottomNav />
-    </>
+    <ActiveGameProvider>
+      <IncomingChallengesProvider>
+        <div className="pt-safe pb-24">{children}</div>
+        <IncomingChallengeModal />
+        <BottomNav />
+      </IncomingChallengesProvider>
+    </ActiveGameProvider>
   );
 }
