@@ -29,6 +29,19 @@ export function useRoomSocket(sessionId: string | null) {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
+    // Every field here describes the *previous* `sessionId`'s connection —
+    // without clearing them a stale `removed`/`unavailable` from an earlier
+    // room would keep the "Вас исключили…" (or worse, a permanently stuck
+    // "Загрузка…") screen showing forever, even after moving on to a brand
+    // new session (or back to no session at all, via `reset()`).
+    function resetForNewSession() {
+      setRoomState(null);
+      setError(null);
+      setRemoved(null);
+      setUnavailable(false);
+    }
+    resetForNewSession();
+
     if (!sessionId) return undefined;
 
     const token = getAccessToken();

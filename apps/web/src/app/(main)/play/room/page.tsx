@@ -50,15 +50,6 @@ export default function RoomPage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [displaySeconds, setDisplaySeconds] = useState<number | null>(null);
 
-  useEffect(() => {
-    function syncActiveGame() {
-      if (sessionId && (activeGame?.type !== 'room' || activeGame.sessionId !== sessionId)) {
-        setActiveGame({ type: 'room', sessionId });
-      }
-    }
-    syncActiveGame();
-  }, [sessionId, activeGame, setActiveGame]);
-
   const {
     roomState,
     error: liveError,
@@ -72,9 +63,28 @@ export default function RoomPage() {
     leave,
   } = useRoomSocket(sessionId);
 
+  // Keeps the global "active game" record pointed at whichever room this
+  // page is actually showing — but not once we've been removed: without
+  // the `removed` guard this would immediately re-set the very record
+  // `clearOnRemoval` below just cleared (its dependency on `activeGame`
+  // means it re-runs right after that clear), pointing "Играть" straight
+  // back at a room we're no longer in.
+  useEffect(() => {
+    function syncActiveGame() {
+      if (removed) return;
+      if (sessionId && (activeGame?.type !== 'room' || activeGame.sessionId !== sessionId)) {
+        setActiveGame({ type: 'room', sessionId });
+      }
+    }
+    syncActiveGame();
+  }, [sessionId, activeGame, setActiveGame, removed]);
+
   // Clear the global "active game" record the instant we're removed, not
   // just once the user taps "Назад" — otherwise the "Играть" tab would keep
-  // routing back into a room that no longer wants them.
+  // routing back into a room that no longer wants them. Deliberately leaves
+  // `sessionId` itself alone here — clearing it would immediately reset
+  // this hook's `removed` too (see `useRoomSocket`'s per-session reset),
+  // dismissing the "Вас исключили" screen before the user ever saw it.
   useEffect(() => {
     function clearOnRemoval() {
       if (removed) setActiveGame(null);
@@ -444,9 +454,18 @@ export default function RoomPage() {
     // IN_PROGRESS
     const { question } = roomState;
     if (!question) {
+      // Should self-correct on the next push in the ordinary case (a brief
+      // gap right as the round advances) — but if this participant's own
+      // answer row is genuinely missing for the current question, no future
+      // push will ever fix that, so this can't be a bare, escape-less
+      // "Загрузка…" — give the user a way out instead of a permanent hang.
       return (
-        <div className="flex min-h-[50vh] items-center justify-center text-sm text-text-secondary">
-          Загрузка…
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-sm text-text-secondary">
+          <Spinner />
+          <p>Загрузка…</p>
+          <button onClick={reset} className="text-sm text-text-secondary underline">
+            Назад
+          </button>
         </div>
       );
     }
