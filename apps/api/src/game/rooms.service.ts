@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ROOM_INTRO_TOTAL_MS,
   ROOM_MAX_PARTICIPANTS,
   ROOM_MIN_PARTICIPANTS_FOR_RATING,
   getTitleForRating,
@@ -80,43 +81,72 @@ export class RoomsService {
       dto.maxParticipants ?? ROOM_MAX_PARTICIPANTS,
       ROOM_MAX_PARTICIPANTS,
     );
+    const roomName = dto.roomName.trim();
+    if (!roomName) {
+      throw new BadRequestException('Введите название комнаты');
+    }
 
     let password: string | null = null;
     if (dto.visibility === 'PRIVATE') {
       password = await this.generateUniquePassword();
     }
 
-    for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {
-      const inviteCode = generateInviteCode();
-      try {
-        const session = await this.prisma.gameSession.create({
-          data: {
-            mode: 'ROOM',
-            status: 'LOBBY',
-            questionCount: dto.questionCount,
-            inviteCode,
-            roomName: dto.roomName ?? null,
-            visibility: dto.visibility,
-            password,
-            leaderId: userId,
-            maxParticipants,
-            participants: { create: { userId, isLeader: true } },
-          },
-        });
-        return { sessionId: session.id, inviteCode, password };
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          continue;
-        }
-        throw error;
+    // The whole name-uniqueness check + create runs inside one transaction,
+    // guarded by an advisory lock scoped to this name — a plain
+    // findFirst-then-create (outside a transaction, or without the lock)
+    // would let two concurrent requests for the same name both pass the
+    // check before either commits, defeating the point of the check.
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${roomName.toLowerCase()}))`;
+
+      const existing = await tx.gameSession.findFirst({
+        where: {
+          mode: 'ROOM',
+          // COMPLETED rooms don't count — their name is free to reuse once
+          // they're done, only currently-open/ongoing ones would actually
+          // be confusing to have a duplicate of.
+          status: { in: ['LOBBY', 'IN_PROGRESS'] },
+          roomName: { equals: roomName, mode: 'insensitive' },
+        },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'Комната с таким названием уже существует — выберите другое',
+        );
       }
-    }
-    throw new ConflictException(
-      'Не удалось создать комнату, попробуйте ещё раз',
-    );
+
+      for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {
+        const inviteCode = generateInviteCode();
+        try {
+          const session = await tx.gameSession.create({
+            data: {
+              mode: 'ROOM',
+              status: 'LOBBY',
+              questionCount: dto.questionCount,
+              inviteCode,
+              roomName,
+              visibility: dto.visibility,
+              password,
+              leaderId: userId,
+              maxParticipants,
+              participants: { create: { userId, isLeader: true } },
+            },
+          });
+          return { sessionId: session.id, inviteCode, password };
+        } catch (error) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002'
+          ) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw new ConflictException(
+        'Не удалось создать комнату, попробуйте ещё раз',
+      );
+    });
   }
 
   /** Generates a password that doesn't collide with any other currently
@@ -407,7 +437,12 @@ export class RoomsService {
         status: 'IN_PROGRESS',
         questionCount: questions.length,
         currentOrder: 0,
-        currentQuestionStartedAt: new Date(),
+        // Delayed by the pre-match "3-2-1-Поехали!" countdown the client
+        // shows instead of question 1 — must match `ROOM_INTRO_TOTAL_MS` on
+        // the client, and `RoomsGateway.onStart` pads its auto-timeout timer
+        // by the same amount, or the real answering window would silently
+        // shrink by the length of the countdown.
+        currentQuestionStartedAt: new Date(Date.now() + ROOM_INTRO_TOTAL_MS),
       },
     });
 

@@ -6,12 +6,13 @@ import {
   DUEL_QUESTION_COUNT_DEFAULT,
   DUEL_QUESTION_COUNT_MAX,
   DUEL_QUESTION_COUNT_MIN,
+  ROOM_INTRO_STEP_MS,
   ROOM_MAX_PARTICIPANTS,
   TESTAMENT_NAMES,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -166,14 +167,52 @@ export default function RoomPage() {
     return () => clearInterval(interval);
   }, [roomState?.status, roomState?.secondsRemaining, roomState?.questionNumber]);
 
+  // Pre-match "3, 2, 1, Поехали!" countdown, shown once per room right as it
+  // reaches question 1 — mirrors the 1v1 duel screen's, `null` hides it, `0`
+  // is the "Поехали!" beat. `introShownForRef` makes sure it only ever
+  // starts once per session, since the room keeps pushing state on every
+  // discrete event and would otherwise re-trigger it each time. Not just
+  // cosmetic timing: `RoomsService.start` delays the real
+  // `currentQuestionStartedAt` (and `RoomsGateway.onStart` pads its
+  // auto-timeout timer) by the exact same `ROOM_INTRO_TOTAL_MS`, so this
+  // countdown runs *before* the actual answering window starts rather than
+  // eating into it.
+  const [introStep, setIntroStep] = useState<number | null>(null);
+  const introShownForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    function maybeStartIntro() {
+      if (
+        sessionId &&
+        roomState?.status === 'IN_PROGRESS' &&
+        roomState.questionNumber === 1 &&
+        introShownForRef.current !== sessionId
+      ) {
+        introShownForRef.current = sessionId;
+        setIntroStep(3);
+      }
+    }
+    maybeStartIntro();
+  }, [sessionId, roomState?.status, roomState?.questionNumber]);
+
+  useEffect(() => {
+    if (introStep === null) return undefined;
+    const timeout = setTimeout(() => {
+      setIntroStep((step) => (step === null || step === 0 ? null : step - 1));
+    }, ROOM_INTRO_STEP_MS);
+    return () => clearTimeout(timeout);
+  }, [introStep]);
+
   const createRoom = useCallback(async () => {
+    const trimmedName = roomName.trim();
+    if (!trimmedName) return;
     setLoading(true);
     setError(null);
     try {
       const res = await apiClient.post<CreateRoomResponse>('/rooms', {
         visibility,
         questionCount,
-        roomName: roomName.trim() || undefined,
+        roomName: trimmedName,
         maxParticipants,
       });
       setSessionId(res.sessionId);
@@ -467,6 +506,26 @@ export default function RoomPage() {
       );
     }
 
+    // Pre-match countdown — shown instead of question 1 for a beat right as
+    // the room actually begins, so it doesn't just snap straight into
+    // gameplay the instant the leader hits "Начать игру".
+    if (roomState.status === 'IN_PROGRESS' && introStep !== null) {
+      return (
+        <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
+          <p className="text-sm text-text-secondary">
+            {roomState.roomName ?? 'Комната'} · {roomState.participants.length} игроков
+          </p>
+          <div key={introStep} className="duel-intro-pop">
+            {introStep === 0 ? (
+              <p className="text-5xl font-extrabold tracking-tight text-primary">Поехали!</p>
+            ) : (
+              <p className="text-8xl font-extrabold text-primary">{introStep}</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     // IN_PROGRESS
     const { question } = roomState;
     if (!question) {
@@ -614,13 +673,16 @@ export default function RoomPage() {
         </p>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-text-secondary">Название (необязательно)</span>
+          <span className="text-sm font-medium text-text-secondary">Название комнаты</span>
           <input
             value={roomName}
             onChange={(e) => setRoomName(e.target.value.slice(0, 40))}
             placeholder="Например, «Вечерняя викторина»"
             className="h-12 rounded-xl border border-border bg-surface px-4 text-sm outline-none focus:border-primary"
           />
+          <span className="text-xs text-text-muted">
+            Должно отличаться от названий других открытых сейчас комнат
+          </span>
         </label>
 
         <Card className="flex-col gap-3">
@@ -643,7 +705,7 @@ export default function RoomPage() {
         </Card>
 
         {error && <p className="text-sm text-danger">{error}</p>}
-        <Button onClick={createRoom} disabled={loading}>
+        <Button onClick={createRoom} disabled={loading || roomName.trim().length === 0}>
           {loading ? 'Создание…' : 'Создать комнату'}
         </Button>
         <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">

@@ -9,6 +9,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import {
+  ROOM_INTRO_TOTAL_MS,
   ROOM_WS_EVENTS,
   ROOM_WS_NAMESPACE,
   ROOM_WS_SERVER_EVENTS,
@@ -190,7 +191,17 @@ export class RoomsGateway implements OnGatewayDisconnect {
         body.sessionId,
       );
       await this.broadcastState(body.sessionId);
-      this.scheduleQuestionTimer(body.sessionId, state.timeLimitSeconds);
+      // Question 1's real `currentQuestionStartedAt` (see `RoomsService.start`)
+      // is itself delayed by the same countdown the client shows instead of
+      // question 1 — pad the auto-timeout by the same amount, or it would
+      // fire `ROOM_INTRO_TOTAL_MS` too early relative to when the question
+      // actually became answerable, silently shrinking everyone's real
+      // answering window.
+      this.scheduleQuestionTimer(
+        body.sessionId,
+        state.timeLimitSeconds,
+        ROOM_INTRO_TOTAL_MS,
+      );
     });
   }
 
@@ -277,11 +288,12 @@ export class RoomsGateway implements OnGatewayDisconnect {
   private scheduleQuestionTimer(
     sessionId: string,
     timeLimitSeconds: number,
+    extraDelayMs = 0,
   ): void {
     this.clearQuestionTimer(sessionId);
     const timer = setTimeout(
       () => void this.onQuestionTimeout(sessionId),
-      timeLimitSeconds * 1000 + 250,
+      extraDelayMs + timeLimitSeconds * 1000 + 250,
     );
     this.questionTimers.set(sessionId, timer);
   }

@@ -7,6 +7,7 @@ import {
 import {
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Max,
@@ -23,10 +24,10 @@ export class CreateRoomDto {
   @Max(DUEL_QUESTION_COUNT_MAX)
   questionCount!: number;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(40)
-  roomName?: string;
+  roomName!: string;
 
   @IsOptional()
   @IsInt()

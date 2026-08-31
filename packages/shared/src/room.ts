@@ -11,13 +11,28 @@ export const ROOM_MIN_PARTICIPANTS_FOR_RATING = 3;
  * that crosses it rather than zeroing it — see `RoomsService.applyRoomRewards`. */
 export const ROOM_DAILY_RATING_CAP = 100;
 
+/** Duration of one step of the pre-match "3, 2, 1, Поехали!" countdown
+ * (`play/room/page.tsx`), mirroring the 1v1 duel's — shared with the backend
+ * so `RoomsService.start` can delay the first question's real
+ * `currentQuestionStartedAt` by the same total amount. Without that, the
+ * countdown would just eat into everyone's actual answering window instead
+ * of running before it starts. Kept as a separate constant from the duel's
+ * (even though the value matches) so the two intros can diverge later
+ * without one accidentally dragging the other along. */
+export const ROOM_INTRO_STEP_MS = 700;
+/** 3, 2, 1, "Поехали!" */
+export const ROOM_INTRO_STEPS = 4;
+export const ROOM_INTRO_TOTAL_MS = ROOM_INTRO_STEP_MS * ROOM_INTRO_STEPS;
+
 export type RoomVisibility = 'PUBLIC' | 'PRIVATE';
 
 export interface CreateRoomInput {
   visibility: RoomVisibility;
   questionCount: number;
-  /** Shown in the public room list; also visible to participants in the lobby. */
-  roomName?: string;
+  /** Shown in the public room list; also visible to participants in the
+   * lobby. Required, and must be distinct from every other currently active
+   * (not yet completed) room's name — see `RoomsService.create`. */
+  roomName: string;
   /** Defaults to, and is capped at, `ROOM_MAX_PARTICIPANTS`. */
   maxParticipants?: number;
 }
