@@ -79,15 +79,33 @@ export default function DuelPage() {
   // Keeps the app-wide "active game" record in sync with whichever session
   // this page is actually showing, however it got here (create/join/accept/
   // resumed-from-storage) — this is what lets `BottomNav` route "Играть"
-  // straight back here, and what survives a navigate-away-and-back.
+  // straight back here, and what survives a navigate-away-and-back. Skipped
+  // once COMPLETED — see the clear-on-completion effect below for why.
   useEffect(() => {
     function syncActiveGame() {
-      if (sessionId && (activeGame?.type !== 'duel' || activeGame.sessionId !== sessionId)) {
+      if (
+        sessionId &&
+        duelState?.status !== 'COMPLETED' &&
+        (activeGame?.type !== 'duel' || activeGame.sessionId !== sessionId)
+      ) {
         setActiveGame({ type: 'duel', sessionId });
       }
     }
     syncActiveGame();
-  }, [sessionId, activeGame, setActiveGame]);
+  }, [sessionId, activeGame, setActiveGame, duelState?.status]);
+
+  // A finished duel isn't "active" anymore — clear it the moment the result
+  // comes in, not just when the user happens to click "Новая дуэль". Without
+  // this, "На главную" (a plain link, not a reset) left the record pointing
+  // at the finished match, so the "Играть" tab kept routing straight back
+  // into the same old result screen instead of the mode-picker menu —
+  // forever, since nothing ever cleared it afterwards.
+  useEffect(() => {
+    function clearOnCompletion() {
+      if (duelState?.status === 'COMPLETED') setActiveGame(null);
+    }
+    clearOnCompletion();
+  }, [duelState?.status, setActiveGame]);
 
   // Recomputed only when the result actually changes (a new duel, or your
   // correct count settling once the match ends) — stays put while the

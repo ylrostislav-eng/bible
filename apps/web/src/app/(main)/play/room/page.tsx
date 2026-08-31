@@ -71,13 +71,13 @@ export default function RoomPage() {
   // back at a room we're no longer in.
   useEffect(() => {
     function syncActiveGame() {
-      if (removed) return;
+      if (removed || roomState?.status === 'COMPLETED') return;
       if (sessionId && (activeGame?.type !== 'room' || activeGame.sessionId !== sessionId)) {
         setActiveGame({ type: 'room', sessionId });
       }
     }
     syncActiveGame();
-  }, [sessionId, activeGame, setActiveGame, removed]);
+  }, [sessionId, activeGame, setActiveGame, removed, roomState?.status]);
 
   // Clear the global "active game" record the instant we're removed, not
   // just once the user taps "Назад" — otherwise the "Играть" tab would keep
@@ -91,6 +91,17 @@ export default function RoomPage() {
     }
     clearOnRemoval();
   }, [removed, setActiveGame]);
+
+  // Same idea for a room that simply finished normally: it isn't "active"
+  // anymore, so stop routing "Играть" back into its final-standings screen.
+  // "На главную" is a plain link (not a reset), so without this the record
+  // would otherwise sit there forever pointing at a dead room.
+  useEffect(() => {
+    function clearOnCompletion() {
+      if (roomState?.status === 'COMPLETED') setActiveGame(null);
+    }
+    clearOnCompletion();
+  }, [roomState?.status, setActiveGame]);
 
   useEffect(() => {
     if (sessionId || menu !== 'menu') return undefined;
