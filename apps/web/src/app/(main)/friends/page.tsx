@@ -43,7 +43,6 @@ export default function FriendsPage() {
   const [challengeQuestionCount, setChallengeQuestionCount] = useState(DUEL_QUESTION_COUNT_DEFAULT);
   const [challengeSending, setChallengeSending] = useState(false);
   const [challengeError, setChallengeError] = useState<string | null>(null);
-  const [sentChallenge, setSentChallenge] = useState<ChallengeFriendResponse | null>(null);
 
   // Reusable from mutation handlers (accept/decline/unfriend/etc.) below —
   // those aren't effect bodies, so calling it there doesn't hit the same
@@ -158,9 +157,15 @@ export default function FriendsPage() {
     setChallengingFriendId(friendId);
     setChallengeQuestionCount(DUEL_QUESTION_COUNT_DEFAULT);
     setChallengeError(null);
-    setSentChallenge(null);
   };
 
+  // Sends the challenge and immediately takes the challenger to the duel
+  // screen's "waiting for opponent" view too — same as creating a plain
+  // duel already does. Previously this just showed an inline "sent!" card
+  // with a manual "Перейти к дуэли" link, so only the friend who *accepted*
+  // ever landed in the duel automatically; the sender had to notice and
+  // click through themselves, and had no way to see the moment the friend
+  // accepted without doing so.
   const sendChallenge = async () => {
     if (!challengingFriendId) return;
     setChallengeSending(true);
@@ -170,18 +175,12 @@ export default function FriendsPage() {
         friendUserId: challengingFriendId,
         questionCount: challengeQuestionCount,
       });
-      setSentChallenge(res);
+      sessionStorage.setItem(PENDING_SESSION_STORAGE_KEY, res.sessionId);
+      router.push('/play/duel');
     } catch (err) {
       setChallengeError(err instanceof ApiError ? err.message : 'Не удалось отправить вызов');
-    } finally {
       setChallengeSending(false);
     }
-  };
-
-  const goToDuel = () => {
-    if (!sentChallenge) return;
-    sessionStorage.setItem(PENDING_SESSION_STORAGE_KEY, sentChallenge.sessionId);
-    router.push('/play/duel');
   };
 
   return (
@@ -342,49 +341,30 @@ export default function FriendsPage() {
 
               {challengingFriendId === friend.userId && (
                 <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-hover p-3">
-                  {sentChallenge ? (
-                    <>
-                      <p className="text-sm text-success">Вызов отправлен!</p>
-                      <p className="text-xs text-text-muted">
-                        Код на всякий случай:{' '}
-                        <span className="font-mono font-semibold tracking-widest text-text-primary">
-                          {sentChallenge.inviteCode}
-                        </span>
-                      </p>
-                      <button
-                        onClick={goToDuel}
-                        className="h-10 rounded-lg bg-primary text-sm font-semibold text-on-primary"
-                      >
-                        Перейти к дуэли
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <QuestionCountSlider
-                        label="Количество вопросов"
-                        value={challengeQuestionCount}
-                        min={DUEL_QUESTION_COUNT_MIN}
-                        max={DUEL_QUESTION_COUNT_MAX}
-                        onChange={setChallengeQuestionCount}
-                      />
-                      {challengeError && <p className="text-sm text-danger">{challengeError}</p>}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => void sendChallenge()}
-                          disabled={challengeSending}
-                          className="h-10 flex-1 rounded-lg bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
-                        >
-                          {challengeSending ? 'Отправка…' : 'Бросить вызов'}
-                        </button>
-                        <button
-                          onClick={() => setChallengingFriendId(null)}
-                          className="h-10 rounded-lg bg-surface px-3 text-sm text-text-secondary"
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    </>
-                  )}
+                  <QuestionCountSlider
+                    label="Количество вопросов"
+                    value={challengeQuestionCount}
+                    min={DUEL_QUESTION_COUNT_MIN}
+                    max={DUEL_QUESTION_COUNT_MAX}
+                    onChange={setChallengeQuestionCount}
+                  />
+                  {challengeError && <p className="text-sm text-danger">{challengeError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => void sendChallenge()}
+                      disabled={challengeSending}
+                      className="h-10 flex-1 rounded-lg bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
+                    >
+                      {challengeSending ? 'Отправка…' : 'Бросить вызов'}
+                    </button>
+                    <button
+                      onClick={() => setChallengingFriendId(null)}
+                      disabled={challengeSending}
+                      className="h-10 rounded-lg bg-surface px-3 text-sm text-text-secondary disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
