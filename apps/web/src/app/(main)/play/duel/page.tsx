@@ -101,7 +101,14 @@ export default function DuelPage() {
         const state = await apiClient.get<DuelState>(`/game/duel/${sessionId}`);
         if (cancelled) return;
         setDuelState(state);
-        if (state.status !== 'IN_PROGRESS' || state.youAnswered) {
+        // Only clear the highlight once we're not even in a round anymore —
+        // NOT just because we've answered. `next()` already resets it when
+        // moving to a new question; resetting on `youAnswered` here as well
+        // used to null it out on the very first poll tick after answering,
+        // before the opponent's reveal ever arrived, so the highlight
+        // vanished into a "which one did I even pick?" blank state instead
+        // of staying lit up until the red/green reveal took over.
+        if (state.status !== 'IN_PROGRESS') {
           setSelectedIndex(null);
         }
         if (state.status === 'COMPLETED') {
