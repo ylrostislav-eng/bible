@@ -114,3 +114,30 @@ a {
     animation: none;
   }
 }
+
+/* Duel start countdown (play/duel/page.tsx) — each 3/2/1/"Поехали!" step
+ * pops in via a fresh remount (React `key` change), so the animation
+ * naturally restarts per step without any extra JS. */
+@keyframes duel-intro-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.duel-intro-pop {
+  animation: duel-intro-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duel-intro-pop {
+    animation: none;
+  }
+}

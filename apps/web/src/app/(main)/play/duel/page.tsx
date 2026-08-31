@@ -16,7 +16,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -29,6 +29,12 @@ import { pickEncouragement } from '@/lib/encouragement';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 
 const POLL_INTERVAL_MS = 1200;
+/** How long each step of the pre-match "3, 2, 1, Поехали!" countdown stays
+ * on screen. Purely cosmetic — the server's actual per-question timer
+ * already starts ticking the moment the duel goes IN_PROGRESS, so both
+ * players see the same countdown at (roughly) the same time and lose the
+ * same few seconds of it, keeping things fair between them either way. */
+const DUEL_INTRO_STEP_MS = 700;
 /** Set by the friends-tab "Вызвать" flow right before it navigates here, so
  * this page can pick the freshly created session up without a URL param
  * (which would force a Suspense boundary around an otherwise fully static
@@ -129,6 +135,51 @@ export default function DuelPage() {
       clearInterval(interval);
     };
   }, [sessionId, updateProfile]);
+
+  // A new question means a fresh choice — clear any highlight left over
+  // from the previous round. Can't rely on `next()` alone for this: if the
+  // *opponent's* client is the one that actually advances the round (their
+  // own auto-advance timer fires first, or they click "Далее" before you
+  // do), this client only finds out via the next poll tick, which never
+  // goes through its own `next()` call at all — so without this, the old
+  // selection kept sitting highlighted on the new question indefinitely.
+  useEffect(() => {
+    function resetSelection() {
+      setSelectedIndex(null);
+    }
+    resetSelection();
+  }, [duelState?.questionNumber]);
+
+  // Pre-match "3, 2, 1, Поехали!" countdown, shown once per duel right as
+  // it reaches the first question — `null` hides it, `0` is the "Поехали!"
+  // beat, otherwise it's the number itself. `introShownForRef` makes sure
+  // it only ever starts once per session (every poll tick would otherwise
+  // re-trigger it, since status/questionNumber stay the same for many ticks).
+  const [introStep, setIntroStep] = useState<number | null>(null);
+  const introShownForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    function maybeStartIntro() {
+      if (
+        sessionId &&
+        duelState?.status === 'IN_PROGRESS' &&
+        duelState.questionNumber === 1 &&
+        introShownForRef.current !== sessionId
+      ) {
+        introShownForRef.current = sessionId;
+        setIntroStep(3);
+      }
+    }
+    maybeStartIntro();
+  }, [sessionId, duelState?.status, duelState?.questionNumber]);
+
+  useEffect(() => {
+    if (introStep === null) return undefined;
+    const timeout = setTimeout(() => {
+      setIntroStep((step) => (step === null || step === 0 ? null : step - 1));
+    }, DUEL_INTRO_STEP_MS);
+    return () => clearTimeout(timeout);
+  }, [introStep]);
 
   const startResponding = useCallback((challenge: PendingChallenge) => {
     setRespondingTo(challenge.sessionId);
@@ -382,6 +433,26 @@ export default function DuelPage() {
           <Link href="/" className="text-center text-sm text-text-secondary">
             На главную
           </Link>
+        </div>
+      );
+    }
+
+    // Pre-match countdown — shown instead of question 1 for a beat right
+    // as the duel actually begins, so it doesn't just snap straight into
+    // gameplay the instant the opponent accepts/joins.
+    if (duelState.status === 'IN_PROGRESS' && introStep !== null) {
+      return (
+        <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
+          <p className="text-sm text-text-secondary">
+            Вы против {duelState.opponent?.nickname ?? 'соперника'}
+          </p>
+          <div key={introStep} className="duel-intro-pop">
+            {introStep === 0 ? (
+              <p className="text-5xl font-extrabold tracking-tight text-primary">Поехали!</p>
+            ) : (
+              <p className="text-8xl font-extrabold text-primary">{introStep}</p>
+            )}
+          </div>
         </div>
       );
     }
