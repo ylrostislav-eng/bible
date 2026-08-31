@@ -86,13 +86,23 @@ export class RoomsGateway implements OnGatewayDisconnect {
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { sessionId: string },
   ): Promise<void> {
-    await this.guarded(socket, async () => {
+    try {
       // Validates membership before registering — getState throws for
-      // anyone who isn't actually a participant of this room.
+      // anyone who isn't actually a participant of this room (e.g. kicked
+      // or banned while they had no live connection to receive the
+      // `kicked`/`banned` event, then came back). Deliberately not routed
+      // through `guarded()`: a plain `room:error` here would leave the
+      // client stuck on its "connecting" spinner forever, since no
+      // `RoomState` ever arrives to replace it — `room:unavailable` tells
+      // it to give up and bail out instead.
       await this.roomsService.getState(socket.data.userId, body.sessionId);
       this.register(body.sessionId, socket);
       await this.broadcastState(body.sessionId);
-    });
+    } catch (err) {
+      socket.emit(ROOM_WS_SERVER_EVENTS.unavailable, {
+        message: err instanceof Error ? err.message : 'Комната недоступна',
+      });
+    }
   }
 
   @SubscribeMessage(ROOM_WS_EVENTS.leave)

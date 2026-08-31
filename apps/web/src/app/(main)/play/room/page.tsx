@@ -63,6 +63,7 @@ export default function RoomPage() {
     roomState,
     error: liveError,
     removed,
+    unavailable,
     setReady,
     kick,
     ban,
@@ -188,6 +189,19 @@ export default function RoomPage() {
     setRoomName('');
     setMenu('menu');
   }, [setActiveGame]);
+
+  // `room:enter` itself failed — most commonly because this session's
+  // stored sessionId points at a room we were kicked/banned from while we
+  // had no live connection to receive the usual `kicked`/`banned` event
+  // (e.g. sitting on another tab at the time). No `RoomState` will ever
+  // arrive, so there's nothing to show — silently drop back to the room
+  // menu instead of leaving the "Подключение…" spinner stuck forever.
+  useEffect(() => {
+    function bounceToMenu() {
+      if (unavailable) reset();
+    }
+    bounceToMenu();
+  }, [unavailable, reset]);
 
   const copy = useCallback((text: string) => {
     void navigator.clipboard.writeText(text);

@@ -152,11 +152,20 @@ export const ROOM_WS_EVENTS = {
 
 /** Server -> client event names.
  * - `room:state`: `RoomState`
- * - `room:error`: `{ message: string }`
- * - `room:kicked` / `room:banned`: sent only to the removed participant, no payload */
+ * - `room:error`: `{ message: string }` — a specific *action* (ready/kick/
+ *   ban/start/answer) failed; the caller is still a legitimate participant
+ *   and the current `RoomState` (if any) stays valid.
+ * - `room:kicked` / `room:banned`: sent only to the removed participant, no
+ *   payload — fired at the moment a connected participant is actually
+ *   removed.
+ * - `room:unavailable`: `{ message: string }` — `room:enter` itself failed
+ *   (e.g. kicked/banned while not connected, or a stale/invalid session).
+ *   No `RoomState` exists to show; the client should treat this the same
+ *   as being removed and drop back out, not display a stuck loading state. */
 export const ROOM_WS_SERVER_EVENTS = {
   state: 'room:state',
   error: 'room:error',
   kicked: 'room:kicked',
   banned: 'room:banned',
+  unavailable: 'room:unavailable',
 } as const;

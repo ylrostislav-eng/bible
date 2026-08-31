@@ -21,6 +21,11 @@ export function useRoomSocket(sessionId: string | null) {
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<RoomRemovedReason | null>(null);
+  // True when `room:enter` itself failed (no `RoomState` will ever arrive
+  // for this session — e.g. kicked/banned while disconnected, or a stale
+  // link) — distinct from `error`, which is an in-room action that failed
+  // while the session otherwise stays valid.
+  const [unavailable, setUnavailable] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -54,6 +59,9 @@ export function useRoomSocket(sessionId: string | null) {
     function handleBanned() {
       setRemoved('banned');
     }
+    function handleUnavailable() {
+      setUnavailable(true);
+    }
 
     socket.on('connect', handleConnect);
     socket.on(ROOM_WS_SERVER_EVENTS.state, handleState);
@@ -63,6 +71,7 @@ export function useRoomSocket(sessionId: string | null) {
     socket.on(ROOM_WS_SERVER_EVENTS.error, handleError);
     socket.on(ROOM_WS_SERVER_EVENTS.kicked, handleKicked);
     socket.on(ROOM_WS_SERVER_EVENTS.banned, handleBanned);
+    socket.on(ROOM_WS_SERVER_EVENTS.unavailable, handleUnavailable);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -70,6 +79,7 @@ export function useRoomSocket(sessionId: string | null) {
       socket.off(ROOM_WS_SERVER_EVENTS.error, handleError);
       socket.off(ROOM_WS_SERVER_EVENTS.kicked, handleKicked);
       socket.off(ROOM_WS_SERVER_EVENTS.banned, handleBanned);
+      socket.off(ROOM_WS_SERVER_EVENTS.unavailable, handleUnavailable);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -106,5 +116,5 @@ export function useRoomSocket(sessionId: string | null) {
     if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.leave, { sessionId });
   }, [sessionId]);
 
-  return { roomState, error, removed, setReady, kick, ban, start, answer, leave };
+  return { roomState, error, removed, unavailable, setReady, kick, ban, start, answer, leave };
 }
