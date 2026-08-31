@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DUEL_INTRO_TOTAL_MS,
   DUEL_QUESTION_COUNT_MIN,
   type ChallengeFriendResponse,
   type CreateDuelResponse,
@@ -330,7 +331,12 @@ export class DuelService {
         status: 'IN_PROGRESS',
         questionCount: questions.length,
         currentOrder: 0,
-        currentQuestionStartedAt: new Date(),
+        // Delayed into the future by the client's "3, 2, 1, Поехали!" intro
+        // (play/duel/page.tsx hides the question behind that overlay for
+        // exactly this long) — otherwise the real 15s answering window
+        // would already be a few seconds shorter by the time either player
+        // actually sees question 1.
+        currentQuestionStartedAt: new Date(Date.now() + DUEL_INTRO_TOTAL_MS),
       },
     });
 

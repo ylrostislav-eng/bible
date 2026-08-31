@@ -9,6 +9,7 @@ import type {
 } from '@bible-arena/shared';
 import {
   DIFFICULTY_NAMES,
+  DUEL_INTRO_STEP_MS,
   DUEL_QUESTION_COUNT_DEFAULT,
   DUEL_QUESTION_COUNT_MAX,
   DUEL_QUESTION_COUNT_MIN,
@@ -29,12 +30,6 @@ import { pickEncouragement } from '@/lib/encouragement';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 
 const POLL_INTERVAL_MS = 1200;
-/** How long each step of the pre-match "3, 2, 1, Поехали!" countdown stays
- * on screen. Purely cosmetic — the server's actual per-question timer
- * already starts ticking the moment the duel goes IN_PROGRESS, so both
- * players see the same countdown at (roughly) the same time and lose the
- * same few seconds of it, keeping things fair between them either way. */
-const DUEL_INTRO_STEP_MS = 700;
 /** Set by the friends-tab "Вызвать" flow right before it navigates here, so
  * this page can pick the freshly created session up without a URL param
  * (which would force a Suspense boundary around an otherwise fully static
@@ -173,6 +168,11 @@ export default function DuelPage() {
   // beat, otherwise it's the number itself. `introShownForRef` makes sure
   // it only ever starts once per session (every poll tick would otherwise
   // re-trigger it, since status/questionNumber stay the same for many ticks).
+  // Not just cosmetic timing: `DuelService.startDuel` delays the real
+  // `currentQuestionStartedAt` by the exact same `DUEL_INTRO_TOTAL_MS`, so
+  // this countdown runs *before* the actual 15s answering window starts
+  // rather than eating into it — both players still get the full window
+  // once the question is actually revealed.
   const [introStep, setIntroStep] = useState<number | null>(null);
   const introShownForRef = useRef<string | null>(null);
 

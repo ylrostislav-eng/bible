@@ -4,6 +4,17 @@ export const DUEL_QUESTION_COUNT_MIN = 5;
 export const DUEL_QUESTION_COUNT_MAX = 50;
 export const DUEL_QUESTION_COUNT_DEFAULT = 10;
 
+/** Duration of one step of the pre-match "3, 2, 1, Поехали!" countdown
+ * (`play/duel/page.tsx`) — shared with the backend so
+ * `DuelService.startDuel` can delay the first question's real
+ * `currentQuestionStartedAt` by the same total amount. Without that, the
+ * countdown would just eat into everyone's actual 15s answering window
+ * instead of running before it starts. */
+export const DUEL_INTRO_STEP_MS = 700;
+/** 3, 2, 1, "Поехали!" */
+export const DUEL_INTRO_STEPS = 4;
+export const DUEL_INTRO_TOTAL_MS = DUEL_INTRO_STEP_MS * DUEL_INTRO_STEPS;
+
 export interface CreateDuelInput {
   questionCount: number;
 }
