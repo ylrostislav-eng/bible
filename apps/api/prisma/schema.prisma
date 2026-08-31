@@ -67,6 +67,13 @@ model User {
   duelRatingWinsToday Int       @default(0)
   duelRatingCapDate   DateTime? @db.Date
 
+  /// Separate daily rating cap for room matches (3+ players) — tracks raw
+  /// points earned today, not a win count, since room rewards are
+  /// percentile-based rather than win/loss. Clips the overflow of a single
+  /// game's reward rather than zeroing it — see `RoomsService.applyRoomRewards`.
+  roomRatingPointsToday Int       @default(0)
+  roomRatingCapDate     DateTime? @db.Date
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -77,6 +84,11 @@ model User {
   receivedFriendRequests FriendRequest[] @relation("ReceivedFriendRequests")
   /// One row per direction of a friendship — see `Friendship` doc comment.
   friendships            Friendship[]    @relation("FriendshipOwner")
+
+  /// Bans are scoped to the leader who issued them — a user banned from one
+  /// leader's rooms can still freely join everyone else's.
+  roomBansIssued   RoomBan[] @relation("RoomBansIssued")
+  roomBansReceived RoomBan[] @relation("RoomBansReceived")
 
   @@index([rating])
   @@map("users")
@@ -272,18 +284,29 @@ model Question {
 enum GameMode {
   SOLO
   DUEL
+  ROOM
 }
 
 enum GameSessionStatus {
   WAITING_FOR_OPPONENT
+  /// ROOM-only: participants have joined and are toggling ready; the leader
+  /// starts the match once everyone (but themselves) is ready.
+  LOBBY
   IN_PROGRESS
   COMPLETED
   ABANDONED
 }
 
-/// One played game — solo or a duel between two participants. Rooms/
-/// tournaments will reuse the same participants model with more than two
-/// rows per session.
+enum RoomVisibility {
+  /// Listed to everyone in-app; anyone can join freely, no password.
+  PUBLIC
+  /// Hidden from the public list; joining requires the room's `password`.
+  PRIVATE
+}
+
+/// One played game — solo, a duel between two participants, or a room with
+/// up to `ROOM_MAX_PARTICIPANTS` players. Rooms reuse the same participants
+/// model with more than two rows per session.
 model GameSession {
   id String @id @default(cuid())
 
@@ -291,9 +314,11 @@ model GameSession {
   status        GameSessionStatus @default(IN_PROGRESS)
   questionCount Int
 
-  /// 6-character code used to join a DUEL; null for SOLO sessions. Doubles
-  /// as a fallback/share code for a friend challenge, but only `targetUserId`
-  /// (when set) may actually join via it — see `DuelService.join`.
+  /// 6-character code used to join a DUEL or ROOM; null for SOLO sessions.
+  /// For a friend-challenge DUEL it's a fallback/share code, but only
+  /// `targetUserId` (when set) may actually join via it — see
+  /// `DuelService.join`. For a ROOM it's always usable to join (a PRIVATE
+  /// room additionally requires `password`).
   inviteCode String? @unique
 
   /// Set only when this DUEL was created as a direct challenge to a
@@ -301,13 +326,24 @@ model GameSession {
   /// code anyone can join with.
   targetUserId String?
 
+  /// ROOM-only fields below — null/unused for SOLO and DUEL.
+  roomName        String?
+  visibility      RoomVisibility?
+  /// Auto-generated, non-colliding-with-recent-passwords string required to
+  /// join a PRIVATE room; null for PUBLIC rooms (and non-rooms).
+  password        String?
+  /// The room's creator — controls kick/ban/start. Also has a
+  /// `GameParticipant.isLeader` row for the same user, kept in sync.
+  leaderId        String?
+  maxParticipants Int?
+
   /// Index (0-based) of the question currently being answered.
   currentOrder Int @default(0)
   /// Server timestamp when the current question was presented — the only
   /// source of truth for speed-based scoring; client-reported timings are
   /// never trusted.
   currentQuestionStartedAt DateTime?
-  /// Seconds allowed per question in a duel; unused for SOLO.
+  /// Seconds allowed per question in a duel/room; unused for SOLO.
   timeLimitSeconds Int @default(15)
 
   startedAt  DateTime  @default(now())
@@ -317,6 +353,7 @@ model GameSession {
   answers      GameAnswer[]
 
   @@index([targetUserId, status])
+  @@index([mode, status, visibility])
   @@map("game_sessions")
 }
 
@@ -329,6 +366,9 @@ model GameParticipant {
   userId    String
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// ROOM-only: display order in the lobby/game participant list.
+  joinedAt DateTime @default(now())
+
   correctCount Int @default(0)
   score        Int @default(0)
   /// Current streak of consecutive correct answers, reset to 0 on a miss.
@@ -336,15 +376,40 @@ model GameParticipant {
 
   xpEarned    Int @default(0)
   coinsEarned Int @default(0)
-  /// Rating actually applied for this game (duels only; solo never touches
-  /// rating). Zero if `ratingCapped` — the daily duel-win cap zeroed it out.
+  /// Rating actually applied for this game (duels/rooms only; solo never
+  /// touches rating). Zero if `ratingCapped` — the daily cap clipped it.
   ratingDelta  Int     @default(0)
   ratingCapped Boolean @default(false)
+
+  /// ROOM-only: the creator, who controls kick/ban/start. Mirrors
+  /// `GameSession.leaderId` for this row's `userId`.
+  isLeader Boolean @default(false)
+  /// ROOM-only: toggled by every non-leader participant before the leader
+  /// can start the match. Always false once the room leaves LOBBY.
+  isReady  Boolean @default(false)
 
   answers GameAnswer[]
 
   @@unique([sessionId, userId])
   @@map("game_participants")
+}
+
+/// A leader-scoped block: `bannedUserId` can never join any ROOM led by
+/// `leaderId` again (existing rooms they're already in are unaffected — a
+/// ban only blocks future joins). Independent of other leaders' rooms.
+model RoomBan {
+  id String @id @default(cuid())
+
+  leaderId String
+  leader   User   @relation("RoomBansIssued", fields: [leaderId], references: [id], onDelete: Cascade)
+
+  bannedUserId String
+  bannedUser   User   @relation("RoomBansReceived", fields: [bannedUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([leaderId, bannedUserId])
+  @@map("room_bans")
 }
 
 /// One question served to one participant, in order. Created up front for

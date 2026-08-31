@@ -6,6 +6,12 @@ export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
 
+/** Used for the room WebSocket handshake, which can't attach an
+ * `Authorization` header the way `apiClient` does. */
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

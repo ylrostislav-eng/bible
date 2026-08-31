@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "game_participants" ADD COLUMN     "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

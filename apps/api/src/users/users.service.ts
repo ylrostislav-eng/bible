@@ -10,6 +10,7 @@ import type {
   UserProfile,
 } from '@bible-arena/shared';
 import {
+  ROOM_DAILY_RATING_CAP,
   getTitleForRating,
   STREAK_GOAL_COIN_REWARD,
   XP_PER_LEVEL,
@@ -202,6 +203,73 @@ export class UsersService {
         ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
         ...(params.outcome === 'draw' && { gamesDrawn: { increment: 1 } }),
         ...(params.cappedWin && { duelRatingWinsToday, duelRatingCapDate }),
+      },
+    });
+
+    return { user: updated, leveledUp, ratingDelta, ratingCapped };
+  }
+
+  /**
+   * Applies XP/coin/rating rewards from a finished room match (3+ players).
+   * Unlike the 1v1 duel cap (a per-day win count that zeroes rating past the
+   * limit), the room cap tracks raw points earned today and *clips* a single
+   * reward down to whatever headroom remains — a player near the cap still
+   * gets a partial payout instead of nothing. Penalties (a negative
+   * `ratingDelta`) are never capped and don't count against the earn cap.
+   */
+  async applyRoomRewards(
+    userId: string,
+    params: { xpEarned: number; coinsEarned: number; ratingDelta: number },
+  ): Promise<{
+    user: User;
+    leveledUp: boolean;
+    ratingDelta: number;
+    ratingCapped: boolean;
+  }> {
+    const user = await this.findById(userId);
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const capDate = user.roomRatingCapDate
+      ? new Date(user.roomRatingCapDate)
+      : null;
+    if (capDate) capDate.setUTCHours(0, 0, 0, 0);
+    const isNewDay = !capDate || capDate.getTime() !== today.getTime();
+    const pointsToday = isNewDay ? 0 : user.roomRatingPointsToday;
+
+    let ratingDelta = params.ratingDelta;
+    let ratingCapped = false;
+    let newPointsToday = pointsToday;
+
+    if (ratingDelta > 0) {
+      const remaining = ROOM_DAILY_RATING_CAP - pointsToday;
+      if (remaining <= 0) {
+        ratingDelta = 0;
+        ratingCapped = true;
+      } else if (ratingDelta > remaining) {
+        ratingDelta = remaining;
+        ratingCapped = true;
+        newPointsToday = ROOM_DAILY_RATING_CAP;
+      } else {
+        newPointsToday = pointsToday + ratingDelta;
+      }
+    }
+
+    const experience = user.experience + params.xpEarned;
+    const level = Math.floor(experience / XP_PER_LEVEL) + 1;
+    const leveledUp = level > user.level;
+    const rating = user.rating + ratingDelta;
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        experience,
+        level,
+        rating,
+        coins: { increment: params.coinsEarned },
+        gamesPlayed: { increment: 1 },
+        roomRatingPointsToday: newPointsToday,
+        roomRatingCapDate: today,
       },
     });
 

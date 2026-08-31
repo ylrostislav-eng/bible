@@ -1,0 +1,110 @@
+'use client';
+
+import type { RoomAnswerInput, RoomState } from '@bible-arena/shared';
+import { ROOM_WS_EVENTS, ROOM_WS_NAMESPACE, ROOM_WS_SERVER_EVENTS } from '@bible-arena/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, type Socket } from 'socket.io-client';
+import { getAccessToken } from './api';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+export type RoomRemovedReason = 'kicked' | 'banned';
+
+/**
+ * Owns the live WebSocket connection for one room. REST creates/joins the
+ * room and hands back a `sessionId`; everything from that point — lobby
+ * updates, ready-up, kick/ban, start, answering, the final reveal — arrives
+ * as pushed `RoomState` snapshots instead of polling, since a room can have
+ * up to `ROOM_MAX_PARTICIPANTS` players all needing the same live view.
+ */
+export function useRoomSocket(sessionId: string | null) {
+  const [roomState, setRoomState] = useState<RoomState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<RoomRemovedReason | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return undefined;
+
+    const token = getAccessToken();
+    if (!token) {
+      const reportMissingToken = () => setError('Не удалось подключиться — авторизуйтесь заново');
+      reportMissingToken();
+      return undefined;
+    }
+
+    const socket = io(`${API_URL}${ROOM_WS_NAMESPACE}`, {
+      auth: { token },
+      transports: ['websocket'],
+    });
+    socketRef.current = socket;
+
+    function handleConnect() {
+      socket.emit(ROOM_WS_EVENTS.enter, { sessionId });
+    }
+    function handleState(state: RoomState) {
+      setRoomState(state);
+    }
+    function handleError(payload: { message: string }) {
+      setError(payload.message);
+    }
+    function handleKicked() {
+      setRemoved('kicked');
+    }
+    function handleBanned() {
+      setRemoved('banned');
+    }
+
+    socket.on('connect', handleConnect);
+    socket.on(ROOM_WS_SERVER_EVENTS.state, handleState);
+    // Also carries a "the leader closed the room" notice (see
+    // `RoomsGateway.closeRoom`) — shown the same way as any other action
+    // failure, since there's nothing further the viewer can do either way.
+    socket.on(ROOM_WS_SERVER_EVENTS.error, handleError);
+    socket.on(ROOM_WS_SERVER_EVENTS.kicked, handleKicked);
+    socket.on(ROOM_WS_SERVER_EVENTS.banned, handleBanned);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off(ROOM_WS_SERVER_EVENTS.state, handleState);
+      socket.off(ROOM_WS_SERVER_EVENTS.error, handleError);
+      socket.off(ROOM_WS_SERVER_EVENTS.kicked, handleKicked);
+      socket.off(ROOM_WS_SERVER_EVENTS.banned, handleBanned);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [sessionId]);
+
+  const setReady = useCallback(
+    (ready: boolean) => {
+      if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.ready, { sessionId, ready });
+    },
+    [sessionId],
+  );
+  const kick = useCallback(
+    (userId: string) => {
+      if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.kick, { sessionId, userId });
+    },
+    [sessionId],
+  );
+  const ban = useCallback(
+    (userId: string) => {
+      if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.ban, { sessionId, userId });
+    },
+    [sessionId],
+  );
+  const start = useCallback(() => {
+    if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.start, { sessionId });
+  }, [sessionId]);
+  const answer = useCallback(
+    (input: RoomAnswerInput) => {
+      if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.answer, { sessionId, ...input });
+    },
+    [sessionId],
+  );
+  const leave = useCallback(() => {
+    if (sessionId) socketRef.current?.emit(ROOM_WS_EVENTS.leave, { sessionId });
+  }, [sessionId]);
+
+  return { roomState, error, removed, setReady, kick, ban, start, answer, leave };
+}

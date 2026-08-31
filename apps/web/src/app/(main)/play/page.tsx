@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FriendsIcon, PlayIcon } from '@/components/icons/nav-icons';
+import { FriendsIcon, PlayIcon, TournamentIcon } from '@/components/icons/nav-icons';
 import { Card } from '@/components/ui/card';
 
 export default function PlayModePage() {
@@ -30,6 +30,20 @@ export default function PlayModePage() {
           <div>
             <p className="font-semibold">Дуэль</p>
             <p className="text-sm text-text-secondary">Сразитесь с другом по коду приглашения</p>
+          </div>
+        </Card>
+      </Link>
+
+      <Link href="/play/room">
+        <Card className="flex-row items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-hover">
+            <TournamentIcon className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <p className="font-semibold">Комната</p>
+            <p className="text-sm text-text-secondary">
+              До 20 игроков одновременно, по коду или в открытом списке
+            </p>
           </div>
         </Card>
       </Link>
