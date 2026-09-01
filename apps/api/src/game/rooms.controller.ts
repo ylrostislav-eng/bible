@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
 import { BanUserDto } from './dto/ban-user.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { InviteToRoomDto } from './dto/invite-to-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RoomsService } from './rooms.service';
 
@@ -55,5 +56,37 @@ export class RoomsController {
   @Delete('banned/:userId')
   unbanUser(@CurrentUser() user: JwtPayload, @Param('userId') userId: string) {
     return this.roomsService.unbanUser(user.sub, userId);
+  }
+
+  // ---- friend invites ----
+
+  @Get('invites/pending')
+  listPendingInvites(@CurrentUser() user: JwtPayload) {
+    return this.roomsService.listPendingInvites(user.sub);
+  }
+
+  @Post('invites/:inviteId/accept')
+  acceptInvite(
+    @CurrentUser() user: JwtPayload,
+    @Param('inviteId') inviteId: string,
+  ) {
+    return this.roomsService.acceptInvite(user.sub, inviteId);
+  }
+
+  @Post('invites/:inviteId/decline')
+  declineInvite(
+    @CurrentUser() user: JwtPayload,
+    @Param('inviteId') inviteId: string,
+  ) {
+    return this.roomsService.declineInvite(user.sub, inviteId);
+  }
+
+  @Post(':sessionId/invite')
+  invite(
+    @CurrentUser() user: JwtPayload,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: InviteToRoomDto,
+  ) {
+    return this.roomsService.invite(user.sub, sessionId, dto.userId);
   }
 }

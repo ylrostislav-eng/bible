@@ -1,6 +1,11 @@
 'use client';
 
-import type { CreateRoomResponse, JoinRoomResponse, RoomSummary } from '@bible-arena/shared';
+import type {
+  CreateRoomResponse,
+  JoinRoomResponse,
+  RoomInviteView,
+  RoomSummary,
+} from '@bible-arena/shared';
 import {
   DIFFICULTY_NAMES,
   DUEL_QUESTION_COUNT_DEFAULT,
@@ -14,6 +19,7 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
+import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
@@ -33,6 +39,8 @@ export default function RoomPage() {
 
   const [menu, setMenu] = useState<Menu>('menu');
   const [publicRooms, setPublicRooms] = useState<RoomSummary[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<RoomInviteView[]>([]);
+  const [respondingInviteId, setRespondingInviteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +60,7 @@ export default function RoomPage() {
   const [, setRewardsApplied] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [displaySeconds, setDisplaySeconds] = useState<number | null>(null);
+  const [invitePickerOpen, setInvitePickerOpen] = useState(false);
 
   const {
     roomState,
@@ -114,6 +123,29 @@ export default function RoomPage() {
       try {
         const rooms = await apiClient.get<RoomSummary[]>('/rooms');
         if (!cancelled) setPublicRooms(rooms);
+      } catch {
+        // Transient poll failures are ignored — the next tick will retry.
+      }
+    }
+
+    void load();
+    const interval = setInterval(() => void load(), PUBLIC_ROOMS_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId, menu]);
+
+  // Direct invites from friends — polled the same way as the public room
+  // list, both only while sitting on the menu screen with no active room.
+  useEffect(() => {
+    if (sessionId || menu !== 'menu') return undefined;
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const invites = await apiClient.get<RoomInviteView[]>('/rooms/invites/pending');
+        if (!cancelled) setPendingInvites(invites);
       } catch {
         // Transient poll failures are ignored — the next tick will retry.
       }
@@ -239,6 +271,32 @@ export default function RoomPage() {
     }
   }, []);
 
+  const acceptInvite = useCallback(async (inviteId: string) => {
+    setRespondingInviteId(inviteId);
+    setError(null);
+    try {
+      const res = await apiClient.post<JoinRoomResponse>(`/rooms/invites/${inviteId}/accept`);
+      setPendingInvites((invites) => invites.filter((i) => i.inviteId !== inviteId));
+      setSessionId(res.sessionId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось присоединиться к комнате');
+    } finally {
+      setRespondingInviteId(null);
+    }
+  }, []);
+
+  const declineInvite = useCallback(async (inviteId: string) => {
+    setRespondingInviteId(inviteId);
+    try {
+      await apiClient.post(`/rooms/invites/${inviteId}/decline`);
+      setPendingInvites((invites) => invites.filter((i) => i.inviteId !== inviteId));
+    } catch {
+      // The next poll will re-sync the list either way.
+    } finally {
+      setRespondingInviteId(null);
+    }
+  }, []);
+
   const reset = useCallback(() => {
     setSessionId(null);
     setActiveGame(null);
@@ -348,6 +406,36 @@ export default function RoomPage() {
               </div>
             )}
           </Card>
+
+          {isLeader && (
+            <Card className="flex-col gap-3">
+              <button
+                onClick={() => setInvitePickerOpen((open) => !open)}
+                className="flex items-center justify-between text-sm font-semibold text-text-secondary"
+              >
+                <span>Пригласить друзей</span>
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  className={clsx('h-4 w-4 transition-transform', invitePickerOpen && 'rotate-180')}
+                >
+                  <path
+                    d="M5 7.5l5 5 5-5"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              {invitePickerOpen && (
+                <RoomInvitePicker
+                  sessionId={sessionId}
+                  excludeUserIds={roomState.participants.map((p) => p.userId)}
+                />
+              )}
+            </Card>
+          )}
 
           <Card className="flex-col gap-3">
             <p className="text-sm font-semibold text-text-secondary">Участники</p>
@@ -771,6 +859,39 @@ export default function RoomPage() {
       <Button onClick={() => setMenu('join')} variant="secondary">
         Присоединиться по коду
       </Button>
+
+      {pendingInvites.length > 0 && (
+        <Card className="flex-col gap-3">
+          <p className="text-sm font-semibold text-text-secondary">Входящие приглашения</p>
+          {pendingInvites.map((invite) => (
+            <div key={invite.inviteId} className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{invite.roomName ?? 'Комната'}</p>
+                <p className="text-xs text-text-muted">
+                  {invite.fromNickname ?? 'Друг'} зовёт вас · {invite.participantCount}/
+                  {invite.maxParticipants} · {invite.questionCount} вопросов
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => void acceptInvite(invite.inviteId)}
+                  disabled={respondingInviteId === invite.inviteId}
+                  className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary disabled:opacity-50"
+                >
+                  Присоединиться
+                </button>
+                <button
+                  onClick={() => void declineInvite(invite.inviteId)}
+                  disabled={respondingInviteId === invite.inviteId}
+                  className="h-9 rounded-lg bg-surface-hover px-3 text-xs font-semibold text-text-secondary disabled:opacity-50"
+                >
+                  Отклонить
+                </button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
 
       <Card className="flex-col gap-3">
         <p className="text-sm font-semibold text-text-secondary">Открытые комнаты</p>

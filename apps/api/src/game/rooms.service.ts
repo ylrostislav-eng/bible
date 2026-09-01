@@ -13,6 +13,7 @@ import {
   type BannedUserView,
   type CreateRoomResponse,
   type JoinRoomResponse,
+  type RoomInviteView,
   type RoomParticipantView,
   type RoomState,
   type RoomStateStatus,
@@ -370,6 +371,151 @@ export class RoomsService {
     }));
   }
 
+  // ---- friend invites (leader picks a friend from the lobby to join this
+  // specific room — distinct from the generic invite code/password anyone
+  // can use) ----
+
+  /** Leader-only, LOBBY-only. Upserts rather than erroring on a repeat
+   * invite to the same friend — clicking "Пригласить" again is a harmless
+   * no-op, not a mistake worth surfacing. */
+  async invite(
+    leaderId: string,
+    sessionId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    const session = await this.loadSession(sessionId);
+    this.requireLeader(session, leaderId);
+    if (session.status !== 'LOBBY') {
+      throw new ConflictException(
+        'Комната уже началась — приглашать больше нельзя',
+      );
+    }
+    if (targetUserId === leaderId) {
+      throw new BadRequestException('Нельзя пригласить самого себя');
+    }
+    if (session.participants.some((p) => p.userId === targetUserId)) {
+      throw new ConflictException('Этот игрок уже в комнате');
+    }
+
+    const friendship = await this.prisma.friendship.findUnique({
+      where: { userId_friendId: { userId: leaderId, friendId: targetUserId } },
+    });
+    if (!friendship) {
+      throw new ConflictException('Приглашать можно только друзей');
+    }
+    // Same "don't let this person reach me" block as the duel challenge —
+    // the target having banned the leader blocks the invite outright.
+    const ban = await this.prisma.roomBan.findUnique({
+      where: {
+        leaderId_bannedUserId: {
+          leaderId: targetUserId,
+          bannedUserId: leaderId,
+        },
+      },
+    });
+    if (ban) {
+      throw new ForbiddenException('Этот игрок заблокировал вас');
+    }
+
+    await this.prisma.roomInvite.upsert({
+      where: { sessionId_toUserId: { sessionId, toUserId: targetUserId } },
+      create: { sessionId, fromUserId: leaderId, toUserId: targetUserId },
+      update: {},
+    });
+  }
+
+  /** Every pending invite addressed to this user, for rooms still in
+   * LOBBY — surfaced on the room menu screen so they can join with one tap. */
+  async listPendingInvites(userId: string): Promise<RoomInviteView[]> {
+    const invites = await this.prisma.roomInvite.findMany({
+      where: { toUserId: userId, session: { status: 'LOBBY' } },
+      include: {
+        session: { include: { participants: true } },
+        fromUser: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return invites.map((invite) => ({
+      inviteId: invite.id,
+      sessionId: invite.sessionId,
+      roomName: invite.session.roomName,
+      fromNickname: invite.fromUser.nickname,
+      participantCount: invite.session.participants.length,
+      maxParticipants: invite.session.maxParticipants ?? ROOM_MAX_PARTICIPANTS,
+      questionCount: invite.session.questionCount,
+      createdAt: invite.createdAt.toISOString(),
+    }));
+  }
+
+  /** Joins directly — no code or password needed, since a personal invite
+   * from the leader already establishes the intent both ways. Re-checks
+   * capacity/ban regardless: either could have changed between the invite
+   * being sent and this being accepted. */
+  async acceptInvite(
+    userId: string,
+    inviteId: string,
+  ): Promise<JoinRoomResponse> {
+    const invite = await this.prisma.roomInvite.findUnique({
+      where: { id: inviteId },
+    });
+    if (!invite || invite.toUserId !== userId) {
+      throw new NotFoundException('Приглашение не найдено');
+    }
+
+    const session = await this.loadSession(invite.sessionId);
+    if (session.status !== 'LOBBY') {
+      await this.prisma.roomInvite.deleteMany({
+        where: { sessionId: session.id },
+      });
+      throw new ConflictException('Эта комната уже началась или завершена');
+    }
+    if (session.participants.some((p) => p.userId === userId)) {
+      await this.prisma.roomInvite.delete({ where: { id: inviteId } });
+      throw new ConflictException('Вы уже в этой комнате');
+    }
+    if (
+      session.participants.length >=
+      (session.maxParticipants ?? ROOM_MAX_PARTICIPANTS)
+    ) {
+      throw new ConflictException('Комната заполнена');
+    }
+    if (session.leaderId) {
+      const ban = await this.prisma.roomBan.findUnique({
+        where: {
+          leaderId_bannedUserId: {
+            leaderId: session.leaderId,
+            bannedUserId: userId,
+          },
+        },
+      });
+      if (ban) {
+        await this.prisma.roomInvite.delete({ where: { id: inviteId } });
+        throw new ForbiddenException(
+          'Лидер этой комнаты заблокировал вас в своих комнатах',
+        );
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.gameParticipant.create({
+        data: { sessionId: session.id, userId },
+      }),
+      this.prisma.roomInvite.delete({ where: { id: inviteId } }),
+    ]);
+
+    return { sessionId: session.id };
+  }
+
+  async declineInvite(userId: string, inviteId: string): Promise<void> {
+    const invite = await this.prisma.roomInvite.findUnique({
+      where: { id: inviteId },
+    });
+    if (!invite || invite.toUserId !== userId) {
+      throw new NotFoundException('Приглашение не найдено');
+    }
+    await this.prisma.roomInvite.delete({ where: { id: inviteId } });
+  }
+
   /** LOBBY-only. The leader leaving closes the room entirely (no leadership
    * transfer) — simplest behavior for an unspecified edge case, and matches
    * "the leader controls the room" as the room's defining property. */
@@ -385,6 +531,8 @@ export class RoomsService {
         where: { id: sessionId },
         data: { status: 'ABANDONED', finishedAt: new Date() },
       });
+      // No one still holds a pending invite to a room that no longer exists.
+      await this.prisma.roomInvite.deleteMany({ where: { sessionId } });
       return null;
     }
 
@@ -445,6 +593,9 @@ export class RoomsService {
         currentQuestionStartedAt: new Date(Date.now() + ROOM_INTRO_TOTAL_MS),
       },
     });
+    // Any friend who was invited but never joined missed their window —
+    // there's no "invite to a running game" concept.
+    await this.prisma.roomInvite.deleteMany({ where: { sessionId } });
 
     return this.buildState(await this.loadSession(sessionId), leaderId);
   }

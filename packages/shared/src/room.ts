@@ -201,3 +201,22 @@ export interface BannedUserView {
 export interface BanUserInput {
   userId: string;
 }
+
+export interface InviteToRoomInput {
+  userId: string;
+}
+
+/** A direct invite sitting in the invited friend's pending list — surfaced
+ * on the room menu screen (mirroring the duel tab's pending-challenges
+ * card) so they can join with one tap, no code or password needed. Only
+ * ever exists while the room is still LOBBY — see `RoomsService.start`. */
+export interface RoomInviteView {
+  inviteId: string;
+  sessionId: string;
+  roomName: string | null;
+  fromNickname: string | null;
+  participantCount: number;
+  maxParticipants: number;
+  questionCount: number;
+  createdAt: string;
+}

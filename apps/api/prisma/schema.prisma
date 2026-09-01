@@ -93,6 +93,9 @@ model User {
   sentChatMessages     ChatMessage[] @relation("ChatMessagesSent")
   receivedChatMessages ChatMessage[] @relation("ChatMessagesReceived")
 
+  roomInvitesSent     RoomInvite[] @relation("RoomInvitesSent")
+  roomInvitesReceived RoomInvite[] @relation("RoomInvitesReceived")
+
   @@index([rating])
   @@map("users")
 }
@@ -382,6 +385,7 @@ model GameSession {
 
   participants GameParticipant[]
   answers      GameAnswer[]
+  roomInvites  RoomInvite[]
 
   @@index([targetUserId, status])
   @@index([mode, status, visibility])
@@ -441,6 +445,31 @@ model RoomBan {
 
   @@unique([leaderId, bannedUserId])
   @@map("room_bans")
+}
+
+/// A direct invite from a room's leader to one specific friend, sent from
+/// the lobby's friend picker — distinct from the generic invite code/
+/// password (which anyone can use), this is a personal "come join" that
+/// shows up in the invited friend's pending-invites list and lets them join
+/// with one tap, no code or password needed. Cleared once the room leaves
+/// LOBBY (starts or closes) — see `RoomsService.start`/`close`.
+model RoomInvite {
+  id String @id @default(cuid())
+
+  sessionId String
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  fromUserId String
+  fromUser   User   @relation("RoomInvitesSent", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  toUserId String
+  toUser   User   @relation("RoomInvitesReceived", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([sessionId, toUserId])
+  @@index([toUserId])
+  @@map("room_invites")
 }
 
 /// One question served to one participant, in order. Created up front for
