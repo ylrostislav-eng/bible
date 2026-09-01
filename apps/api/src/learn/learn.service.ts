@@ -146,8 +146,14 @@ export class LearnService {
       dto.answerIndex !== undefined &&
       dto.answerIndex === current.shuffledCorrectIndex;
 
-    await this.prisma.chapterCheckAnswer.update({
-      where: { id: current.id },
+    // Claims this answer atomically instead of a plain update — a
+    // double-click or a flaky-connection retry can fire this same request
+    // twice, and a plain update would let both writes through (double
+    // score, and on the last question, double rewards from two runs of the
+    // `finished` branch below). `updateMany`'s conditional `where` means
+    // only the first of two racing calls actually claims it.
+    const claim = await this.prisma.chapterCheckAnswer.updateMany({
+      where: { id: current.id, answered: false },
       data: {
         answered: true,
         selectedIndex: dto.answerIndex ?? null,
@@ -156,6 +162,9 @@ export class LearnService {
         timeTakenMs,
       },
     });
+    if (claim.count === 0) {
+      throw new ConflictException('Вы уже ответили на этот вопрос');
+    }
 
     const correctCount = await this.prisma.chapterCheckAnswer.count({
       where: { sessionId, correct: true },

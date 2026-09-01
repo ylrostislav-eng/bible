@@ -15,6 +15,7 @@ import {
   STREAK_GOAL_COIN_REWARD,
   XP_PER_LEVEL,
 } from '@bible-arena/shared';
+import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
@@ -39,6 +40,32 @@ const INACTIVITY_DECAY_PER_DAY = 1;
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Runs `fn` with the user row locked for the duration of the transaction
+   * (`SELECT ... FOR UPDATE`), passing in a freshly re-read `user` taken
+   * *after* the lock is acquired. Every reward path below reads a user,
+   * derives new absolute values from it (experience, rating, streak...) and
+   * writes them back — without a lock, two rewards finishing around the same
+   * moment (e.g. a duel and a solo game ending together) can both read the
+   * same starting values and the second write silently clobbers the first's
+   * result, losing or double-counting a reward. `coins` doesn't need this
+   * (it's a Prisma `increment`, already atomic) — this is for every field
+   * that isn't.
+   */
+  private async withUserLock<T>(
+    userId: string,
+    fn: (tx: Prisma.TransactionClient, user: User) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "users" WHERE id = ${userId} FOR UPDATE`;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+      return fn(tx, user);
+    });
+  }
 
   async findOrCreateByTelegramId(params: {
     telegramId: bigint;
@@ -105,29 +132,43 @@ export class UsersService {
    * within the same day so this doesn't hammer the DB on every request.
    */
   async touchActivity(userId: string): Promise<User> {
+    // Called on every login/profile fetch, so the common case (already
+    // touched today) must stay a cheap, lock-free read — only fall through
+    // to the locked read-modify-write when a write actually looks needed.
     const user = await this.findById(userId);
     const now = new Date();
     const daysSinceActive = Math.floor(
       (now.getTime() - user.lastActiveAt.getTime()) / 86_400_000,
     );
-
     if (daysSinceActive < 1) {
       return user;
     }
-    if (daysSinceActive <= INACTIVITY_GRACE_DAYS) {
-      return this.prisma.user.update({
-        where: { id: userId },
-        data: { lastActiveAt: now },
-      });
-    }
 
-    const decayDays = daysSinceActive - INACTIVITY_GRACE_DAYS;
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        rating: user.rating - decayDays * INACTIVITY_DECAY_PER_DAY,
-        lastActiveAt: now,
-      },
+    return this.withUserLock(userId, async (tx, locked) => {
+      // Re-check under the lock — another concurrent call may have already
+      // touched (and possibly decayed) this user between the read above and
+      // the lock being acquired.
+      const daysSinceActiveLocked = Math.floor(
+        (now.getTime() - locked.lastActiveAt.getTime()) / 86_400_000,
+      );
+      if (daysSinceActiveLocked < 1) {
+        return locked;
+      }
+      if (daysSinceActiveLocked <= INACTIVITY_GRACE_DAYS) {
+        return tx.user.update({
+          where: { id: userId },
+          data: { lastActiveAt: now },
+        });
+      }
+
+      const decayDays = daysSinceActiveLocked - INACTIVITY_GRACE_DAYS;
+      return tx.user.update({
+        where: { id: userId },
+        data: {
+          rating: locked.rating - decayDays * INACTIVITY_DECAY_PER_DAY,
+          lastActiveAt: now,
+        },
+      });
     });
   }
 
@@ -154,59 +195,59 @@ export class UsersService {
     ratingDelta: number;
     ratingCapped: boolean;
   }> {
-    const user = await this.findById(userId);
+    return this.withUserLock(userId, async (tx, user) => {
+      let ratingDelta = params.ratingDelta ?? 0;
+      let ratingCapped = false;
+      let duelRatingWinsToday = user.duelRatingWinsToday;
+      let duelRatingCapDate = user.duelRatingCapDate;
 
-    let ratingDelta = params.ratingDelta ?? 0;
-    let ratingCapped = false;
-    let duelRatingWinsToday = user.duelRatingWinsToday;
-    let duelRatingCapDate = user.duelRatingCapDate;
+      if (params.cappedWin) {
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const capDate = user.duelRatingCapDate
+          ? new Date(user.duelRatingCapDate)
+          : null;
+        if (capDate) capDate.setUTCHours(0, 0, 0, 0);
+        const isNewDay = !capDate || capDate.getTime() !== today.getTime();
 
-    if (params.cappedWin) {
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
-      const capDate = user.duelRatingCapDate
-        ? new Date(user.duelRatingCapDate)
-        : null;
-      if (capDate) capDate.setUTCHours(0, 0, 0, 0);
-      const isNewDay = !capDate || capDate.getTime() !== today.getTime();
+        duelRatingWinsToday = isNewDay ? 0 : user.duelRatingWinsToday;
+        duelRatingCapDate = today;
 
-      duelRatingWinsToday = isNewDay ? 0 : user.duelRatingWinsToday;
-      duelRatingCapDate = today;
-
-      if (duelRatingWinsToday >= DAILY_DUEL_RATING_WIN_CAP) {
-        ratingDelta = 0;
-        ratingCapped = true;
-      } else {
-        duelRatingWinsToday += 1;
+        if (duelRatingWinsToday >= DAILY_DUEL_RATING_WIN_CAP) {
+          ratingDelta = 0;
+          ratingCapped = true;
+        } else {
+          duelRatingWinsToday += 1;
+        }
       }
-    }
 
-    const experience = user.experience + params.xpEarned;
-    const level = Math.floor(experience / XP_PER_LEVEL) + 1;
-    const leveledUp = level > user.level;
-    const rating = user.rating + ratingDelta;
+      const experience = user.experience + params.xpEarned;
+      const level = Math.floor(experience / XP_PER_LEVEL) + 1;
+      const leveledUp = level > user.level;
+      const rating = user.rating + ratingDelta;
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        experience,
-        level,
-        rating,
-        coins: { increment: params.coinsEarned },
-        gamesPlayed: { increment: 1 },
-        // `outcome` is only ever passed for duels — solo games leave it
-        // undefined, so this is how a duel is told apart from a solo game.
-        ...(params.outcome !== undefined && {
-          duelsPlayed: { increment: 1 },
-        }),
-        ...(params.outcome === 'win' && { gamesWon: { increment: 1 } }),
-        ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
-        ...(params.outcome === 'draw' && { gamesDrawn: { increment: 1 } }),
-        ...(params.cappedWin && { duelRatingWinsToday, duelRatingCapDate }),
-      },
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: {
+          experience,
+          level,
+          rating,
+          coins: { increment: params.coinsEarned },
+          gamesPlayed: { increment: 1 },
+          // `outcome` is only ever passed for duels — solo games leave it
+          // undefined, so this is how a duel is told apart from a solo game.
+          ...(params.outcome !== undefined && {
+            duelsPlayed: { increment: 1 },
+          }),
+          ...(params.outcome === 'win' && { gamesWon: { increment: 1 } }),
+          ...(params.outcome === 'loss' && { gamesLost: { increment: 1 } }),
+          ...(params.outcome === 'draw' && { gamesDrawn: { increment: 1 } }),
+          ...(params.cappedWin && { duelRatingWinsToday, duelRatingCapDate }),
+        },
+      });
+
+      return { user: updated, leveledUp, ratingDelta, ratingCapped };
     });
-
-    return { user: updated, leveledUp, ratingDelta, ratingCapped };
   }
 
   /**
@@ -226,54 +267,54 @@ export class UsersService {
     ratingDelta: number;
     ratingCapped: boolean;
   }> {
-    const user = await this.findById(userId);
+    return this.withUserLock(userId, async (tx, user) => {
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const capDate = user.roomRatingCapDate
+        ? new Date(user.roomRatingCapDate)
+        : null;
+      if (capDate) capDate.setUTCHours(0, 0, 0, 0);
+      const isNewDay = !capDate || capDate.getTime() !== today.getTime();
+      const pointsToday = isNewDay ? 0 : user.roomRatingPointsToday;
 
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const capDate = user.roomRatingCapDate
-      ? new Date(user.roomRatingCapDate)
-      : null;
-    if (capDate) capDate.setUTCHours(0, 0, 0, 0);
-    const isNewDay = !capDate || capDate.getTime() !== today.getTime();
-    const pointsToday = isNewDay ? 0 : user.roomRatingPointsToday;
+      let ratingDelta = params.ratingDelta;
+      let ratingCapped = false;
+      let newPointsToday = pointsToday;
 
-    let ratingDelta = params.ratingDelta;
-    let ratingCapped = false;
-    let newPointsToday = pointsToday;
-
-    if (ratingDelta > 0) {
-      const remaining = ROOM_DAILY_RATING_CAP - pointsToday;
-      if (remaining <= 0) {
-        ratingDelta = 0;
-        ratingCapped = true;
-      } else if (ratingDelta > remaining) {
-        ratingDelta = remaining;
-        ratingCapped = true;
-        newPointsToday = ROOM_DAILY_RATING_CAP;
-      } else {
-        newPointsToday = pointsToday + ratingDelta;
+      if (ratingDelta > 0) {
+        const remaining = ROOM_DAILY_RATING_CAP - pointsToday;
+        if (remaining <= 0) {
+          ratingDelta = 0;
+          ratingCapped = true;
+        } else if (ratingDelta > remaining) {
+          ratingDelta = remaining;
+          ratingCapped = true;
+          newPointsToday = ROOM_DAILY_RATING_CAP;
+        } else {
+          newPointsToday = pointsToday + ratingDelta;
+        }
       }
-    }
 
-    const experience = user.experience + params.xpEarned;
-    const level = Math.floor(experience / XP_PER_LEVEL) + 1;
-    const leveledUp = level > user.level;
-    const rating = user.rating + ratingDelta;
+      const experience = user.experience + params.xpEarned;
+      const level = Math.floor(experience / XP_PER_LEVEL) + 1;
+      const leveledUp = level > user.level;
+      const rating = user.rating + ratingDelta;
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        experience,
-        level,
-        rating,
-        coins: { increment: params.coinsEarned },
-        gamesPlayed: { increment: 1 },
-        roomRatingPointsToday: newPointsToday,
-        roomRatingCapDate: today,
-      },
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: {
+          experience,
+          level,
+          rating,
+          coins: { increment: params.coinsEarned },
+          gamesPlayed: { increment: 1 },
+          roomRatingPointsToday: newPointsToday,
+          roomRatingCapDate: today,
+        },
+      });
+
+      return { user: updated, leveledUp, ratingDelta, ratingCapped };
     });
-
-    return { user: updated, leveledUp, ratingDelta, ratingCapped };
   }
 
   /**
@@ -302,55 +343,55 @@ export class UsersService {
       goalCoinsEarned: number;
     };
   }> {
-    const user = await this.findById(userId);
+    return this.withUserLock(userId, async (tx, user) => {
+      const ratingEarned = params.awardsPoints
+        ? params.correctCount * RATING_PER_CORRECT_ANSWER -
+          params.wrongCount * RATING_PENALTY_PER_WRONG_ANSWER
+        : 0;
+      const xpEarned = params.awardsPoints
+        ? params.correctCount * XP_PER_CORRECT_ANSWER
+        : 0;
+      const coinsEarned = params.awardsPoints
+        ? params.correctCount * COINS_PER_CORRECT_ANSWER
+        : 0;
 
-    const ratingEarned = params.awardsPoints
-      ? params.correctCount * RATING_PER_CORRECT_ANSWER -
-        params.wrongCount * RATING_PENALTY_PER_WRONG_ANSWER
-      : 0;
-    const xpEarned = params.awardsPoints
-      ? params.correctCount * XP_PER_CORRECT_ANSWER
-      : 0;
-    const coinsEarned = params.awardsPoints
-      ? params.correctCount * COINS_PER_CORRECT_ANSWER
-      : 0;
+      const experience = user.experience + xpEarned;
+      const level = Math.floor(experience / XP_PER_LEVEL) + 1;
+      const leveledUp = level > user.level;
+      const rating = user.rating + ratingEarned;
+      const streak = this.computeStreakUpdate(user);
+      const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
 
-    const experience = user.experience + xpEarned;
-    const level = Math.floor(experience / XP_PER_LEVEL) + 1;
-    const leveledUp = level > user.level;
-    const rating = user.rating + ratingEarned;
-    const streak = this.computeStreakUpdate(user);
-    const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: {
+          experience,
+          level,
+          rating,
+          coins: { increment: coinsEarned + goalReward.coins },
+          currentStreak: streak.currentStreak,
+          longestStreak: streak.longestStreak,
+          lastActivityDate: streak.lastActivityDate,
+          ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
+        },
+      });
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        experience,
-        level,
-        rating,
-        coins: { increment: coinsEarned + goalReward.coins },
-        currentStreak: streak.currentStreak,
-        longestStreak: streak.longestStreak,
-        lastActivityDate: streak.lastActivityDate,
-        ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
-      },
+      return {
+        user: updated,
+        leveledUp,
+        ratingEarned,
+        xpEarned,
+        coinsEarned,
+        streak: {
+          current: streak.currentStreak,
+          longest: streak.longestStreak,
+          increased: streak.increased,
+          goalDays: user.streakGoalDays,
+          goalReachedNow: goalReward.reachedNow,
+          goalCoinsEarned: goalReward.coins,
+        },
+      };
     });
-
-    return {
-      user: updated,
-      leveledUp,
-      ratingEarned,
-      xpEarned,
-      coinsEarned,
-      streak: {
-        current: streak.currentStreak,
-        longest: streak.longestStreak,
-        increased: streak.increased,
-        goalDays: user.streakGoalDays,
-        goalReachedNow: goalReward.reachedNow,
-        goalCoinsEarned: goalReward.coins,
-      },
-    };
   }
 
   /** A streak goal pays out once — the first time `newStreak` reaches it
@@ -375,26 +416,28 @@ export class UsersService {
   /** Sets (or replaces) the user's streak-goal target. If the current
    * streak already meets it, the coin reward is granted immediately. */
   async setStreakGoal(userId: string, days: StreakGoalDays): Promise<User> {
-    const user = await this.findById(userId);
+    return this.withUserLock(userId, async (tx, user) => {
+      // Re-picking the same goal that's already been rewarded is a no-op —
+      // otherwise resubmitting the same choice would re-grant the coins.
+      if (user.streakGoalDays === days && user.streakGoalRewardedAt !== null) {
+        return user;
+      }
 
-    // Re-picking the same goal that's already been rewarded is a no-op —
-    // otherwise resubmitting the same choice would re-grant the coins.
-    if (user.streakGoalDays === days && user.streakGoalRewardedAt !== null) {
-      return user;
-    }
+      const goalReward = this.checkStreakGoalReward(
+        { ...user, streakGoalDays: days, streakGoalRewardedAt: null },
+        user.currentStreak,
+      );
 
-    const goalReward = this.checkStreakGoalReward(
-      { ...user, streakGoalDays: days, streakGoalRewardedAt: null },
-      user.currentStreak,
-    );
-
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        streakGoalDays: days,
-        streakGoalRewardedAt: goalReward.reachedNow ? new Date() : null,
-        ...(goalReward.coins > 0 && { coins: { increment: goalReward.coins } }),
-      },
+      return tx.user.update({
+        where: { id: userId },
+        data: {
+          streakGoalDays: days,
+          streakGoalRewardedAt: goalReward.reachedNow ? new Date() : null,
+          ...(goalReward.coins > 0 && {
+            coins: { increment: goalReward.coins },
+          }),
+        },
+      });
     });
   }
 

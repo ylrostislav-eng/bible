@@ -199,52 +199,61 @@ export class RoomsService {
   }
 
   async join(userId: string, dto: JoinRoomDto): Promise<JoinRoomResponse> {
-    const session = await this.prisma.gameSession.findUnique({
+    const found = await this.prisma.gameSession.findUnique({
       where: { inviteCode: dto.inviteCode.toUpperCase() },
-      include: roomSessionInclude,
+      select: { id: true, mode: true },
     });
-
-    if (!session || session.mode !== 'ROOM') {
+    if (!found || found.mode !== 'ROOM') {
       throw new NotFoundException('Комната с таким кодом не найдена');
     }
-    if (session.status !== 'LOBBY') {
-      throw new ConflictException('Эта комната уже началась или завершена');
-    }
-    if (session.participants.some((p) => p.userId === userId)) {
-      throw new ConflictException('Вы уже в этой комнате');
-    }
-    if (
-      session.participants.length >=
-      (session.maxParticipants ?? ROOM_MAX_PARTICIPANTS)
-    ) {
-      throw new ConflictException('Комната заполнена');
-    }
-    if (session.visibility === 'PRIVATE') {
-      if (!dto.password || dto.password.toUpperCase() !== session.password) {
-        throw new BadRequestException('Неверный пароль комнаты');
-      }
-    }
-    if (session.leaderId) {
-      const ban = await this.prisma.roomBan.findUnique({
-        where: {
-          leaderId_bannedUserId: {
-            leaderId: session.leaderId,
-            bannedUserId: userId,
-          },
-        },
+
+    return this.withSessionLock(found.id, async (tx) => {
+      const session = await tx.gameSession.findUnique({
+        where: { id: found.id },
+        include: roomSessionInclude,
       });
-      if (ban) {
-        throw new ForbiddenException(
-          'Лидер этой комнаты заблокировал вас в своих комнатах',
-        );
+      if (!session) {
+        throw new NotFoundException('Комната с таким кодом не найдена');
       }
-    }
+      if (session.status !== 'LOBBY') {
+        throw new ConflictException('Эта комната уже началась или завершена');
+      }
+      if (session.participants.some((p) => p.userId === userId)) {
+        throw new ConflictException('Вы уже в этой комнате');
+      }
+      if (
+        session.participants.length >=
+        (session.maxParticipants ?? ROOM_MAX_PARTICIPANTS)
+      ) {
+        throw new ConflictException('Комната заполнена');
+      }
+      if (session.visibility === 'PRIVATE') {
+        if (!dto.password || dto.password.toUpperCase() !== session.password) {
+          throw new BadRequestException('Неверный пароль комнаты');
+        }
+      }
+      if (session.leaderId) {
+        const ban = await tx.roomBan.findUnique({
+          where: {
+            leaderId_bannedUserId: {
+              leaderId: session.leaderId,
+              bannedUserId: userId,
+            },
+          },
+        });
+        if (ban) {
+          throw new ForbiddenException(
+            'Лидер этой комнаты заблокировал вас в своих комнатах',
+          );
+        }
+      }
 
-    await this.prisma.gameParticipant.create({
-      data: { sessionId: session.id, userId },
+      await tx.gameParticipant.create({
+        data: { sessionId: session.id, userId },
+      });
+
+      return { sessionId: session.id };
     });
-
-    return { sessionId: session.id };
   }
 
   async getState(userId: string, sessionId: string): Promise<RoomState> {
@@ -462,53 +471,80 @@ export class RoomsService {
       throw new NotFoundException('Приглашение не найдено');
     }
 
-    const session = await this.loadSession(invite.sessionId);
-    if (session.status !== 'LOBBY') {
-      await this.prisma.roomInvite.deleteMany({
-        where: { sessionId: session.id },
+    // Everything from here is locked on the session row so the capacity
+    // check and the participant insert happen atomically (see `join`'s
+    // comment) — a plain read-then-write let two people accepting invites
+    // to the same room's last seat both slip past the capacity check.
+    // Failure branches return a tag rather than throwing directly: throwing
+    // inside the transaction would roll back the invite deletion that
+    // branch just made, un-doing the very cleanup it was trying to do.
+    const result = await this.withSessionLock(invite.sessionId, async (tx) => {
+      const session = await tx.gameSession.findUnique({
+        where: { id: invite.sessionId },
+        include: roomSessionInclude,
       });
-      throw new ConflictException('Эта комната уже началась или завершена');
-    }
-    if (session.participants.some((p) => p.userId === userId)) {
-      await this.prisma.roomInvite.delete({ where: { id: inviteId } });
-      throw new ConflictException('Вы уже в этой комнате');
-    }
-    if (
-      session.participants.length >=
-      (session.maxParticipants ?? ROOM_MAX_PARTICIPANTS)
-    ) {
-      // Deliberately doesn't delete the invite — unlike the other failure
-      // branches above, this one can resolve itself (someone else leaves
-      // before the game starts), so the invite should stay valid for a retry.
-      throw new ConflictException(
-        'Комната уже заполнена. Присоединиться получится, если до начала игры освободится место',
-      );
-    }
-    if (session.leaderId) {
-      const ban = await this.prisma.roomBan.findUnique({
-        where: {
-          leaderId_bannedUserId: {
-            leaderId: session.leaderId,
-            bannedUserId: userId,
+      if (!session || session.mode !== 'ROOM') {
+        return { ok: false as const, error: 'not-found' as const };
+      }
+      if (session.status !== 'LOBBY') {
+        await tx.roomInvite.deleteMany({ where: { sessionId: session.id } });
+        return { ok: false as const, error: 'started' as const };
+      }
+      if (session.participants.some((p) => p.userId === userId)) {
+        await tx.roomInvite.delete({ where: { id: inviteId } });
+        return { ok: false as const, error: 'already-in' as const };
+      }
+      if (
+        session.participants.length >=
+        (session.maxParticipants ?? ROOM_MAX_PARTICIPANTS)
+      ) {
+        // Deliberately doesn't delete the invite — unlike the other failure
+        // branches above, this one can resolve itself (someone else leaves
+        // before the game starts), so the invite should stay valid for a retry.
+        return { ok: false as const, error: 'full' as const };
+      }
+      if (session.leaderId) {
+        const ban = await tx.roomBan.findUnique({
+          where: {
+            leaderId_bannedUserId: {
+              leaderId: session.leaderId,
+              bannedUserId: userId,
+            },
           },
-        },
+        });
+        if (ban) {
+          await tx.roomInvite.delete({ where: { id: inviteId } });
+          return { ok: false as const, error: 'banned' as const };
+        }
+      }
+
+      await tx.gameParticipant.create({
+        data: { sessionId: session.id, userId },
       });
-      if (ban) {
-        await this.prisma.roomInvite.delete({ where: { id: inviteId } });
-        throw new ForbiddenException(
-          'Лидер этой комнаты заблокировал вас в своих комнатах',
-        );
+      await tx.roomInvite.delete({ where: { id: inviteId } });
+      return { ok: true as const, sessionId: session.id };
+    });
+
+    if (!result.ok) {
+      switch (result.error) {
+        case 'not-found':
+          throw new NotFoundException('Комната не найдена');
+        case 'started':
+          throw new ConflictException('Эта комната уже началась или завершена');
+        case 'already-in':
+          throw new ConflictException('Вы уже в этой комнате');
+        case 'full':
+          throw new ConflictException(
+            'Комната уже заполнена. Присоединиться получится, если до начала игры освободится место',
+          );
+        case 'banned':
+          throw new ForbiddenException(
+            'Лидер этой комнаты заблокировал вас в своих комнатах',
+          );
       }
     }
 
-    await this.prisma.$transaction([
-      this.prisma.gameParticipant.create({
-        data: { sessionId: session.id, userId },
-      }),
-      this.prisma.roomInvite.delete({ where: { id: inviteId } }),
-    ]);
-
-    return { sessionId: session.id };
+    return { sessionId: result.sessionId };
   }
 
   async declineInvite(userId: string, inviteId: string): Promise<void> {
@@ -657,13 +693,16 @@ export class RoomsService {
     const timeTakenMs = Math.max(0, Date.now() - startedAt.getTime());
     const isCorrect = dto.answerIndex === currentAnswer.shuffledCorrectIndex;
 
-    await this.recordAnswer(
+    const recorded = await this.recordAnswer(
       participant,
       currentAnswer,
       dto.answerIndex,
       isCorrect,
       timeTakenMs,
     );
+    if (!recorded) {
+      throw new ConflictException('Вы уже ответили на этот вопрос');
+    }
     if (!isCorrect) {
       await this.questionsService.markMistake(currentAnswer.questionId);
     }
@@ -749,6 +788,24 @@ export class RoomsService {
     return session;
   }
 
+  /**
+   * Locks the session row (`SELECT ... FOR UPDATE`) for the duration of
+   * `fn` — used wherever a capacity/membership check must be atomic with
+   * the participant insert that follows it. Without this, two joins racing
+   * for the same room's last open seat could both pass the "is there
+   * room?" check and both insert, overfilling the room past
+   * `maxParticipants`.
+   */
+  private async withSessionLock<T>(
+    sessionId: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "game_sessions" WHERE id = ${sessionId} FOR UPDATE`;
+      return fn(tx);
+    });
+  }
+
   private requireParticipant(
     session: LoadedRoom,
     userId: string,
@@ -772,19 +829,23 @@ export class RoomsService {
     );
   }
 
+  /** Returns `false` (and writes nothing) if the answer was already
+   * recorded by a concurrent call — a double-click or a retried request
+   * after a flaky connection can fire the same submit twice, and without
+   * this guard both would score, double-counting the point. */
   private async recordAnswer(
     participant: LoadedRoomParticipant,
     answer: LoadedRoomAnswer,
     selectedIndex: number | null,
     isCorrect: boolean,
     timeTakenMs: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const streak = isCorrect ? participant.streak + 1 : 0;
     const scoreDelta = isCorrect ? 1 : 0;
 
-    await this.prisma.$transaction([
-      this.prisma.gameAnswer.update({
-        where: { id: answer.id },
+    return this.prisma.$transaction(async (tx) => {
+      const claim = await tx.gameAnswer.updateMany({
+        where: { id: answer.id, answeredAt: null },
         data: {
           selectedIndex,
           isCorrect,
@@ -792,27 +853,37 @@ export class RoomsService {
           timeTakenMs,
           scoreDelta,
         },
-      }),
-      this.prisma.gameParticipant.update({
+      });
+      if (claim.count === 0) {
+        return false;
+      }
+
+      await tx.gameParticipant.update({
         where: { id: participant.id },
         data: {
           streak,
           correctCount: { increment: isCorrect ? 1 : 0 },
           score: { increment: scoreDelta },
         },
-      }),
-    ]);
+      });
+      return true;
+    });
   }
 
   private async finishSession(sessionId: string): Promise<void> {
-    const session = await this.loadSession(sessionId);
-    if (session.status === 'COMPLETED') return;
-
-    await this.prisma.gameSession.update({
-      where: { id: sessionId },
+    // Same race as the duel version of this method: a poll and an answer
+    // submit can both decide the room is done at nearly the same moment.
+    // The conditional `updateMany` makes the completion claim atomic, so
+    // only one of two racing calls actually rewards participants.
+    const claim = await this.prisma.gameSession.updateMany({
+      where: { id: sessionId, status: 'IN_PROGRESS' },
       data: { status: 'COMPLETED', finishedAt: new Date() },
     });
+    if (claim.count === 0) {
+      return;
+    }
 
+    const session = await this.loadSession(sessionId);
     const ranked = this.rankParticipants(session.participants);
     const n = ranked.length;
     const competitive = n >= ROOM_MIN_PARTICIPANTS_FOR_RATING;

@@ -289,58 +289,85 @@ export class DuelService {
       questionCount = requestedQuestionCount;
     }
 
-    const questions = await this.questionsService.pickRandom({
-      count: questionCount,
+    // Claim the session before doing any of the real work below. Without
+    // this, two people using the same invite code around the same moment
+    // could both pass the caller's WAITING_FOR_OPPONENT check and both
+    // start building a second participant for what's meant to be a 1v1 —
+    // the loser of that race ends up with a session in a broken state.
+    // `updateMany`'s conditional `where` makes the flip atomic: only the
+    // request that actually finds the session still WAITING_FOR_OPPONENT
+    // gets to flip it, and Postgres serializes concurrent updates to the
+    // same row so exactly one of two racing calls wins.
+    const claim = await this.prisma.gameSession.updateMany({
+      where: { id: session.id, status: 'WAITING_FOR_OPPONENT' },
+      data: { status: 'IN_PROGRESS' },
     });
-    const creator = session.participants[0];
-    const joiner = await this.prisma.gameParticipant.create({
-      data: { sessionId: session.id, userId: joinerId },
-    });
+    if (claim.count === 0) {
+      throw new ConflictException('Эта дуэль уже началась или завершена');
+    }
 
-    // Shuffled independently per participant, so the two sides see the same
-    // question with different option orders — the correct answer can't just
-    // be called out to the opponent ("it's C!").
-    const answerRows = questions.flatMap((question, index) => {
-      const forCreator = shuffleOptions(question);
-      const forJoiner = shuffleOptions(question);
-      return [
-        {
-          sessionId: session.id,
-          participantId: creator.id,
-          questionId: question.id,
-          order: index,
-          shuffledOptions: forCreator.options,
-          shuffledCorrectIndex: forCreator.correctIndex,
+    try {
+      const questions = await this.questionsService.pickRandom({
+        count: questionCount,
+      });
+      const creator = session.participants[0];
+      const joiner = await this.prisma.gameParticipant.create({
+        data: { sessionId: session.id, userId: joinerId },
+      });
+
+      // Shuffled independently per participant, so the two sides see the
+      // same question with different option orders — the correct answer
+      // can't just be called out to the opponent ("it's C!").
+      const answerRows = questions.flatMap((question, index) => {
+        const forCreator = shuffleOptions(question);
+        const forJoiner = shuffleOptions(question);
+        return [
+          {
+            sessionId: session.id,
+            participantId: creator.id,
+            questionId: question.id,
+            order: index,
+            shuffledOptions: forCreator.options,
+            shuffledCorrectIndex: forCreator.correctIndex,
+          },
+          {
+            sessionId: session.id,
+            participantId: joiner.id,
+            questionId: question.id,
+            order: index,
+            shuffledOptions: forJoiner.options,
+            shuffledCorrectIndex: forJoiner.correctIndex,
+          },
+        ];
+      });
+      await this.prisma.gameAnswer.createMany({ data: answerRows });
+      await this.questionsService.markUsed(questions.map((q) => q.id));
+
+      await this.prisma.gameSession.update({
+        where: { id: session.id },
+        data: {
+          questionCount: questions.length,
+          currentOrder: 0,
+          // Delayed into the future by the client's "3, 2, 1, Поехали!" intro
+          // (play/duel/page.tsx hides the question behind that overlay for
+          // exactly this long) — otherwise the real 15s answering window
+          // would already be a few seconds shorter by the time either player
+          // actually sees question 1.
+          currentQuestionStartedAt: new Date(Date.now() + DUEL_INTRO_TOTAL_MS),
         },
-        {
-          sessionId: session.id,
-          participantId: joiner.id,
-          questionId: question.id,
-          order: index,
-          shuffledOptions: forJoiner.options,
-          shuffledCorrectIndex: forJoiner.correctIndex,
-        },
-      ];
-    });
-    await this.prisma.gameAnswer.createMany({ data: answerRows });
-    await this.questionsService.markUsed(questions.map((q) => q.id));
+      });
 
-    await this.prisma.gameSession.update({
-      where: { id: session.id },
-      data: {
-        status: 'IN_PROGRESS',
-        questionCount: questions.length,
-        currentOrder: 0,
-        // Delayed into the future by the client's "3, 2, 1, Поехали!" intro
-        // (play/duel/page.tsx hides the question behind that overlay for
-        // exactly this long) — otherwise the real 15s answering window
-        // would already be a few seconds shorter by the time either player
-        // actually sees question 1.
-        currentQuestionStartedAt: new Date(Date.now() + DUEL_INTRO_TOTAL_MS),
-      },
-    });
-
-    return { sessionId: session.id };
+      return { sessionId: session.id };
+    } catch (error) {
+      // The claim above already flipped the session to IN_PROGRESS — if
+      // setup then fails (e.g. the question pool ran dry), leaving it
+      // there would strand the session forever instead of a clean retry.
+      await this.prisma.gameSession.updateMany({
+        where: { id: session.id, status: 'IN_PROGRESS' },
+        data: { status: 'WAITING_FOR_OPPONENT' },
+      });
+      throw error;
+    }
   }
 
   async getState(userId: string, sessionId: string): Promise<DuelState> {
@@ -377,13 +404,16 @@ export class DuelService {
     const timeTakenMs = Math.max(0, Date.now() - startedAt.getTime());
     const isCorrect = dto.answerIndex === currentAnswer.shuffledCorrectIndex;
 
-    await this.recordAnswer(
+    const recorded = await this.recordAnswer(
       participant,
       currentAnswer,
       dto.answerIndex,
       isCorrect,
       timeTakenMs,
     );
+    if (!recorded) {
+      throw new ConflictException('Вы уже ответили на этот вопрос');
+    }
 
     if (!isCorrect) {
       await this.questionsService.markMistake(currentAnswer.questionId);
@@ -442,13 +472,17 @@ export class DuelService {
     return participant;
   }
 
+  /** Returns `false` (and writes nothing) if the answer was already
+   * recorded by a concurrent call — a double-click or a retried request
+   * after a flaky connection can fire the same submit twice, and without
+   * this guard both would score, double-counting the point. */
   private async recordAnswer(
     participant: LoadedParticipant,
     answer: LoadedAnswer,
     selectedIndex: number | null,
     isCorrect: boolean,
     timeTakenMs: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Outcome and rating are decided purely by correctness — no bonus for
     // answering fast or for a streak within the match. `streak` is kept as
     // a cosmetic "you're on a roll" indicator only, it no longer affects
@@ -456,9 +490,9 @@ export class DuelService {
     const streak = isCorrect ? participant.streak + 1 : 0;
     const scoreDelta = isCorrect ? 1 : 0;
 
-    await this.prisma.$transaction([
-      this.prisma.gameAnswer.update({
-        where: { id: answer.id },
+    return this.prisma.$transaction(async (tx) => {
+      const claim = await tx.gameAnswer.updateMany({
+        where: { id: answer.id, answeredAt: null },
         data: {
           selectedIndex,
           isCorrect,
@@ -466,16 +500,21 @@ export class DuelService {
           timeTakenMs,
           scoreDelta,
         },
-      }),
-      this.prisma.gameParticipant.update({
+      });
+      if (claim.count === 0) {
+        return false;
+      }
+
+      await tx.gameParticipant.update({
         where: { id: participant.id },
         data: {
           streak,
           correctCount: { increment: isCorrect ? 1 : 0 },
           score: { increment: scoreDelta },
         },
-      }),
-    ]);
+      });
+      return true;
+    });
   }
 
   /** Auto-submits a miss for anyone who hasn't answered once the time limit elapses, and finishes the duel after the last round. */
@@ -517,16 +556,22 @@ export class DuelService {
   }
 
   private async finishSession(sessionId: string): Promise<void> {
-    const session = await this.loadSession(sessionId);
-    if (session.status === 'COMPLETED') {
+    // Both the result-screen poll (`getState`) and the last answer submit
+    // can independently decide "this duel is done" for the same session at
+    // nearly the same moment. A plain read-then-write here would let both
+    // pass the "not already COMPLETED" check and both hand out rewards —
+    // `updateMany`'s conditional `where` makes the flip atomic, so only
+    // one of the two racing calls actually claims the finish and proceeds
+    // to reward players; the other sees `count === 0` and backs off.
+    const claim = await this.prisma.gameSession.updateMany({
+      where: { id: sessionId, status: 'IN_PROGRESS' },
+      data: { status: 'COMPLETED', finishedAt: new Date() },
+    });
+    if (claim.count === 0) {
       return;
     }
 
-    await this.prisma.gameSession.update({
-      where: { id: sessionId },
-      data: { status: 'COMPLETED', finishedAt: new Date() },
-    });
-
+    const session = await this.loadSession(sessionId);
     const [a, b] = session.participants;
     for (const [participant, opponent] of [
       [a, b],
