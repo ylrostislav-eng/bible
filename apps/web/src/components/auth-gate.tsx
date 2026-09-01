@@ -4,9 +4,11 @@ import { ActiveGameProvider } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
 import { ChatProvider } from '@/lib/chat-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
+import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { ChatWidget } from './chat-widget';
 import { IncomingChallengeModal } from './incoming-challenge-modal';
+import { IncomingRoomInviteModal } from './incoming-room-invite-modal';
 import { BottomNav } from './navigation/bottom-nav';
 import { OnboardingForm } from './onboarding/onboarding-form';
 import { Button } from './ui/button';
@@ -59,12 +61,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <ActiveGameProvider>
       <IncomingChallengesProvider>
-        <ChatProvider>
-          <div className="pt-safe pb-24">{children}</div>
-          <IncomingChallengeModal />
-          <ChatWidget />
-          <BottomNav />
-        </ChatProvider>
+        <IncomingRoomInvitesProvider>
+          <ChatProvider>
+            <div className="pt-safe pb-24">{children}</div>
+            <IncomingChallengeModal />
+            <IncomingRoomInviteModal />
+            <ChatWidget />
+            <BottomNav />
+          </ChatProvider>
+        </IncomingRoomInvitesProvider>
       </IncomingChallengesProvider>
     </ActiveGameProvider>
   );

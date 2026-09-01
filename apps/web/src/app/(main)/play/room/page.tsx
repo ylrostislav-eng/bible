@@ -1,11 +1,6 @@
 'use client';
 
-import type {
-  CreateRoomResponse,
-  JoinRoomResponse,
-  RoomInviteView,
-  RoomSummary,
-} from '@bible-arena/shared';
+import type { CreateRoomResponse, JoinRoomResponse, RoomSummary } from '@bible-arena/shared';
 import {
   DIFFICULTY_NAMES,
   DUEL_QUESTION_COUNT_DEFAULT,
@@ -27,6 +22,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { useRoomSocket } from '@/lib/use-room-socket';
 
 const PUBLIC_ROOMS_POLL_MS = 5000;
@@ -36,10 +32,10 @@ type Menu = 'menu' | 'create' | 'join';
 export default function RoomPage() {
   const { updateProfile } = useAuth();
   const { activeGame, setActiveGame } = useActiveGame();
+  const { invites: pendingInvites, removeInvite } = useIncomingRoomInvites();
 
   const [menu, setMenu] = useState<Menu>('menu');
   const [publicRooms, setPublicRooms] = useState<RoomSummary[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<RoomInviteView[]>([]);
   const [respondingInviteId, setRespondingInviteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,29 +119,6 @@ export default function RoomPage() {
       try {
         const rooms = await apiClient.get<RoomSummary[]>('/rooms');
         if (!cancelled) setPublicRooms(rooms);
-      } catch {
-        // Transient poll failures are ignored — the next tick will retry.
-      }
-    }
-
-    void load();
-    const interval = setInterval(() => void load(), PUBLIC_ROOMS_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [sessionId, menu]);
-
-  // Direct invites from friends — polled the same way as the public room
-  // list, both only while sitting on the menu screen with no active room.
-  useEffect(() => {
-    if (sessionId || menu !== 'menu') return undefined;
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const invites = await apiClient.get<RoomInviteView[]>('/rooms/invites/pending');
-        if (!cancelled) setPendingInvites(invites);
       } catch {
         // Transient poll failures are ignored — the next tick will retry.
       }
@@ -271,31 +244,37 @@ export default function RoomPage() {
     }
   }, []);
 
-  const acceptInvite = useCallback(async (inviteId: string) => {
-    setRespondingInviteId(inviteId);
-    setError(null);
-    try {
-      const res = await apiClient.post<JoinRoomResponse>(`/rooms/invites/${inviteId}/accept`);
-      setPendingInvites((invites) => invites.filter((i) => i.inviteId !== inviteId));
-      setSessionId(res.sessionId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось присоединиться к комнате');
-    } finally {
-      setRespondingInviteId(null);
-    }
-  }, []);
+  const acceptInvite = useCallback(
+    async (inviteId: string) => {
+      setRespondingInviteId(inviteId);
+      setError(null);
+      try {
+        const res = await apiClient.post<JoinRoomResponse>(`/rooms/invites/${inviteId}/accept`);
+        removeInvite(inviteId);
+        setSessionId(res.sessionId);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Не удалось присоединиться к комнате');
+      } finally {
+        setRespondingInviteId(null);
+      }
+    },
+    [removeInvite],
+  );
 
-  const declineInvite = useCallback(async (inviteId: string) => {
-    setRespondingInviteId(inviteId);
-    try {
-      await apiClient.post(`/rooms/invites/${inviteId}/decline`);
-      setPendingInvites((invites) => invites.filter((i) => i.inviteId !== inviteId));
-    } catch {
-      // The next poll will re-sync the list either way.
-    } finally {
-      setRespondingInviteId(null);
-    }
-  }, []);
+  const declineInvite = useCallback(
+    async (inviteId: string) => {
+      setRespondingInviteId(inviteId);
+      try {
+        await apiClient.post(`/rooms/invites/${inviteId}/decline`);
+        removeInvite(inviteId);
+      } catch {
+        // The next poll will re-sync the list either way.
+      } finally {
+        setRespondingInviteId(null);
+      }
+    },
+    [removeInvite],
+  );
 
   const reset = useCallback(() => {
     setSessionId(null);
