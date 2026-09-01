@@ -521,9 +521,11 @@ export class RoomsService {
     await this.prisma.roomInvite.delete({ where: { id: inviteId } });
   }
 
-  /** LOBBY-only. The leader leaving closes the room entirely (no leadership
-   * transfer) — simplest behavior for an unspecified edge case, and matches
-   * "the leader controls the room" as the room's defining property. */
+  /** LOBBY-only. The leader leaving closes the room only if they were the
+   * last one in it — otherwise leadership passes to whoever joined earliest
+   * among those remaining, so the rest of the room isn't kicked out just
+   * because the leader moved on (e.g. to accept a different invite
+   * elsewhere — see `RoomsController.leave`). */
   async leave(userId: string, sessionId: string): Promise<RoomState | null> {
     const session = await this.loadSession(sessionId);
     const participant = this.requireParticipant(session, userId);
@@ -532,13 +534,35 @@ export class RoomsService {
     }
 
     if (session.leaderId === userId) {
-      await this.prisma.gameSession.update({
-        where: { id: sessionId },
-        data: { status: 'ABANDONED', finishedAt: new Date() },
-      });
-      // No one still holds a pending invite to a room that no longer exists.
-      await this.prisma.roomInvite.deleteMany({ where: { sessionId } });
-      return null;
+      const others = session.participants.filter((p) => p.userId !== userId);
+      if (others.length === 0) {
+        await this.prisma.gameSession.update({
+          where: { id: sessionId },
+          data: { status: 'ABANDONED', finishedAt: new Date() },
+        });
+        // No one still holds a pending invite to a room that no longer exists.
+        await this.prisma.roomInvite.deleteMany({ where: { sessionId } });
+        return null;
+      }
+
+      // `roomSessionInclude` orders participants by `joinedAt` ascending, so
+      // the first of the rest is whoever has been waiting longest.
+      const nextLeader = others[0];
+      await this.prisma.$transaction([
+        this.prisma.gameSession.update({
+          where: { id: sessionId },
+          data: { leaderId: nextLeader.userId },
+        }),
+        this.prisma.gameParticipant.update({
+          where: { id: nextLeader.id },
+          data: { isLeader: true },
+        }),
+        this.prisma.gameParticipant.delete({ where: { id: participant.id } }),
+      ]);
+      return this.buildState(
+        await this.loadSession(sessionId),
+        nextLeader.userId,
+      );
     }
 
     await this.prisma.gameParticipant.delete({ where: { id: participant.id } });

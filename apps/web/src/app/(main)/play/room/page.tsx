@@ -80,8 +80,13 @@ export default function RoomPage() {
   useEffect(() => {
     function syncActiveGame() {
       if (removed || roomState?.status === 'COMPLETED') return;
-      if (sessionId && (activeGame?.type !== 'room' || activeGame.sessionId !== sessionId)) {
-        setActiveGame({ type: 'room', sessionId });
+      if (!sessionId) return;
+      if (
+        activeGame?.type !== 'room' ||
+        activeGame.sessionId !== sessionId ||
+        activeGame.status !== roomState?.status
+      ) {
+        setActiveGame({ type: 'room', sessionId, status: roomState?.status });
       }
     }
     syncActiveGame();

@@ -7,6 +7,13 @@ export type ActiveGameType = 'duel' | 'room';
 export interface ActiveGame {
   type: ActiveGameType;
   sessionId: string;
+  /** The session's own status string (e.g. `'LOBBY'`, `'WAITING_FOR_OPPONENT'`,
+   * `'IN_PROGRESS'`), kept in sync by whichever page owns the live
+   * connection. Only `'IN_PROGRESS'` counts as "actually busy" — sitting in
+   * a not-yet-started room/duel shouldn't block incoming duel challenges or
+   * room invites from reaching you. Undefined until the owning page's first
+   * state arrives. */
+  status?: string;
 }
 
 const STORAGE_KEY = 'bible-arena:active-game';
@@ -32,7 +39,9 @@ function readStored(): ActiveGame | null {
       (parsed.type === 'duel' || parsed.type === 'room') &&
       typeof parsed.sessionId === 'string'
     ) {
-      return { type: parsed.type, sessionId: parsed.sessionId };
+      const status =
+        'status' in parsed && typeof parsed.status === 'string' ? parsed.status : undefined;
+      return { type: parsed.type, sessionId: parsed.sessionId, status };
     }
   } catch {
     // Malformed storage — treat as if nothing were stored.
@@ -41,12 +50,15 @@ function readStored(): ActiveGame | null {
 }
 
 /**
- * Tracks the one duel or room currently in progress, if any, and persists
- * it to `sessionStorage` so navigating away (or reloading the tab) and
- * coming back to `/play/duel` or `/play/room` reconnects automatically
- * instead of dropping back to the create/join menu. Also drives the
- * "Играть" nav tab redirect and badge (`BottomNav`) and gates the global
- * incoming-challenge popup (no point interrupting a game already running).
+ * Tracks the one duel or room currently open (regardless of whether it's
+ * actually started yet), if any, and persists it to `sessionStorage` so
+ * navigating away (or reloading the tab) and coming back to `/play/duel` or
+ * `/play/room` reconnects automatically instead of dropping back to the
+ * create/join menu. Also drives the "Играть" nav tab redirect and badge
+ * (`BottomNav`), and — via its `status` field — gates the global
+ * incoming-challenge/invite popups: only `status === 'IN_PROGRESS'` counts
+ * as busy, so sitting in a not-yet-started room or an unanswered duel
+ * invite doesn't silently swallow other incoming challenges/invites.
  */
 export function ActiveGameProvider({ children }: { children: React.ReactNode }) {
   const [activeGame, setActiveGameState] = useState<ActiveGame | null>(readStored);

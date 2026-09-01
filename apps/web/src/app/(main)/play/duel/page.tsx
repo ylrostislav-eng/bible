@@ -79,12 +79,13 @@ export default function DuelPage() {
   // once COMPLETED — see the clear-on-completion effect below for why.
   useEffect(() => {
     function syncActiveGame() {
+      if (!sessionId || duelState?.status === 'COMPLETED') return;
       if (
-        sessionId &&
-        duelState?.status !== 'COMPLETED' &&
-        (activeGame?.type !== 'duel' || activeGame.sessionId !== sessionId)
+        activeGame?.type !== 'duel' ||
+        activeGame.sessionId !== sessionId ||
+        activeGame.status !== duelState?.status
       ) {
-        setActiveGame({ type: 'duel', sessionId });
+        setActiveGame({ type: 'duel', sessionId, status: duelState?.status });
       }
     }
     syncActiveGame();

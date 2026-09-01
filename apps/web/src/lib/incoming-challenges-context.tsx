@@ -17,15 +17,18 @@ const IncomingChallengesContext = createContext<IncomingChallengesContextValue |
 /**
  * Polls friend-duel challenges app-wide (not just while sitting on the duel
  * screen), so `IncomingChallengeModal` can surface a new one no matter where
- * the user currently is. Paused entirely while a duel or room is already in
- * progress — there's nothing useful to do with a challenge until that ends.
+ * the user currently is. Paused only while a duel or room is actually
+ * `IN_PROGRESS` — sitting in a not-yet-started room lobby or an unaccepted
+ * duel invite doesn't count as busy, so a new challenge should still reach
+ * you then.
  */
 export function IncomingChallengesProvider({ children }: { children: React.ReactNode }) {
   const { activeGame } = useActiveGame();
   const [challenges, setChallenges] = useState<PendingChallenge[]>([]);
+  const busy = activeGame?.status === 'IN_PROGRESS';
 
   useEffect(() => {
-    if (activeGame) return undefined;
+    if (busy) return undefined;
     let cancelled = false;
 
     const poll = async () => {
@@ -43,7 +46,7 @@ export function IncomingChallengesProvider({ children }: { children: React.React
       cancelled = true;
       clearInterval(interval);
     };
-  }, [activeGame]);
+  }, [busy]);
 
   const removeChallenge = useCallback((sessionId: string) => {
     setChallenges((cs) => cs.filter((c) => c.sessionId !== sessionId));

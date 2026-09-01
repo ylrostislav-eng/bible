@@ -117,12 +117,21 @@ export class RoomsGateway implements OnGatewayDisconnect {
         body.sessionId,
       );
       this.unregister(body.sessionId, socket);
-      if (result === null) {
-        this.closeRoom(body.sessionId, 'Лидер закрыл комнату');
-      } else {
-        await this.broadcastState(body.sessionId);
-      }
+      await this.notifyLeft(body.sessionId, result === null);
     });
+  }
+
+  /** Pushes the outcome of a `RoomsService.leave()` call to whoever's still
+   * connected — called from `onLeave` above, and from `RoomsController.leave`
+   * for a leave triggered outside this room's own socket (e.g. accepting a
+   * different invite/challenge elsewhere prompts leaving the current room
+   * first, from a screen that was never connected to *this* room's socket). */
+  async notifyLeft(sessionId: string, closed: boolean): Promise<void> {
+    if (closed) {
+      this.closeRoom(sessionId, 'Лидер закрыл комнату');
+    } else {
+      await this.broadcastState(sessionId);
+    }
   }
 
   @SubscribeMessage(ROOM_WS_EVENTS.ready)

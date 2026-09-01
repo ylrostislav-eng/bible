@@ -14,6 +14,7 @@ import { BanUserDto } from './dto/ban-user.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { InviteToRoomDto } from './dto/invite-to-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
+import { RoomsGateway } from './rooms.gateway';
 import { RoomsService } from './rooms.service';
 
 /** Only the actions needed before a live WebSocket connection exists:
@@ -24,7 +25,10 @@ import { RoomsService } from './rooms.service';
 @UseGuards(JwtAuthGuard)
 @Controller('rooms')
 export class RoomsController {
-  constructor(private readonly roomsService: RoomsService) {}
+  constructor(
+    private readonly roomsService: RoomsService,
+    private readonly roomsGateway: RoomsGateway,
+  ) {}
 
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateRoomDto) {
@@ -39,6 +43,20 @@ export class RoomsController {
   @Post('join')
   join(@CurrentUser() user: JwtPayload, @Body() dto: JoinRoomDto) {
     return this.roomsService.join(user.sub, dto);
+  }
+
+  /** For leaving a room from somewhere that isn't connected to *that*
+   * room's socket — e.g. accepting a different invite/challenge while
+   * sitting in your own not-yet-started room prompts leaving it first, from
+   * whatever screen the accept happened on. Notifies the gateway afterwards
+   * so anyone still actually in the room sees the update live. */
+  @Post(':sessionId/leave')
+  async leave(
+    @CurrentUser() user: JwtPayload,
+    @Param('sessionId') sessionId: string,
+  ) {
+    const result = await this.roomsService.leave(user.sub, sessionId);
+    await this.roomsGateway.notifyLeft(sessionId, result === null);
   }
 
   // ---- blacklist (leader-scoped, independent of any specific room) ----

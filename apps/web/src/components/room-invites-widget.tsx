@@ -2,9 +2,12 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { TournamentIcon } from '@/components/icons/nav-icons';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
+import { leaveActiveRoom } from '@/lib/leave-room';
+import { LeaveRoomConfirm } from './leave-room-confirm';
 
 /**
  * A floating badge+panel for pending room invites — the persistent home for
@@ -27,10 +30,7 @@ export function RoomInvitesWidget() {
         className="fixed right-20 bottom-24 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-text-primary shadow-lg ring-2 ring-primary"
         aria-label="Приглашения в комнаты"
       >
-        <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6">
-          <path d="M4 6h16v12H4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-          <path d="M4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-        </svg>
+        <TournamentIcon className="h-6 w-6" />
         <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-on-primary">
           {invites.length > 99 ? '99+' : invites.length}
         </span>
@@ -59,15 +59,16 @@ export function RoomInvitesWidget() {
 
 function InviteRow({ inviteId }: { inviteId: string }) {
   const router = useRouter();
-  const { setActiveGame } = useActiveGame();
+  const { activeGame, setActiveGame } = useActiveGame();
   const { invites, removeInvite } = useIncomingRoomInvites();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
 
   const invite = invites.find((i) => i.inviteId === inviteId);
   if (!invite) return null;
 
-  const accept = async () => {
+  const doAccept = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -82,6 +83,27 @@ function InviteRow({ inviteId }: { inviteId: string }) {
       setError(err instanceof ApiError ? err.message : 'Не удалось присоединиться к комнате');
       setBusy(false);
     }
+  };
+
+  const accept = () => {
+    if (activeGame?.type === 'room' && activeGame.sessionId !== invite.sessionId) {
+      setConfirmingLeave(true);
+      return;
+    }
+    void doAccept();
+  };
+
+  const confirmLeaveAndAccept = async () => {
+    if (!activeGame) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await leaveActiveRoom(activeGame.sessionId);
+    } catch {
+      // Worst case the old room lingers a little longer — still worth
+      // proceeding with the invite the user actually asked to accept.
+    }
+    await doAccept();
   };
 
   const decline = async () => {
@@ -104,23 +126,34 @@ function InviteRow({ inviteId }: { inviteId: string }) {
           {invite.maxParticipants} · {invite.questionCount} вопросов
         </p>
       </div>
-      {error && <p className="text-xs text-danger">{error}</p>}
-      <div className="flex gap-2">
-        <button
-          onClick={() => void accept()}
-          disabled={busy}
-          className="h-9 flex-1 rounded-lg bg-primary text-xs font-semibold text-on-primary disabled:opacity-50"
-        >
-          {busy ? 'Подключение…' : 'Присоединиться'}
-        </button>
-        <button
-          onClick={() => void decline()}
-          disabled={busy}
-          className="h-9 flex-1 rounded-lg bg-surface-hover text-xs font-semibold text-text-secondary disabled:opacity-50"
-        >
-          Отклонить
-        </button>
-      </div>
+      {confirmingLeave ? (
+        <LeaveRoomConfirm
+          onConfirm={() => void confirmLeaveAndAccept()}
+          onCancel={() => setConfirmingLeave(false)}
+          busy={busy}
+          error={error}
+        />
+      ) : (
+        <>
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={accept}
+              disabled={busy}
+              className="h-9 flex-1 rounded-lg bg-primary text-xs font-semibold text-on-primary disabled:opacity-50"
+            >
+              {busy ? 'Подключение…' : 'Присоединиться'}
+            </button>
+            <button
+              onClick={() => void decline()}
+              disabled={busy}
+              className="h-9 flex-1 rounded-lg bg-surface-hover text-xs font-semibold text-text-secondary disabled:opacity-50"
+            >
+              Отклонить
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

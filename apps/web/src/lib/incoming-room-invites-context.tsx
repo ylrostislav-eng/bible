@@ -18,15 +18,16 @@ const IncomingRoomInvitesContext = createContext<IncomingRoomInvitesContextValue
  * Polls direct room invites app-wide (not just while sitting on the room
  * screen), so `IncomingRoomInviteModal` can surface a new one no matter
  * where the user currently is — mirrors `IncomingChallengesProvider`'s role
- * for duel challenges exactly, including pausing while a game is already in
- * progress.
+ * for duel challenges exactly, including pausing only while a game is
+ * actually `IN_PROGRESS` (not merely open-but-not-started).
  */
 export function IncomingRoomInvitesProvider({ children }: { children: React.ReactNode }) {
   const { activeGame } = useActiveGame();
   const [invites, setInvites] = useState<RoomInviteView[]>([]);
+  const busy = activeGame?.status === 'IN_PROGRESS';
 
   useEffect(() => {
-    if (activeGame) return undefined;
+    if (busy) return undefined;
     let cancelled = false;
 
     const poll = async () => {
@@ -44,7 +45,7 @@ export function IncomingRoomInvitesProvider({ children }: { children: React.Reac
       cancelled = true;
       clearInterval(interval);
     };
-  }, [activeGame]);
+  }, [busy]);
 
   const removeInvite = useCallback((inviteId: string) => {
     setInvites((is) => is.filter((i) => i.inviteId !== inviteId));

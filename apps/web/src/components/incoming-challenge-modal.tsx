@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
+import { leaveActiveRoom } from '@/lib/leave-room';
+import { LeaveRoomConfirm } from './leave-room-confirm';
 import { QuestionCountSlider } from './ui/question-count-slider';
 
 /** Set by this modal's "Перейти к дуэли" so the duel screen can pick the
@@ -16,9 +18,11 @@ const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 /**
  * A full-screen prompt for a friend-duel challenge that pops up no matter
  * where in the app the recipient currently is — mounted once at the (main)
- * layout level. Stays quiet while a game is already in progress (see
- * `IncomingChallengesProvider`) and while sitting on the duel screen itself,
- * since that page already shows its own inline "Входящие вызовы" list.
+ * layout level. Stays quiet only while a duel/room is actually
+ * `IN_PROGRESS` (see `IncomingChallengesProvider`) and while sitting on the
+ * duel screen itself, since that page already shows its own inline
+ * "Входящие вызовы" list. Accepting while still sitting in a not-yet-started
+ * room prompts leaving it first — see `LeaveRoomConfirm`.
  */
 export function IncomingChallengeModal() {
   const pathname = usePathname();
@@ -26,7 +30,7 @@ export function IncomingChallengeModal() {
   const { challenges } = useIncomingChallenges();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
-  if (activeGame || pathname === '/play/duel') return null;
+  if (activeGame?.status === 'IN_PROGRESS' || pathname === '/play/duel') return null;
 
   const challenge = challenges.find((c) => !dismissedIds.has(c.sessionId));
   if (!challenge) return null;
@@ -54,14 +58,18 @@ function ChallengePopup({
   onDismiss: () => void;
 }) {
   const router = useRouter();
-  const { setActiveGame } = useActiveGame();
+  const { activeGame, setActiveGame } = useActiveGame();
   const { removeChallenge } = useIncomingChallenges();
 
   const [questionCount, setQuestionCount] = useState(challenge.questionCount);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Only relevant for a room, and only while it hasn't started yet — an
+  // `IN_PROGRESS` room already suppresses this whole modal (see the
+  // top-level guard above), so it can never be true at this point.
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
 
-  const accept = async () => {
+  const doAccept = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -77,6 +85,27 @@ function ChallengePopup({
       setError(err instanceof ApiError ? err.message : 'Не удалось принять вызов');
       setBusy(false);
     }
+  };
+
+  const accept = () => {
+    if (activeGame?.type === 'room') {
+      setConfirmingLeave(true);
+      return;
+    }
+    void doAccept();
+  };
+
+  const confirmLeaveAndAccept = async () => {
+    if (!activeGame) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await leaveActiveRoom(activeGame.sessionId);
+    } catch {
+      // Worst case the old room lingers a little longer — still worth
+      // proceeding with the challenge the user actually asked to accept.
+    }
+    await doAccept();
   };
 
   const decline = async () => {
@@ -104,32 +133,43 @@ function ChallengePopup({
           <p className="text-lg font-bold">{challenge.fromNickname ?? 'Игрок'}</p>
         </div>
 
-        <QuestionCountSlider
-          label="Количество вопросов"
-          value={questionCount}
-          min={DUEL_QUESTION_COUNT_MIN}
-          max={challenge.questionCount}
-          onChange={setQuestionCount}
-        />
+        {confirmingLeave ? (
+          <LeaveRoomConfirm
+            onConfirm={() => void confirmLeaveAndAccept()}
+            onCancel={() => setConfirmingLeave(false)}
+            busy={busy}
+            error={error}
+          />
+        ) : (
+          <>
+            <QuestionCountSlider
+              label="Количество вопросов"
+              value={questionCount}
+              min={DUEL_QUESTION_COUNT_MIN}
+              max={challenge.questionCount}
+              onChange={setQuestionCount}
+            />
 
-        {error && <p className="text-sm text-danger">{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => void accept()}
-            disabled={busy}
-            className="h-11 flex-1 rounded-lg bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
-          >
-            {busy ? 'Подключение…' : 'Принять'}
-          </button>
-          <button
-            onClick={() => void decline()}
-            disabled={busy}
-            className="h-11 flex-1 rounded-lg bg-surface-hover text-sm font-semibold text-text-secondary disabled:opacity-50"
-          >
-            Отклонить
-          </button>
-        </div>
+            <div className="flex gap-2">
+              <button
+                onClick={accept}
+                disabled={busy}
+                className="h-11 flex-1 rounded-lg bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
+              >
+                {busy ? 'Подключение…' : 'Принять'}
+              </button>
+              <button
+                onClick={() => void decline()}
+                disabled={busy}
+                className="h-11 flex-1 rounded-lg bg-surface-hover text-sm font-semibold text-text-secondary disabled:opacity-50"
+              >
+                Отклонить
+              </button>
+            </div>
+          </>
+        )}
         <button onClick={onDismiss} className="text-center text-xs text-text-muted">
           Позже
         </button>
