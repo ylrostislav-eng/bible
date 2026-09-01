@@ -10,6 +10,7 @@ import { ChatWidget } from './chat-widget';
 import { IncomingChallengeModal } from './incoming-challenge-modal';
 import { IncomingRoomInviteModal } from './incoming-room-invite-modal';
 import { BottomNav } from './navigation/bottom-nav';
+import { RoomInvitesWidget } from './room-invites-widget';
 import { OnboardingForm } from './onboarding/onboarding-form';
 import { Button } from './ui/button';
 import { Spinner } from './ui/spinner';
@@ -66,6 +67,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <div className="pt-safe pb-24">{children}</div>
             <IncomingChallengeModal />
             <IncomingRoomInviteModal />
+            <RoomInvitesWidget />
             <ChatWidget />
             <BottomNav />
           </ChatProvider>

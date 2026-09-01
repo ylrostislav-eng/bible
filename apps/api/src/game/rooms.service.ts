@@ -477,7 +477,12 @@ export class RoomsService {
       session.participants.length >=
       (session.maxParticipants ?? ROOM_MAX_PARTICIPANTS)
     ) {
-      throw new ConflictException('Комната заполнена');
+      // Deliberately doesn't delete the invite — unlike the other failure
+      // branches above, this one can resolve itself (someone else leaves
+      // before the game starts), so the invite should stay valid for a retry.
+      throw new ConflictException(
+        'Комната уже заполнена. Присоединиться получится, если до начала игры освободится место',
+      );
     }
     if (session.leaderId) {
       const ban = await this.prisma.roomBan.findUnique({
