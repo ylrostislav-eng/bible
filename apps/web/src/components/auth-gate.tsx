@@ -1,5 +1,7 @@
 'use client';
 
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { ActiveGameProvider } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
 import { ChatProvider } from '@/lib/chat-context';
@@ -17,7 +19,24 @@ import { Spinner } from './ui/spinner';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { status, user, errorMessage, retry, devLogin } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const redirectedHome = useRef(false);
   usePresenceHeartbeat(status === 'authenticated' && !user?.needsOnboarding);
+
+  // A fresh launch of the app should always start on the home screen, not
+  // wherever the URL happens to point — e.g. Telegram resuming a
+  // backgrounded WebView on whatever in-app route it last showed, or a
+  // plain browser refresh on a deep link while testing. Fires at most once
+  // per real app load (the ref guard, not the effect's own re-runs, is
+  // what enforces that) — every navigation after this one is a deliberate
+  // in-app click and must not be bounced back.
+  useEffect(() => {
+    if (redirectedHome.current) return;
+    if (status !== 'authenticated' || user?.needsOnboarding) return;
+    redirectedHome.current = true;
+    if (pathname !== '/') router.replace('/');
+  }, [status, user?.needsOnboarding, pathname, router]);
 
   if (status === 'loading') {
     return (

@@ -25,6 +25,18 @@ import { RoomsService } from './rooms.service';
  * "next" (unlike the duel's "first caller wins" model). */
 const ROOM_REVEAL_SECONDS = 5;
 
+/** How long to wait after a disconnect before treating it as actually
+ * leaving a still-LOBBY room, rather than just a brief network blip or a
+ * quick trip to another tab (navigating away from `/play/room` unmounts
+ * `useRoomSocket`, disconnecting the socket immediately — reconnecting
+ * within this window, e.g. by navigating back, cancels it). Matches
+ * `PresenceService`'s online-status TTL for the same "are they actually
+ * still around" reasoning. Only ever does anything for a LOBBY room —
+ * `RoomsService.leave` is a no-op once IN_PROGRESS/COMPLETED — so someone
+ * who merely drops connection mid-game is unaffected; that's already
+ * handled by the per-question auto-timeout. */
+const ROOM_DISCONNECT_GRACE_MS = 60_000;
+
 interface AuthedSocket extends Socket {
   data: { userId: string };
 }
@@ -55,6 +67,8 @@ export class RoomsGateway implements OnGatewayDisconnect {
   private readonly roomSockets = new Map<string, Set<AuthedSocket>>();
   private readonly questionTimers = new Map<string, NodeJS.Timeout>();
   private readonly advanceTimers = new Map<string, NodeJS.Timeout>();
+  /** Key: `${sessionId}:${userId}`. See `ROOM_DISCONNECT_GRACE_MS`. */
+  private readonly disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -77,8 +91,56 @@ export class RoomsGateway implements OnGatewayDisconnect {
 
   handleDisconnect(socket: AuthedSocket): void {
     for (const [sessionId, sockets] of this.roomSockets) {
-      sockets.delete(socket);
+      if (!sockets.delete(socket)) continue;
       if (sockets.size === 0) this.roomSockets.delete(sessionId);
+      this.scheduleDisconnectGrace(sessionId, socket.data.userId);
+    }
+  }
+
+  private scheduleDisconnectGrace(sessionId: string, userId: string): void {
+    const key = `${sessionId}:${userId}`;
+    const existing = this.disconnectGraceTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(
+      () => void this.onDisconnectGraceExpired(sessionId, userId),
+      ROOM_DISCONNECT_GRACE_MS,
+    );
+    this.disconnectGraceTimers.set(key, timer);
+  }
+
+  private cancelDisconnectGrace(sessionId: string, userId: string): void {
+    const key = `${sessionId}:${userId}`;
+    const timer = this.disconnectGraceTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.disconnectGraceTimers.delete(key);
+    }
+  }
+
+  /** Fires once the grace window has passed with no reconnect — treats the
+   * disconnect as an actual "Покинуть комнату"/"Закрыть комнату", exactly
+   * like the explicit UI action does (leadership transfer if others remain,
+   * close if they were alone). A no-op if the room has since started/ended,
+   * or if the user reconnected (here or on another device/tab) in the
+   * meantime. */
+  private async onDisconnectGraceExpired(
+    sessionId: string,
+    userId: string,
+  ): Promise<void> {
+    this.disconnectGraceTimers.delete(`${sessionId}:${userId}`);
+    const sockets = this.roomSockets.get(sessionId);
+    const stillConnected =
+      sockets && [...sockets].some((s) => s.data.userId === userId);
+    if (stillConnected) return;
+    try {
+      const result = await this.roomsService.leave(userId, sessionId);
+      await this.notifyLeft(sessionId, result === null);
+    } catch (err) {
+      // Already left some other way (kicked, explicit leave, room deleted)
+      // — nothing left to clean up.
+      this.logger.debug(
+        `disconnect-grace leave skipped for ${userId}/${sessionId}: ${err}`,
+      );
     }
   }
 
@@ -98,6 +160,10 @@ export class RoomsGateway implements OnGatewayDisconnect {
       // it to give up and bail out instead.
       await this.roomsService.getState(socket.data.userId, body.sessionId);
       this.register(body.sessionId, socket);
+      // A reconnect within the grace window (e.g. navigating back to
+      // `/play/room`, or a brief network blip) cancels the pending
+      // disconnect-triggered leave — see `ROOM_DISCONNECT_GRACE_MS`.
+      this.cancelDisconnectGrace(body.sessionId, socket.data.userId);
       await this.broadcastState(body.sessionId);
     } catch (err) {
       socket.emit(ROOM_WS_SERVER_EVENTS.unavailable, {
