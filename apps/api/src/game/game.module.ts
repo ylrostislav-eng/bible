@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
 import { DuelController } from './duel.controller';
 import { DuelService } from './duel.service';
@@ -10,7 +11,7 @@ import { RoomsGateway } from './rooms.gateway';
 import { RoomsService } from './rooms.service';
 
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, NotificationsModule],
   controllers: [GameController, DuelController, RoomsController],
   providers: [
     GameService,

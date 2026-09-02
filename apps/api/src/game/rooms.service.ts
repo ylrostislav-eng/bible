@@ -20,6 +20,7 @@ import {
   type RoomSummary,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import type { CreateRoomDto } from './dto/create-room.dto';
@@ -72,6 +73,7 @@ export class RoomsService {
     private readonly prisma: PrismaService,
     private readonly questionsService: QuestionsService,
     private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -574,11 +576,19 @@ export class RoomsService {
   async declineInvite(userId: string, inviteId: string): Promise<void> {
     const invite = await this.prisma.roomInvite.findUnique({
       where: { id: inviteId },
+      include: { session: { select: { roomName: true } } },
     });
     if (!invite || invite.toUserId !== userId) {
       throw new NotFoundException('Приглашение не найдено');
     }
     await this.prisma.roomInvite.delete({ where: { id: inviteId } });
+    // A personal invite, unlike the public room list — the leader singled
+    // this person out, so a silent "it just disappeared" isn't enough.
+    await this.notificationsService.recordRoomInviteDecline({
+      userId: invite.fromUserId,
+      declinedByUserId: userId,
+      roomName: invite.session.roomName,
+    });
   }
 
   /** LOBBY-only. The leader leaving closes the room only if they were the
@@ -797,6 +807,50 @@ export class RoomsService {
       state: this.buildState(next, next.leaderId ?? ''),
       finished: false,
     };
+  }
+
+  /**
+   * Finds LOBBY rooms older than `thresholdMs` with zero currently connected
+   * sockets, per the gateway's own live registry (`connectedSessionIds`).
+   * This is the case the disconnect-grace timer can't catch: that timer only
+   * ever starts once someone's socket has actually registered for a room
+   * (`RoomsGateway.onEnter`) and then disconnects — if the leader created the
+   * room over REST and their client never even opened the socket (closed the
+   * tab immediately, a network hiccup right at creation, or a client bug),
+   * nothing was ever scheduled to notice they're gone, and the room sat in
+   * the public list forever with nobody able to close it.
+   */
+  async findStaleLobbySessionIds(
+    thresholdMs: number,
+    connectedSessionIds: string[],
+  ): Promise<string[]> {
+    const cutoff = new Date(Date.now() - thresholdMs);
+    const rows = await this.prisma.gameSession.findMany({
+      where: {
+        mode: 'ROOM',
+        status: 'LOBBY',
+        startedAt: { lt: cutoff },
+        id: { notIn: connectedSessionIds },
+      },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  /** Closes a LOBBY room outright, with no leadership transfer — used only
+   * by the stale-lobby sweep above, where by definition nobody is currently
+   * connected for there to be anyone to hand it to. Returns `false` if the
+   * room already moved on (started, or someone closed it) by the time this
+   * runs, so the caller knows not to also broadcast a closure for it. */
+  async abandonStaleLobby(sessionId: string): Promise<boolean> {
+    const result = await this.prisma.gameSession.updateMany({
+      where: { id: sessionId, mode: 'ROOM', status: 'LOBBY' },
+      data: { status: 'ABANDONED', finishedAt: new Date() },
+    });
+    if (result.count > 0) {
+      await this.prisma.roomInvite.deleteMany({ where: { sessionId } });
+    }
+    return result.count > 0;
   }
 
   // ---- internals ----

@@ -146,7 +146,24 @@ export default function DuelPage() {
           // executing), so the closure always sees a real value here.
           clearInterval(interval);
         }
-      } catch {
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          // The session this page is pointed at (almost always a stale
+          // `activeGame` left over in sessionStorage — a declined/expired
+          // challenge, or a session from before a dev-data reset) no longer
+          // exists or isn't reachable for this user. Every other poll
+          // failure is assumed transient and just retries next tick — this
+          // one specifically means "stop asking and start over," or the
+          // page would sit on a blank "Загрузка…" state forever instead of
+          // dropping back to the duel menu, the way the room screen already
+          // does for the equivalent case (see `unavailable` there).
+          clearInterval(interval);
+          setSessionId(null);
+          setActiveGame(null);
+          setDuelState(null);
+          return;
+        }
         // Transient poll failures are ignored — the next tick will retry.
       }
     };
@@ -157,7 +174,7 @@ export default function DuelPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [sessionId, updateProfile]);
+  }, [sessionId, updateProfile, setActiveGame]);
 
   // A new question means a fresh choice — clear any highlight left over
   // from the previous round. Can't rely on `next()` alone for this: if the

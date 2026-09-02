@@ -96,6 +96,9 @@ model User {
   roomInvitesSent     RoomInvite[] @relation("RoomInvitesSent")
   roomInvitesReceived RoomInvite[] @relation("RoomInvitesReceived")
 
+  declineNoticesFor DeclineNotice[] @relation("DeclineNoticesFor")
+  declineNoticesBy  DeclineNotice[] @relation("DeclineNoticesBy")
+
   @@index([rating])
   @@map("users")
 }
@@ -502,4 +505,35 @@ model GameAnswer {
 
   @@unique([participantId, order])
   @@map("game_answers")
+}
+
+enum DeclineNoticeKind {
+  DUEL_CHALLENGE
+  ROOM_INVITE
+}
+
+/// A one-shot "your invite was declined" notice for the person who sent it —
+/// duel-challenge and room-invite declines both used to just vanish
+/// silently for whoever sent them. Deleted the moment it's been shown (see
+/// `NotificationsController.dismissDeclineNotice`), so this table only ever
+/// holds notices still waiting to be delivered — not a permanent log.
+model DeclineNotice {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation("DeclineNoticesFor", fields: [userId], references: [id], onDelete: Cascade)
+
+  kind DeclineNoticeKind
+
+  declinedByUserId String
+  declinedByUser   User   @relation("DeclineNoticesBy", fields: [declinedByUserId], references: [id], onDelete: Cascade)
+
+  /// Only set for ROOM_INVITE — the room's name, since a duel challenge has
+  /// no equivalent to name.
+  roomName String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("decline_notices")
 }

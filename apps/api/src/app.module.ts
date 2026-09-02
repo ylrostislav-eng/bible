@@ -10,6 +10,7 @@ import { FriendsModule } from './friends/friends.module';
 import { GameModule } from './game/game.module';
 import { HealthModule } from './health/health.module';
 import { LearnModule } from './learn/learn.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PresenceModule } from './presence/presence.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     PresenceModule,
     FriendsModule,
     ChatModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

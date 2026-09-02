@@ -1,4 +1,8 @@
-import { Logger } from '@nestjs/common';
+import {
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -37,6 +41,18 @@ const ROOM_REVEAL_SECONDS = 5;
  * handled by the per-question auto-timeout. */
 const ROOM_DISCONNECT_GRACE_MS = 60_000;
 
+/** How often to sweep for LOBBY rooms nobody ever actually connected to —
+ * see `findStaleLobbySessionIds`. A low-frequency background check, not a
+ * time-critical one: this only ever catches rooms the disconnect-grace
+ * timer structurally can't (see there), so there's no harm in it lagging a
+ * few minutes behind. */
+const STALE_LOBBY_SWEEP_INTERVAL_MS = 60_000;
+/** A LOBBY room with zero connected sockets for this long is treated as
+ * abandoned. Comfortably past `ROOM_DISCONNECT_GRACE_MS` so this sweep
+ * never races the grace timer for a room someone was genuinely just
+ * reconnecting to. */
+const STALE_LOBBY_THRESHOLD_MS = 5 * 60_000;
+
 interface AuthedSocket extends Socket {
   data: { userId: string };
 }
@@ -59,7 +75,9 @@ interface AuthedSocket extends Socket {
   namespace: ROOM_WS_NAMESPACE,
   cors: { origin: true, credentials: true },
 })
-export class RoomsGateway implements OnGatewayDisconnect {
+export class RoomsGateway
+  implements OnGatewayDisconnect, OnModuleInit, OnModuleDestroy
+{
   @WebSocketServer()
   private readonly server!: Server;
 
@@ -69,11 +87,47 @@ export class RoomsGateway implements OnGatewayDisconnect {
   private readonly advanceTimers = new Map<string, NodeJS.Timeout>();
   /** Key: `${sessionId}:${userId}`. See `ROOM_DISCONNECT_GRACE_MS`. */
   private readonly disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
+  private staleLobbySweepInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly roomsService: RoomsService,
   ) {}
+
+  onModuleInit(): void {
+    this.staleLobbySweepInterval = setInterval(
+      () => void this.sweepStaleLobbies(),
+      STALE_LOBBY_SWEEP_INTERVAL_MS,
+    );
+  }
+
+  onModuleDestroy(): void {
+    if (this.staleLobbySweepInterval)
+      clearInterval(this.staleLobbySweepInterval);
+  }
+
+  /** See `findStaleLobbySessionIds`/`abandonStaleLobby` — cleans up LOBBY
+   * rooms nobody ever actually connected to, which nothing else in the
+   * lifecycle ever gets a chance to notice. */
+  private async sweepStaleLobbies(): Promise<void> {
+    try {
+      const staleIds = await this.roomsService.findStaleLobbySessionIds(
+        STALE_LOBBY_THRESHOLD_MS,
+        [...this.roomSockets.keys()],
+      );
+      for (const sessionId of staleIds) {
+        const closed = await this.roomsService.abandonStaleLobby(sessionId);
+        // No live sockets by construction (that's what made it "stale"),
+        // but broadcasting is cheap and correct either way — covers the
+        // rare case where someone connected in the gap between the query
+        // above and this update.
+        if (closed)
+          this.closeRoom(sessionId, 'Комната закрыта — никто не подключился');
+      }
+    } catch (err) {
+      this.logger.error(`stale-lobby sweep failed: ${err}`);
+    }
+  }
 
   async handleConnection(socket: AuthedSocket): Promise<void> {
     const token = this.extractToken(socket);

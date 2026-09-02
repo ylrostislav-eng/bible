@@ -17,6 +17,7 @@ import {
   type PendingChallenge,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import type { ChallengeFriendDto } from './dto/challenge-friend.dto';
@@ -77,6 +78,7 @@ export class DuelService {
     private readonly prisma: PrismaService,
     private readonly questionsService: QuestionsService,
     private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -210,6 +212,13 @@ export class DuelService {
       await this.prisma.gameSession.update({
         where: { id: sessionId },
         data: { status: 'ABANDONED', finishedAt: new Date() },
+      });
+      // The challenger sent this to one specific person — unlike an open
+      // invite code, there's no one else who might still accept, so they
+      // should hear back rather than have it just vanish from their list.
+      await this.notificationsService.recordDuelDecline({
+        userId: session.participants[0].userId,
+        declinedByUserId: userId,
       });
       return { declined: true };
     }
