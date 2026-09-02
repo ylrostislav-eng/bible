@@ -327,7 +327,14 @@ export class UsersService {
    */
   async applyChapterCheckRewards(
     userId: string,
-    params: { correctCount: number; wrongCount: number; awardsPoints: boolean },
+    params: {
+      correctCount: number;
+      wrongCount: number;
+      awardsPoints: boolean;
+      /** `Date.prototype.getTimezoneOffset()` from the client, if it sent
+       * one — see `computeStreakUpdate`. */
+      timezoneOffsetMinutes?: number;
+    },
   ): Promise<{
     user: User;
     leveledUp: boolean;
@@ -359,7 +366,10 @@ export class UsersService {
       const level = Math.floor(experience / XP_PER_LEVEL) + 1;
       const leveledUp = level > user.level;
       const rating = user.rating + ratingEarned;
-      const streak = this.computeStreakUpdate(user);
+      const streak = this.computeStreakUpdate(
+        user,
+        this.normalizeTimezoneOffset(params.timezoneOffsetMinutes),
+      );
       const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
 
       const updated = await tx.user.update({
@@ -441,15 +451,55 @@ export class UsersService {
     });
   }
 
-  /** Advances the streak by one calendar day (UTC), resets on a missed day. */
-  private computeStreakUpdate(user: User): {
+  /** Clamps to the DTO's validated range and falls back to UTC (0) for a
+   * client that didn't send one — old app builds, or a request from
+   * somewhere that never asks. */
+  private normalizeTimezoneOffset(minutes: number | undefined): number {
+    if (minutes === undefined || !Number.isFinite(minutes)) return 0;
+    return Math.max(-720, Math.min(840, Math.round(minutes)));
+  }
+
+  /**
+   * Maps a real instant to the calendar-day label the player would read off
+   * their own clock at that moment — a `Date` at UTC midnight of that day,
+   * which is exactly what a Prisma `@db.Date` column stores (Postgres
+   * `DATE` has no time-of-day at all, so this is the only representation
+   * that round-trips through `lastActivityDate`). `timezoneOffsetMinutes`
+   * uses the same sign convention as `Date.prototype.getTimezoneOffset()`
+   * (positive = behind UTC, e.g. +300 for UTC-5). Passing 0 reproduces the
+   * old UTC-only behavior exactly.
+   */
+  private localDateLabel(date: Date, timezoneOffsetMinutes: number): Date {
+    const shifted = new Date(date.getTime() - timezoneOffsetMinutes * 60_000);
+    return new Date(
+      Date.UTC(
+        shifted.getUTCFullYear(),
+        shifted.getUTCMonth(),
+        shifted.getUTCDate(),
+      ),
+    );
+  }
+
+  /**
+   * Advances the streak by one calendar day in the player's own timezone,
+   * resets on a missed day. Previously this always used UTC's midnight,
+   * regardless of where the player actually is — fine for someone near
+   * UTC, but unfair for anyone far from it: a consistent daily routine in,
+   * say, UTC+10 doesn't line up with UTC's day boundary at all, so it could
+   * cost a streak day (or fail to grant one) for no reason the player could
+   * ever see or control. `timezoneOffsetMinutes` is whatever the client
+   * most recently sent — see `SubmitChapterCheckAnswerDto`.
+   */
+  private computeStreakUpdate(
+    user: User,
+    timezoneOffsetMinutes: number,
+  ): {
     currentStreak: number;
     longestStreak: number;
     lastActivityDate: Date;
     increased: boolean;
   } {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const today = this.localDateLabel(new Date(), timezoneOffsetMinutes);
 
     if (!user.lastActivityDate) {
       return {
@@ -460,8 +510,10 @@ export class UsersService {
       };
     }
 
-    const last = new Date(user.lastActivityDate);
-    last.setUTCHours(0, 0, 0, 0);
+    // `lastActivityDate` came back from a `@db.Date` column, so it's
+    // already UTC-midnight-aligned to whatever day label it was stored
+    // with — no further truncation needed before diffing.
+    const last = user.lastActivityDate;
     const diffDays = Math.round(
       (today.getTime() - last.getTime()) / 86_400_000,
     );

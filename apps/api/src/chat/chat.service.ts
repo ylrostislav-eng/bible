@@ -138,17 +138,34 @@ export class ChatService {
     const friendIds = friendships.map((f) => f.friendId);
     if (friendIds.length === 0) return [];
 
+    const conversationKeys = friendIds.map((friendId) =>
+      this.conversationKey(userId, friendId),
+    );
+
     const [friends, online, lastMessages, unreadGroups] = await Promise.all([
       this.prisma.user.findMany({ where: { id: { in: friendIds } } }),
       this.presenceService.areOnline(friendIds),
-      Promise.all(
-        friendIds.map((friendId) =>
-          this.prisma.chatMessage.findFirst({
-            where: { conversationKey: this.conversationKey(userId, friendId) },
-            orderBy: { createdAt: 'desc' },
-          }),
-        ),
-      ),
+      // One query for every conversation's latest message instead of one
+      // query per friend. `DISTINCT ON` (paired with a matching `ORDER BY`)
+      // is Postgres's idiomatic "last row per group", and the existing
+      // (conversationKey, createdAt) index turns this into a fast index
+      // scan rather than a full table scan. At a few hundred friends the
+      // old one-query-per-friend loop was slow enough to visibly stall the
+      // conversation list — and held up the whole DB connection pool for
+      // everyone else mid-request, not just this one caller.
+      this.prisma.$queryRaw<
+        {
+          conversationKey: string;
+          senderId: string;
+          body: string;
+          createdAt: Date;
+        }[]
+      >`
+        SELECT DISTINCT ON ("conversationKey") "conversationKey", "senderId", "body", "createdAt"
+        FROM "chat_messages"
+        WHERE "conversationKey" = ANY(${conversationKeys})
+        ORDER BY "conversationKey", "createdAt" DESC
+      `,
       this.prisma.chatMessage.groupBy({
         by: ['senderId'],
         where: {
@@ -160,8 +177,12 @@ export class ChatService {
       }),
     ]);
 
+    const lastByKey = new Map(lastMessages.map((m) => [m.conversationKey, m]));
     const lastByFriend = new Map(
-      friendIds.map((friendId, i) => [friendId, lastMessages[i]]),
+      friendIds.map((friendId) => [
+        friendId,
+        lastByKey.get(this.conversationKey(userId, friendId)) ?? null,
+      ]),
     );
     const unreadByFriend = new Map(
       unreadGroups.map((g) => [g.senderId, g._count._all]),

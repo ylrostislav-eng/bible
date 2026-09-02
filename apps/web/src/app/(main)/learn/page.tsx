@@ -323,7 +323,14 @@ function ChapterCheckView({
       try {
         const res = await apiClient.post<SubmitChapterCheckAnswerResult>(
           `/learn/check/${sessionId}/answer`,
-          { questionId: question.id, ...(index !== undefined ? { answerIndex: index } : {}) },
+          {
+            questionId: question.id,
+            ...(index !== undefined ? { answerIndex: index } : {}),
+            // Only matters on the last question (it's what the streak gets
+            // evaluated against), but sending it every time is simpler than
+            // knowing in advance which answer is the last one.
+            timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+          },
         );
         setFeedback({
           correct: res.correct,

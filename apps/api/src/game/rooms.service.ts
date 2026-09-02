@@ -329,6 +329,7 @@ export class RoomsService {
       create: { leaderId, bannedUserId: targetUserId },
       update: {},
     });
+    await this.reconcileUnreadOnBan(leaderId, targetUserId);
 
     const target = session.participants.find((p) => p.userId === targetUserId);
     if (target && session.status === 'LOBBY') {
@@ -336,6 +337,28 @@ export class RoomsService {
     }
 
     return this.buildState(await this.loadSession(sessionId), leaderId);
+  }
+
+  /** Same fix as `FriendsService.unfriend`, for the other way a
+   * conversation can become permanently unreachable: `ChatService`'s ban
+   * check is direction-agnostic, so banning someone shuts down messaging
+   * both ways just like unfriending does — any message still unread at
+   * that moment would otherwise stay stuck on the recipient's unread badge
+   * forever, with the conversation now impossible to open and clear it. */
+  private async reconcileUnreadOnBan(
+    leaderId: string,
+    bannedUserId: string,
+  ): Promise<void> {
+    await this.prisma.chatMessage.updateMany({
+      where: {
+        readAt: null,
+        OR: [
+          { senderId: leaderId, recipientId: bannedUserId },
+          { senderId: bannedUserId, recipientId: leaderId },
+        ],
+      },
+      data: { readAt: new Date() },
+    });
   }
 
   /** Standalone leader-scoped ban, independent of any specific room — the
@@ -353,6 +376,7 @@ export class RoomsService {
       create: { leaderId, bannedUserId: targetUserId },
       update: {},
     });
+    await this.reconcileUnreadOnBan(leaderId, targetUserId);
   }
 
   /** Lets the target join this leader's rooms again. Existing rooms are

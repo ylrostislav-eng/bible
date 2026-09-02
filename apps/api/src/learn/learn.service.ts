@@ -185,6 +185,7 @@ export class LearnService {
         correctCount,
         wrongCount,
         awardsPoints,
+        timezoneOffsetMinutes: dto.timezoneOffsetMinutes,
       });
       await this.prisma.chapterCheckSession.update({
         where: { id: sessionId },
@@ -212,7 +213,20 @@ export class LearnService {
       };
     }
 
+    // Clears the clock rather than leaving it running for the next
+    // question — `advance()` is what's meant to start it (deliberately
+    // deferred until the client says the user is actually looking at the
+    // next question, not still reading this one's feedback). Without this,
+    // `currentQuestionStartedAt` from *this* question stayed in place until
+    // `advance()` overwrote it, and `advance()` had no way to tell "the
+    // first legitimate start" apart from "reset it again" — so calling it
+    // repeatedly kept pushing the deadline out, defeating the time limit
+    // entirely.
     const next = answers[answeredCount];
+    await this.prisma.chapterCheckSession.update({
+      where: { id: sessionId },
+      data: { currentQuestionStartedAt: null },
+    });
 
     return {
       correct: isCorrect,
@@ -244,8 +258,14 @@ export class LearnService {
       throw new ConflictException('Проверка уже завершена');
     }
 
-    await this.prisma.chapterCheckSession.update({
-      where: { id: sessionId },
+    // Only the first call actually starts the clock — `submitAnswer` clears
+    // `currentQuestionStartedAt` to null when moving to a new question, so
+    // the conditional `where` here only matches that "not started yet"
+    // state. A repeat call (double-tap, or a client retrying) becomes a
+    // harmless no-op instead of pushing the deadline out again; without
+    // this, calling `advance` over and over gave unlimited time to answer.
+    await this.prisma.chapterCheckSession.updateMany({
+      where: { id: sessionId, currentQuestionStartedAt: null },
       data: { currentQuestionStartedAt: new Date() },
     });
 

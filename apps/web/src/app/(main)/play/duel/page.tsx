@@ -137,14 +137,21 @@ export default function DuelPage() {
             if (!already) void updateProfile({});
             return true;
           });
+          // A completed duel's result never changes again — polling every
+          // 1.2s for as long as the result screen stays open would just be
+          // wasted battery and data for nothing new to show. `poll` isn't
+          // invoked until after `interval` is assigned below (the calls are
+          // the next two lines, both after this declaration finishes
+          // executing), so the closure always sees a real value here.
+          clearInterval(interval);
         }
       } catch {
         // Transient poll failures are ignored — the next tick will retry.
       }
     };
 
-    void poll();
     const interval = setInterval(() => void poll(), POLL_INTERVAL_MS);
+    void poll();
     return () => {
       cancelled = true;
       clearInterval(interval);
