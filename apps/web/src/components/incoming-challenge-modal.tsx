@@ -2,7 +2,7 @@
 
 import type { PendingChallenge } from '@bible-arena/shared';
 import { DUEL_QUESTION_COUNT_MIN } from '@bible-arena/shared';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
@@ -16,46 +16,22 @@ import { QuestionCountSlider } from './ui/question-count-slider';
 const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
 /**
- * A full-screen prompt for a friend-duel challenge that pops up no matter
- * where in the app the recipient currently is — mounted once at the (main)
- * layout level. Stays quiet only while a duel/room is actually
- * `IN_PROGRESS` (see `IncomingChallengesProvider`) and while sitting on the
- * duel screen itself, since that page already shows its own inline
- * "Входящие вызовы" list. Accepting while still sitting in a not-yet-started
- * room prompts leaving it first — see `LeaveRoomConfirm`.
+ * A full-screen prompt for a friend-duel challenge. Rendered by
+ * `IncomingNotifications`, which owns the decision of *whether* to show it —
+ * it and the room-invite popup are both full-screen, so only one may be on
+ * screen at a time. Accepting while still sitting in a not-yet-started room
+ * prompts leaving it first — see `LeaveRoomConfirm`.
  */
-export function IncomingChallengeModal() {
-  const pathname = usePathname();
-  const { activeGame } = useActiveGame();
-  const { challenges } = useIncomingChallenges();
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-
-  if (activeGame?.status === 'IN_PROGRESS' || pathname === '/play/duel') return null;
-
-  const challenge = challenges.find((c) => !dismissedIds.has(c.sessionId));
-  if (!challenge) return null;
-
-  return (
-    <ChallengePopup
-      key={challenge.sessionId}
-      challenge={challenge}
-      onDismiss={() =>
-        setDismissedIds((ids) => {
-          const next = new Set(ids);
-          next.add(challenge.sessionId);
-          return next;
-        })
-      }
-    />
-  );
-}
-
-function ChallengePopup({
+export function ChallengePopup({
   challenge,
   onDismiss,
+  queuedNote,
 }: {
   challenge: PendingChallenge;
   onDismiss: () => void;
+  /** Rendered under "Позже" when something else is waiting behind this
+   * popup, so dismissing it doesn't feel like the queue ended here. */
+  queuedNote?: string;
 }) {
   const router = useRouter();
   const { activeGame, setActiveGame } = useActiveGame();
@@ -170,9 +146,10 @@ function ChallengePopup({
             </div>
           </>
         )}
-        <button onClick={onDismiss} className="text-center text-xs text-text-muted">
+        <button onClick={onDismiss} className="text-center text-xs text-text-secondary">
           Позже
         </button>
+        {queuedNote && <p className="text-center text-xs text-text-secondary">{queuedNote}</p>}
       </div>
     </div>
   );

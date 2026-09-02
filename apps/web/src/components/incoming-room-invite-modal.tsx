@@ -1,7 +1,7 @@
 'use client';
 
 import type { RoomInviteView } from '@bible-arena/shared';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
@@ -10,44 +10,26 @@ import { leaveActiveRoom } from '@/lib/leave-room';
 import { LeaveRoomConfirm } from './leave-room-confirm';
 
 /**
- * A full-screen prompt for a direct room invite that pops up no matter
- * where in the app the recipient currently is — mirrors
- * `IncomingChallengeModal` exactly. Previously a room invite only ever
- * showed up on the room screen's own "Входящие приглашения" card, so it was
- * easy to miss unless you happened to open Играть → Комната yourself; this
- * is what actually surfaces it the way the 1v1 duel challenge already does.
- * Stays quiet only while a game is actually `IN_PROGRESS`, and while sitting
- * on the room screen itself, since that page already shows its own inline
- * list. Accepting while still sitting in a not-yet-started room of your own
- * prompts leaving it first — see `LeaveRoomConfirm`.
+ * A full-screen prompt for a direct room invite. Rendered by
+ * `IncomingNotifications`, which owns the decision of *whether* to show it —
+ * it and the duel-challenge popup are both full-screen, so only one may be
+ * on screen at a time. Before this existed a room invite only ever showed up
+ * on the room screen's own "Входящие приглашения" card, so it was easy to
+ * miss unless you happened to open Играть → Комната yourself. Accepting
+ * while still sitting in a not-yet-started room of your own prompts leaving
+ * it first — see `LeaveRoomConfirm`.
  */
-export function IncomingRoomInviteModal() {
-  const pathname = usePathname();
-  const { activeGame } = useActiveGame();
-  const { invites } = useIncomingRoomInvites();
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-
-  if (activeGame?.status === 'IN_PROGRESS' || pathname === '/play/room') return null;
-
-  const invite = invites.find((i) => !dismissedIds.has(i.inviteId));
-  if (!invite) return null;
-
-  return (
-    <InvitePopup
-      key={invite.inviteId}
-      invite={invite}
-      onDismiss={() =>
-        setDismissedIds((ids) => {
-          const next = new Set(ids);
-          next.add(invite.inviteId);
-          return next;
-        })
-      }
-    />
-  );
-}
-
-function InvitePopup({ invite, onDismiss }: { invite: RoomInviteView; onDismiss: () => void }) {
+export function InvitePopup({
+  invite,
+  onDismiss,
+  queuedNote,
+}: {
+  invite: RoomInviteView;
+  onDismiss: () => void;
+  /** Rendered under "Позже" when something else is waiting behind this
+   * popup, so dismissing it doesn't feel like the queue ended here. */
+  queuedNote?: string;
+}) {
   const router = useRouter();
   const { activeGame, setActiveGame } = useActiveGame();
   const { removeInvite } = useIncomingRoomInvites();
@@ -157,9 +139,10 @@ function InvitePopup({ invite, onDismiss }: { invite: RoomInviteView; onDismiss:
             </div>
           </>
         )}
-        <button onClick={onDismiss} className="text-center text-xs text-text-muted">
+        <button onClick={onDismiss} className="text-center text-xs text-text-secondary">
           Позже
         </button>
+        {queuedNote && <p className="text-center text-xs text-text-secondary">{queuedNote}</p>}
       </div>
     </div>
   );

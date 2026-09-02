@@ -9,8 +9,7 @@ import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { ChatWidget } from './chat-widget';
-import { IncomingChallengeModal } from './incoming-challenge-modal';
-import { IncomingRoomInviteModal } from './incoming-room-invite-modal';
+import { IncomingNotifications } from './incoming-notifications';
 import { BottomNav } from './navigation/bottom-nav';
 import { RoomInvitesWidget } from './room-invites-widget';
 import { OnboardingForm } from './onboarding/onboarding-form';
@@ -83,9 +82,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <IncomingChallengesProvider>
         <IncomingRoomInvitesProvider>
           <ChatProvider>
-            <div className="pt-safe pb-24">{children}</div>
-            <IncomingChallengeModal />
-            <IncomingRoomInviteModal />
+            {/* Bottom padding has to clear the floating widgets, not just the
+                nav bar: the chat and room-invite buttons sit at bottom-24 and
+                are 56px tall, so they occupy up to 152px from the bottom.
+                With the old pb-24 (96px) the last card on a fully scrolled
+                page ended up underneath them, with its text cut off. */}
+            <div className="pt-safe pb-40">{children}</div>
+            <IncomingNotifications />
             <RoomInvitesWidget />
             <ChatWidget />
             <BottomNav />

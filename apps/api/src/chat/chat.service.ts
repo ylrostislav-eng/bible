@@ -1,5 +1,10 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
   CHAT_MESSAGES_PAGE_SIZE,
   type ChatConversationView,
   type ChatMessageView,
@@ -62,9 +67,22 @@ export class ChatService {
     body: string,
   ): Promise<ChatMessageView> {
     await this.assertCanMessage(senderId, recipientId);
+    // Length is enforced here rather than as a DTO on the transport: sending
+    // goes through the WebSocket gateway, whose handler took a raw object
+    // and never ran the validation class that existed for it — so the limit
+    // the chat UI shows was, in practice, only a client-side courtesy.
+    // Checking in the service covers every caller, whatever the transport.
+    if (typeof body !== 'string') {
+      throw new BadRequestException('Некорректное сообщение');
+    }
     const trimmed = body.trim();
     if (!trimmed) {
       throw new ForbiddenException('Сообщение не может быть пустым');
+    }
+    if (trimmed.length > CHAT_MESSAGE_MAX_LENGTH) {
+      throw new BadRequestException(
+        `Слишком длинное сообщение (максимум ${CHAT_MESSAGE_MAX_LENGTH} символов)`,
+      );
     }
     const message = await this.prisma.chatMessage.create({
       data: {

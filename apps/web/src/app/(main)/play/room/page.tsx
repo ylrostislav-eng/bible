@@ -844,6 +844,14 @@ export default function RoomPage() {
         Присоединиться по коду
       </Button>
 
+      {/* Joining from this screen (a public room in the list, or an incoming
+          invite) can fail for perfectly ordinary reasons — the room filled up
+          or started while the list was on screen. Both handlers set `error`,
+          but until this was here nothing rendered it: the button just stopped
+          spinning and the room stayed where it was, with no way to tell
+          whether it worked. */}
+      {error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+
       {pendingInvites.length > 0 && (
         <Card className="flex-col gap-3">
           <p className="text-sm font-semibold text-text-secondary">Входящие приглашения</p>

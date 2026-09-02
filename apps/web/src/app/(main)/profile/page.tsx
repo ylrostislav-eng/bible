@@ -118,12 +118,34 @@ export default function ProfilePage() {
         </p>
       </Card>
 
-      <Link href="/profile/blacklist">
-        <Card className="flex-row items-center justify-between">
-          <h2 className="text-sm font-semibold text-text-secondary">Чёрный список</h2>
-          <span className="text-text-muted">›</span>
-        </Card>
-      </Link>
+      {/* Settings live here as well as on the home screen: the home tile is
+          quicker once you know it exists, but people looking for settings
+          reach for their profile first, the way every other app trains them
+          to. Each row says what it actually does — "Чёрный список" alone
+          isn't self-explanatory if you haven't needed it yet. */}
+      <div className="flex flex-col gap-2">
+        <Link href="/settings">
+          <Card className="flex-row items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-sm font-semibold">Настройки</h2>
+              <p className="text-xs text-text-secondary">Никнейм, аватар, страна и язык</p>
+            </div>
+            <span className="text-text-secondary">›</span>
+          </Card>
+        </Link>
+
+        <Link href="/profile/blacklist">
+          <Card className="flex-row items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-sm font-semibold">Чёрный список</h2>
+              <p className="text-xs text-text-secondary">
+                Игроки, которые не смогут писать вам и звать в игру
+              </p>
+            </div>
+            <span className="text-text-secondary">›</span>
+          </Card>
+        </Link>
+      </div>
     </div>
   );
 }

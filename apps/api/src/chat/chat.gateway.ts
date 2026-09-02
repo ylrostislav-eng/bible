@@ -80,6 +80,14 @@ export class ChatGateway implements OnGatewayDisconnect {
     @MessageBody() body: { toUserId: string; body: string },
   ): Promise<void> {
     try {
+      // Anything arriving over a socket is arbitrary client input — check
+      // the shape before it reaches the query layer, so a malformed payload
+      // surfaces as a readable error instead of a database-level one. The
+      // message's own rules (empty, too long) live in the service, which is
+      // the single place every transport goes through.
+      if (!body || typeof body.toUserId !== 'string') {
+        throw new Error('Не указан получатель сообщения');
+      }
       const message = await this.chatService.sendMessage(
         socket.data.userId,
         body.toUserId,

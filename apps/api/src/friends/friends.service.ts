@@ -12,6 +12,7 @@ import {
   type FriendsListResponse,
   type FriendView,
 } from '@bible-arena/shared';
+import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -115,37 +116,53 @@ export class FriendsService {
       throw new BadRequestException('Нельзя добавить себя в друзья');
     }
 
-    const [reversePending, alreadyFriends] = await Promise.all([
-      this.prisma.friendRequest.findUnique({
-        where: {
-          fromUserId_toUserId: {
-            fromUserId: toUserId,
-            toUserId: currentUserId,
+    // Everything runs under an advisory lock keyed on the *pair* of users
+    // (same trick as the room-name uniqueness check in RoomsService). Two
+    // people adding each other at the same moment would otherwise both read
+    // "no request from them yet" and both create one, leaving two pending
+    // requests crossing each other — exactly what the reverse-pending
+    // branch below exists to prevent.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${this.pairKey(currentUserId, toUserId)}))`;
+
+      const [reversePending, alreadyFriends] = await Promise.all([
+        tx.friendRequest.findUnique({
+          where: {
+            fromUserId_toUserId: {
+              fromUserId: toUserId,
+              toUserId: currentUserId,
+            },
           },
-        },
-      }),
-      this.prisma.friendship.findUnique({
+        }),
+        tx.friendship.findUnique({
+          where: {
+            userId_friendId: { userId: currentUserId, friendId: toUserId },
+          },
+        }),
+      ]);
+
+      if (alreadyFriends) {
+        throw new ConflictException('Вы уже друзья');
+      }
+      if (reversePending?.status === 'PENDING') {
+        await this.acceptRequestRow(tx, reversePending.id);
+        return;
+      }
+
+      await tx.friendRequest.upsert({
         where: {
-          userId_friendId: { userId: currentUserId, friendId: toUserId },
+          fromUserId_toUserId: { fromUserId: currentUserId, toUserId },
         },
-      }),
-    ]);
-
-    if (alreadyFriends) {
-      throw new ConflictException('Вы уже друзья');
-    }
-    if (reversePending?.status === 'PENDING') {
-      await this.acceptRequestRow(reversePending.id);
-      return;
-    }
-
-    await this.prisma.friendRequest.upsert({
-      where: {
-        fromUserId_toUserId: { fromUserId: currentUserId, toUserId },
-      },
-      create: { fromUserId: currentUserId, toUserId },
-      update: { status: 'PENDING', createdAt: new Date(), respondedAt: null },
+        create: { fromUserId: currentUserId, toUserId },
+        update: { status: 'PENDING', createdAt: new Date(), respondedAt: null },
+      });
     });
+  }
+
+  /** Stable key for a pair of users regardless of direction — the lock a
+   * request between these two takes, so both directions serialize. */
+  private pairKey(a: string, b: string): string {
+    return [a, b].sort().join('_');
   }
 
   async listRequests(currentUserId: string): Promise<{
@@ -193,6 +210,9 @@ export class FriendsService {
   }
 
   async acceptRequest(currentUserId: string, requestId: string): Promise<void> {
+    // The read is only for telling the two failure cases apart ("not your
+    // request" vs "already handled") — the real guard is the atomic claim
+    // inside `acceptRequestRow`.
     const request = await this.prisma.friendRequest.findUnique({
       where: { id: requestId },
     });
@@ -202,39 +222,60 @@ export class FriendsService {
     if (request.status !== 'PENDING') {
       throw new ConflictException('Эта заявка уже обработана');
     }
-    await this.acceptRequestRow(requestId);
+
+    const accepted = await this.prisma.$transaction((tx) =>
+      this.acceptRequestRow(tx, requestId),
+    );
+    if (!accepted) {
+      throw new ConflictException('Эта заявка уже обработана');
+    }
   }
 
-  private async acceptRequestRow(requestId: string): Promise<void> {
-    const request = await this.prisma.friendRequest.findUniqueOrThrow({
+  /**
+   * Flips a pending request to ACCEPTED and creates both halves of the
+   * friendship, all in the caller's transaction. Returns `false` if the
+   * request was no longer pending — the conditional `updateMany` is what
+   * makes that check atomic: accepting and declining the same request at
+   * the same moment would otherwise both pass a plain status check, and
+   * the pair could end up recorded as DECLINED while the friendship rows
+   * had already been written.
+   */
+  private async acceptRequestRow(
+    tx: Prisma.TransactionClient,
+    requestId: string,
+  ): Promise<boolean> {
+    const claim = await tx.friendRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
+      data: { status: 'ACCEPTED', respondedAt: new Date() },
+    });
+    if (claim.count === 0) {
+      return false;
+    }
+
+    const request = await tx.friendRequest.findUniqueOrThrow({
       where: { id: requestId },
     });
-    await this.prisma.$transaction([
-      this.prisma.friendRequest.update({
-        where: { id: requestId },
-        data: { status: 'ACCEPTED', respondedAt: new Date() },
-      }),
-      this.prisma.friendship.upsert({
-        where: {
-          userId_friendId: {
-            userId: request.fromUserId,
-            friendId: request.toUserId,
-          },
+    await tx.friendship.upsert({
+      where: {
+        userId_friendId: {
+          userId: request.fromUserId,
+          friendId: request.toUserId,
         },
-        create: { userId: request.fromUserId, friendId: request.toUserId },
-        update: {},
-      }),
-      this.prisma.friendship.upsert({
-        where: {
-          userId_friendId: {
-            userId: request.toUserId,
-            friendId: request.fromUserId,
-          },
+      },
+      create: { userId: request.fromUserId, friendId: request.toUserId },
+      update: {},
+    });
+    await tx.friendship.upsert({
+      where: {
+        userId_friendId: {
+          userId: request.toUserId,
+          friendId: request.fromUserId,
         },
-        create: { userId: request.toUserId, friendId: request.fromUserId },
-        update: {},
-      }),
-    ]);
+      },
+      create: { userId: request.toUserId, friendId: request.fromUserId },
+      update: {},
+    });
+    return true;
   }
 
   async declineRequest(
@@ -250,10 +291,17 @@ export class FriendsService {
     if (request.status !== 'PENDING') {
       throw new ConflictException('Эта заявка уже обработана');
     }
-    await this.prisma.friendRequest.update({
-      where: { id: requestId },
+
+    // Conditional claim for the same reason as accepting — whichever of a
+    // racing accept/decline pair gets here second must lose cleanly rather
+    // than overwrite the other's outcome.
+    const claim = await this.prisma.friendRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
       data: { status: 'DECLINED', respondedAt: new Date() },
     });
+    if (claim.count === 0) {
+      throw new ConflictException('Эта заявка уже обработана');
+    }
   }
 
   async unfriend(currentUserId: string, friendId: string): Promise<void> {
