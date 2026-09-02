@@ -17,7 +17,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { pickEncouragement } from '@/lib/encouragement';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
+import { useIntroCountdown } from '@/lib/use-intro-countdown';
 
 const POLL_INTERVAL_MS = 1200;
 /** Set by the friends-tab "Вызвать" flow right before it navigates here, so
@@ -173,40 +174,19 @@ export default function DuelPage() {
   }, [duelState?.questionNumber]);
 
   // Pre-match "3, 2, 1, Поехали!" countdown, shown once per duel right as
-  // it reaches the first question — `null` hides it, `0` is the "Поехали!"
-  // beat, otherwise it's the number itself. `introShownForRef` makes sure
-  // it only ever starts once per session (every poll tick would otherwise
-  // re-trigger it, since status/questionNumber stay the same for many ticks).
-  // Not just cosmetic timing: `DuelService.startDuel` delays the real
-  // `currentQuestionStartedAt` by the exact same `DUEL_INTRO_TOTAL_MS`, so
-  // this countdown runs *before* the actual 15s answering window starts
-  // rather than eating into it — both players still get the full window
-  // once the question is actually revealed.
-  const [introStep, setIntroStep] = useState<number | null>(null);
-  const introShownForRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    function maybeStartIntro() {
-      if (
-        sessionId &&
-        duelState?.status === 'IN_PROGRESS' &&
-        duelState.questionNumber === 1 &&
-        introShownForRef.current !== sessionId
-      ) {
-        introShownForRef.current = sessionId;
-        setIntroStep(3);
-      }
-    }
-    maybeStartIntro();
-  }, [sessionId, duelState?.status, duelState?.questionNumber]);
-
-  useEffect(() => {
-    if (introStep === null) return undefined;
-    const timeout = setTimeout(() => {
-      setIntroStep((step) => (step === null || step === 0 ? null : step - 1));
-    }, DUEL_INTRO_STEP_MS);
-    return () => clearTimeout(timeout);
-  }, [introStep]);
+  // it reaches the first question. Not just cosmetic timing:
+  // `DuelService.startDuel` delays the real `currentQuestionStartedAt` by
+  // the exact same `DUEL_INTRO_TOTAL_MS`, so this countdown runs *before*
+  // the actual 15s answering window starts rather than eating into it —
+  // both players still get the full window once the question is actually
+  // revealed. See `useIntroCountdown` for why "shown once" is tracked via
+  // sessionStorage rather than a plain ref.
+  const introStep = useIntroCountdown({
+    sessionId,
+    active: duelState?.status === 'IN_PROGRESS' && duelState.questionNumber === 1,
+    storageKey: 'bible-arena:duel-intro-shown-for',
+    stepMs: DUEL_INTRO_STEP_MS,
+  });
 
   const startResponding = useCallback((challenge: PendingChallenge) => {
     setRespondingTo(challenge.sessionId);

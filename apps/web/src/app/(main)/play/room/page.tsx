@@ -12,7 +12,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
+import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useRoomSocket } from '@/lib/use-room-socket';
 
 const PUBLIC_ROOMS_POLL_MS = 5000;
@@ -178,40 +179,19 @@ export default function RoomPage() {
   }, [roomState?.status, roomState?.secondsRemaining, roomState?.questionNumber]);
 
   // Pre-match "3, 2, 1, Поехали!" countdown, shown once per room right as it
-  // reaches question 1 — mirrors the 1v1 duel screen's, `null` hides it, `0`
-  // is the "Поехали!" beat. `introShownForRef` makes sure it only ever
-  // starts once per session, since the room keeps pushing state on every
-  // discrete event and would otherwise re-trigger it each time. Not just
-  // cosmetic timing: `RoomsService.start` delays the real
-  // `currentQuestionStartedAt` (and `RoomsGateway.onStart` pads its
-  // auto-timeout timer) by the exact same `ROOM_INTRO_TOTAL_MS`, so this
-  // countdown runs *before* the actual answering window starts rather than
-  // eating into it.
-  const [introStep, setIntroStep] = useState<number | null>(null);
-  const introShownForRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    function maybeStartIntro() {
-      if (
-        sessionId &&
-        roomState?.status === 'IN_PROGRESS' &&
-        roomState.questionNumber === 1 &&
-        introShownForRef.current !== sessionId
-      ) {
-        introShownForRef.current = sessionId;
-        setIntroStep(3);
-      }
-    }
-    maybeStartIntro();
-  }, [sessionId, roomState?.status, roomState?.questionNumber]);
-
-  useEffect(() => {
-    if (introStep === null) return undefined;
-    const timeout = setTimeout(() => {
-      setIntroStep((step) => (step === null || step === 0 ? null : step - 1));
-    }, ROOM_INTRO_STEP_MS);
-    return () => clearTimeout(timeout);
-  }, [introStep]);
+  // reaches question 1 — mirrors the 1v1 duel screen's. Not just cosmetic
+  // timing: `RoomsService.start` delays the real `currentQuestionStartedAt`
+  // (and `RoomsGateway.onStart` pads its auto-timeout timer) by the exact
+  // same `ROOM_INTRO_TOTAL_MS`, so this countdown runs *before* the actual
+  // answering window starts rather than eating into it. See
+  // `useIntroCountdown` for why "shown once" is tracked via sessionStorage
+  // rather than a plain ref.
+  const introStep = useIntroCountdown({
+    sessionId,
+    active: roomState?.status === 'IN_PROGRESS' && roomState.questionNumber === 1,
+    storageKey: 'bible-arena:room-intro-shown-for',
+    stepMs: ROOM_INTRO_STEP_MS,
+  });
 
   const createRoom = useCallback(async () => {
     const trimmedName = roomName.trim();
