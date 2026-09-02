@@ -14,6 +14,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PresenceModule } from './presence/presence.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module';
     FriendsModule,
     ChatModule,
     NotificationsModule,
+    TelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

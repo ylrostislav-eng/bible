@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { GlobalErrorReporter } from '@/components/global-error-reporter';
 import { AuthProvider } from '@/lib/auth-context';
 import { TelegramProvider } from '@/lib/telegram-provider';
 import './globals.css';
@@ -22,9 +24,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ru">
       <body>
-        <TelegramProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </TelegramProvider>
+        <GlobalErrorReporter />
+        <ErrorBoundary>
+          <TelegramProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </TelegramProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

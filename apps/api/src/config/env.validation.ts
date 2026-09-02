@@ -45,6 +45,13 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   JWT_EXPIRES_IN: string = '30d';
+
+  /// Comma-separated Telegram user ids allowed to read/resolve error
+  /// telemetry (see `AdminGuard`). Unset means nobody can — a safe default
+  /// rather than an open admin endpoint.
+  @IsString()
+  @IsOptional()
+  ADMIN_TELEGRAM_IDS?: string;
 }
 
 export function validateEnv(

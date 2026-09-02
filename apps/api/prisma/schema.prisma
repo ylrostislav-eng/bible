@@ -537,3 +537,48 @@ model DeclineNotice {
   @@index([userId])
   @@map("decline_notices")
 }
+
+enum ErrorReportSource {
+  API
+  WEB
+}
+
+/// Self-reported crash/error telemetry, written automatically by the
+/// backend's global exception filter (5xx responses) and by the frontend
+/// (unhandled exceptions, unhandled promise rejections, React render
+/// crashes, failed/5xx API calls) — a standing "what's actually breaking
+/// for real users" log so problems surface here instead of depending on
+/// someone noticing and relaying them by hand. Deliberately not a foreign
+/// key to `User`: this must never fail to write because a user row is
+/// gone, so `userId` is just an unenforced label.
+model ErrorReport {
+  id String @id @default(cuid())
+
+  source ErrorReportSource
+
+  /// Short machine tag for grouping, e.g. "unhandled_exception",
+  /// "http_5xx", "client_unhandled", "client_unhandledrejection",
+  /// "client_react_boundary", "api_5xx_response", "api_network_failure".
+  kind String
+
+  message String
+  stack   String? @db.Text
+
+  statusCode Int?
+  path       String?
+  method     String?
+  userId     String?
+
+  /// Free-form extra context: user agent, component stack, request body
+  /// shape, etc. — whatever the reporting site had on hand.
+  extra Json?
+
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([resolved, createdAt])
+  @@index([source, kind, createdAt])
+  @@map("error_reports")
+}

@@ -23,14 +23,28 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    // A thrown fetch (offline, DNS failure, CORS) is not an ApiError —
+    // rethrown as-is so existing `err instanceof ApiError` callers keep
+    // falling back to their generic message exactly as before; telemetry
+    // is the only thing added here.
+    const { reportClientError } = await import('./telemetry');
+    reportClientError('api_network_failure', err instanceof Error ? err.message : String(err), {
+      method,
+      apiPath: path,
+    });
+    throw err;
+  }
 
   const payload = await response.json().catch(() => null);
 
@@ -38,6 +52,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const message =
       (payload && typeof payload === 'object' && 'message' in payload && String(payload.message)) ||
       response.statusText;
+    if (response.status >= 500) {
+      const { reportClientError } = await import('./telemetry');
+      reportClientError('api_5xx_response', message, {
+        method,
+        apiPath: path,
+        status: response.status,
+      });
+    }
     throw new ApiError(message, response.status);
   }
 

@@ -116,6 +116,18 @@ export class FriendsService {
       throw new BadRequestException('Нельзя добавить себя в друзья');
     }
 
+    // A stale client (search result for an account since deleted, say)
+    // could otherwise reach the upsert below with an id that no longer
+    // exists, which fails as a raw foreign-key violation rather than a
+    // clean 404.
+    const recipientExists = await this.prisma.user.findUnique({
+      where: { id: toUserId },
+      select: { id: true },
+    });
+    if (!recipientExists) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
     // Everything runs under an advisory lock keyed on the *pair* of users
     // (same trick as the room-name uniqueness check in RoomsService). Two
     // people adding each other at the same moment would otherwise both read
