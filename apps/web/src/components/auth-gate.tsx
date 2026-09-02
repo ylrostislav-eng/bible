@@ -13,7 +13,7 @@ import { ChatWidget } from './chat-widget';
 import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
 import { BottomNav } from './navigation/bottom-nav';
-import { RoomInvitesWidget } from './room-invites-widget';
+import { PendingInvitesWidget } from './pending-invites-widget';
 import { OnboardingForm } from './onboarding/onboarding-form';
 import { Button } from './ui/button';
 import { Spinner } from './ui/spinner';
@@ -93,7 +93,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <div className="pt-safe pb-40">{children}</div>
               <IncomingNotifications />
               <DeclineNoticeToast />
-              <RoomInvitesWidget />
+              <PendingInvitesWidget />
               <ChatWidget />
               <BottomNav />
             </ChatProvider>
