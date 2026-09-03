@@ -14,3 +14,4 @@ export * from './decline-notices';
 export * from './moderation';
 export * from './nickname';
 export * from './age';
+export * from './achievements';

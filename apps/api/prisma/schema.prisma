@@ -116,6 +116,8 @@ model User {
   /// heated moment, not a malicious account.
   mutedUntil DateTime?
 
+  achievements UserAchievement[]
+
   abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
   abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
 
@@ -691,4 +693,29 @@ model AbuseReport {
   @@index([status, createdAt])
   @@index([targetUserId, status])
   @@map("abuse_reports")
+}
+
+/// One row per achievement a user has unlocked.
+///
+/// Only unlocks are stored — progress is always recomputed from the numbers
+/// the app already keeps (see `packages/shared/src/achievements.ts`). That
+/// means a definition can be retuned or added at any time and every
+/// existing player is measured against it retroactively, with no backfill.
+///
+/// `achievementId` is the string id from that file rather than a foreign
+/// key: the definitions are code, not data, and a row must survive a
+/// definition being renamed or temporarily removed.
+model UserAchievement {
+  id String @id @default(cuid())
+
+  userId        String
+  achievementId String
+
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@map("user_achievements")
 }

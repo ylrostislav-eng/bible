@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { AchievementsSection } from '@/components/achievements-section';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { pluralDraws, pluralDuels, pluralLosses, pluralWins } from '@/lib/plural';
@@ -125,19 +126,11 @@ export default function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="flex-col gap-2">
-        <h2 className="text-sm font-semibold text-text-secondary">Достижения</h2>
-        <p className="text-sm text-text-muted">
-          Пока нет достижений — они появятся, когда заработаете первые награды.
-        </p>
-      </Card>
+      <AchievementsSection />
 
-      <Card className="flex-col gap-2">
-        <h2 className="text-sm font-semibold text-text-secondary">Любимые книги</h2>
-        <p className="text-sm text-text-muted">
-          Появятся автоматически на основе ваших результатов в режиме изучения.
-        </p>
-      </Card>
+      {/* «Любимые книги» здесь была заглушкой, обещавшей функцию, которой
+          нет. Убрана: пустое обещание хуже, чем его отсутствие. Если книги
+          вернутся, они вернутся работающими. */}
 
       {/* Settings live here as well as on the home screen: the home tile is
           quicker once you know it exists, but people looking for settings
