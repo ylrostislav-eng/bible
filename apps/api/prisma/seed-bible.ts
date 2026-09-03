@@ -61,8 +61,20 @@ async function main() {
     }
   }
 
+  // Текст уже на месте — выходим. Иначе `prisma:seed-all` после каждого
+  // `git pull` перезаливал бы тридцать тысяч строк только чтобы получить
+  // ровно то же самое. Перезалить принудительно: `--force`.
+  const force = process.argv.includes('--force');
+  const existing = await prisma.bibleVerse.count();
+  if (existing === rows.length && !force) {
+    console.log(`Текст уже загружен (${existing} стихов) — пропускаем.`);
+    return;
+  }
+
   console.log(
-    `Parsed ${rows.length} verses. Clearing existing bible_verses...`,
+    existing > 0
+      ? `Parsed ${rows.length} verses. Replacing ${existing} existing bible_verses...`
+      : `Parsed ${rows.length} verses. Inserting...`,
   );
   await prisma.bibleVerse.deleteMany({});
 

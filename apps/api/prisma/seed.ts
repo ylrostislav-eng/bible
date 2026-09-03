@@ -520,12 +520,36 @@ const questions: SeedQuestion[] = [
   },
 ];
 
+/**
+ * Дописывает недостающие вопросы, а не пересоздаёт банк.
+ *
+ * Раньше здесь стоял `deleteMany({})`, и это работало ровно до первой
+ * сыгранной партии: на вопросы ссылаются ответы игроков, и внешний ключ
+ * просто не даёт их удалить. Скрипт, который можно запустить один раз в
+ * жизни проекта, бесполезен как шаг установки — а именно им он и стал,
+ * попав в `prisma:seed-all`.
+ *
+ * Сравниваем по тексту: у вопроса нет другого естественного ключа, а два
+ * дословно одинаковых вопроса в банке и так не нужны.
+ */
 async function main() {
-  await prisma.question.deleteMany({});
+  const existing = await prisma.question.findMany({ select: { text: true } });
+  const known = new Set(existing.map((question) => question.text));
+  const missing = questions.filter((question) => !known.has(question.text));
+
+  if (missing.length === 0) {
+    console.log(
+      `Все ${questions.length} вопросов уже в банке — добавлять нечего.`,
+    );
+    return;
+  }
+
   await prisma.question.createMany({
-    data: questions.map((q) => ({ ...q, options: q.options })),
+    data: missing.map((q) => ({ ...q, options: q.options })),
   });
-  console.log(`Seeded ${questions.length} questions.`);
+  console.log(
+    `Добавлено вопросов: ${missing.length} (в наборе ${questions.length}).`,
+  );
 }
 
 main()
