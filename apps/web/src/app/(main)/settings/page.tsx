@@ -13,6 +13,7 @@ import { useState, type FormEvent } from 'react';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { AgeSafetySection } from '@/components/settings/age-safety-section';
+import { RemindersSection } from '@/components/settings/reminders-section';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
@@ -122,6 +123,8 @@ export default function SettingsPage() {
       </form>
 
       <AgeSafetySection />
+
+      <RemindersSection />
     </div>
   );
 }

@@ -25,6 +25,8 @@ export interface UserProfile {
   childMode: boolean;
   /** Whether a guardian PIN is set. The PIN itself never leaves the server. */
   guardianPinSet: boolean;
+  /** Evening Telegram reminder when the daily streak is about to lapse. */
+  remindersEnabled: boolean;
 
   level: number;
   experience: number;
@@ -72,6 +74,7 @@ export interface UpdateProfileInput {
   guardianPin?: string;
   /** Set when the guardian accepted the child-mode screen. */
   guardianConfirmed?: boolean;
+  remindersEnabled?: boolean;
 }
 
 export interface AuthResponse {

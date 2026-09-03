@@ -229,6 +229,7 @@ export class UsersService {
           country: dto.country,
           language: dto.language,
           ageBand: dto.ageBand,
+          remindersEnabled: dto.remindersEnabled,
           ...(guardianConfirmedAt ? { guardianConfirmedAt } : {}),
           ...(leavingChildMode && !guardianConfirmedAt
             ? { guardianConfirmedAt: null }
@@ -920,6 +921,7 @@ export class UsersService {
       ageBand: user.ageBand,
       childMode: isChildBand(user.ageBand),
       guardianPinSet: user.guardianPinHash !== null,
+      remindersEnabled: user.remindersEnabled,
       level: user.level,
       experience: user.experience,
       coins: user.coins,

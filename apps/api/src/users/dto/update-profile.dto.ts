@@ -51,4 +51,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   guardianConfirmed?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  remindersEnabled?: boolean;
 }

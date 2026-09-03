@@ -40,10 +40,18 @@ class EnvironmentVariables {
   @IsString()
   CORS_ORIGIN!: string;
 
-  /** Optional in development so the app can boot before a bot token exists. */
+  /** Optional in development so the app can boot before a bot token exists.
+   * While it's unset, the bot sends nothing at all. */
   @IsString()
   @IsOptional()
   TELEGRAM_BOT_TOKEN?: string;
+
+  /** Where the Bot API lives. Only ever set away from the default to point
+   * a test at a local stub — otherwise the delivery path could only be
+   * exercised by messaging real people. */
+  @IsString()
+  @IsOptional()
+  TELEGRAM_API_BASE?: string;
 
   @IsString()
   @IsNotEmpty()

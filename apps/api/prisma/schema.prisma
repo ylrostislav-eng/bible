@@ -79,6 +79,15 @@ model User {
   /// and the streak has to roll over on *their* midnight.
   timezoneOffsetMinutes Int @default(0)
 
+  /// Evening reminder when the daily streak is about to lapse. On by
+  /// default, off with one tap in settings — and turned off automatically
+  /// if Telegram reports the bot was blocked, so a person who walked away
+  /// is never messaged again.
+  remindersEnabled Boolean   @default(true)
+  /// When the last reminder was sent, so at most one goes out per day even
+  /// though the sweep runs every few minutes.
+  lastReminderAt   DateTime?
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.
