@@ -133,6 +133,7 @@ model User {
   mutedUntil DateTime?
 
   achievements UserAchievement[]
+  aliasMatches AliasMatch[]
 
   abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
   abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
@@ -153,6 +154,29 @@ model User {
 
   @@index([rating])
   @@map("users")
+}
+
+/// Уровни и темы слов для Alias — см. `packages/shared/src/alias.ts`.
+enum AliasDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AliasCategory {
+  PERSON
+  PLACE
+  EVENT
+  OBJECT
+  CONCEPT
+  PARABLE
+  IDIOM
+}
+
+enum AliasTestament {
+  OLD
+  NEW
+  BOTH
 }
 
 enum QuestionPace {
@@ -746,4 +770,64 @@ model UserAchievement {
   @@unique([userId, achievementId])
   @@index([userId])
   @@map("user_achievements")
+}
+
+/// Одно слово в колоде Alias.
+///
+/// `gloss` — одна строка «что это», показывается на разборе раунда по
+/// нажатию: именно здесь игра тихо становится приложением о Библии, без
+/// единой лекции. `reference` необязателен — у сквозных понятий вроде
+/// «завет» одной честной ссылки не существует, и выдумывать её хуже, чем
+/// оставить пустой.
+model AliasWord {
+  id String @id @default(cuid())
+
+  word       String         @unique
+  difficulty AliasDifficulty
+  category   AliasCategory
+  testament  AliasTestament
+
+  gloss String
+
+  /// Место в Писании, разобранное на части, а не строкой: строку нельзя ни
+  /// проверить при заливке, ни превратить в переход в читалку. Все три поля
+  /// либо заполнены вместе, либо пусты вместе — у сквозных слов вроде
+  /// «покаяние» одного честного места нет.
+  refBookId  Int?
+  refChapter Int?
+  refVerse   Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([difficulty])
+  @@index([category])
+  @@map("alias_words")
+}
+
+/// Сыгранная партия. Команды хранятся как JSON с именами и счётом: почти
+/// все за столом — гости без аккаунтов, и требовать регистрации от шести
+/// человек ради одной партии значит её не начать. К аккаунту привязан
+/// только владелец телефона.
+///
+/// Намеренно НЕ влияет на рейтинг «Знания»: счёт вводится вручную одним
+/// человеком, накрутить его тривиально, и пускать это в общий рейтинг
+/// значит испортить рейтинг.
+model AliasMatch {
+  id String @id @default(cuid())
+
+  hostUserId String
+  host       User   @relation(fields: [hostUserId], references: [id], onDelete: Cascade)
+
+  /// `[{ name, score }]` в порядке хода.
+  teams        Json
+  winnerName   String?
+  roundsPlayed Int
+  /// Снимок настроек — чтобы старую партию можно было прочитать, даже если
+  /// значения по умолчанию потом изменятся.
+  settings     Json
+
+  playedAt DateTime @default(now())
+
+  @@index([hostUserId, playedAt])
+  @@map("alias_matches")
 }

@@ -13,6 +13,7 @@ import { GameModule } from './game/game.module';
 import { HealthModule } from './health/health.module';
 import { LearnModule } from './learn/learn.module';
 import { AchievementsModule } from './achievements/achievements.module';
+import { AliasModule } from './alias/alias.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PresenceModule } from './presence/presence.module';
@@ -47,6 +48,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     ModerationModule,
     AchievementsModule,
+    AliasModule,
     TelemetryModule,
   ],
   controllers: [AppController],

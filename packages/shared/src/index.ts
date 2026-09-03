@@ -16,3 +16,4 @@ export * from './nickname';
 export * from './age';
 export * from './achievements';
 export * from './accessibility';
+export * from './alias';
