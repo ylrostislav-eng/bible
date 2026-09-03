@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the example, which is documentation, not a secret. Without
+# this the file could never be committed, so setup.sh's copy of it always
+# failed and the README told people to copy a file that wasn't there.
+!.env.example
 
 # vercel
 .vercel
