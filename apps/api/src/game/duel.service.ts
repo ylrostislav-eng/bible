@@ -85,6 +85,7 @@ export class DuelService {
     userId: string,
     dto: CreateDuelDto,
   ): Promise<CreateDuelResponse> {
+    await this.assertEnoughQuestions(dto.questionCount);
     for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {
       const inviteCode = generateInviteCode();
       try {
@@ -122,6 +123,7 @@ export class DuelService {
     if (dto.friendUserId === userId) {
       throw new BadRequestException('Нельзя бросить вызов самому себе');
     }
+    await this.assertEnoughQuestions(dto.questionCount);
     const friendship = await this.prisma.friendship.findUnique({
       where: {
         userId_friendId: { userId, friendId: dto.friendUserId },
@@ -274,6 +276,19 @@ export class DuelService {
     return this.startDuel(session, userId, dto.questionCount);
   }
 
+  /** Rejects a question count the question bank can't actually fulfill —
+   * called when the count is first chosen (duel creation), so a shortfall
+   * is a clear, actionable error for whoever picked the number instead of
+   * silently handing both players a smaller match once it starts. */
+  private async assertEnoughQuestions(questionCount: number): Promise<void> {
+    const available = await this.questionsService.countAvailable();
+    if (available < questionCount) {
+      throw new BadRequestException(
+        `Недостаточно вопросов в базе: доступно ${available}, запрошено ${questionCount}`,
+      );
+    }
+  }
+
   /** Shared by `join` (open code) and `respondToChallenge` (targeted
    * invite) — generates the question set, creates the joiner's participant
    * row, and flips the session to IN_PROGRESS. */
@@ -380,6 +395,11 @@ export class DuelService {
   }
 
   async getState(userId: string, sessionId: string): Promise<DuelState> {
+    // Participation must be checked before `resolveIfReady` runs, not
+    // after — otherwise anyone who merely knows a duel's session id could
+    // poll it and trigger its timeout side effects (auto-miss, finishing
+    // the match, paying out rewards) for two other players' game.
+    this.requireParticipant(await this.loadSession(sessionId), userId);
     await this.resolveIfReady(await this.loadSession(sessionId));
     return this.buildState(await this.loadSession(sessionId), userId);
   }

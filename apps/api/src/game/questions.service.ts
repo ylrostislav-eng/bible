@@ -30,6 +30,14 @@ export function shuffleOptions(question: Question): {
 export class QuestionsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Total approved questions available for `pickRandom` — used to reject a
+   * requested count up front (duel/room creation) rather than silently
+   * handing back fewer questions than the players agreed on once the match
+   * actually starts. */
+  async countAvailable(): Promise<number> {
+    return this.prisma.question.count({ where: { status: 'APPROVED' } });
+  }
+
   async pickRandom(params: {
     count: number;
     testament?: Testament;

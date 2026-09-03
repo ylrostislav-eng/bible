@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
@@ -19,11 +20,16 @@ export class DuelController {
     return this.duelService.create(user.sub, dto);
   }
 
+  // A 6-character code (32-symbol alphabet) is guessable in bulk if
+  // nothing caps the attempt rate — well below the global default, since
+  // this is the one endpoint an attacker would actually want to hammer.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('join')
   join(@CurrentUser() user: JwtPayload, @Body() dto: JoinDuelDto) {
     return this.duelService.join(user.sub, dto);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Get('preview/:inviteCode')
   preview(@Param('inviteCode') inviteCode: string) {
     return this.duelService.preview(inviteCode);

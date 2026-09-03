@@ -36,12 +36,18 @@ export class AuthService {
    * Lets you try the app in a plain browser during local development,
    * without a Telegram bot or tunnel. `slot` (1-5) selects between a handful
    * of fixed accounts, so two duelling players can be simulated in two
-   * browser windows on the same machine. Disabled outside development
-   * regardless of frontend state.
+   * browser windows on the same machine. Gated by two independent checks,
+   * not just one: `NODE_ENV !== 'production'` alone would leave a login
+   * backdoor into a fixed set of accounts open on any deployment where
+   * `NODE_ENV` was simply left at its default — `ENABLE_DEV_LOGIN` must
+   * also be explicitly turned on.
    */
   async devLogin(slot: number): Promise<AuthResponse> {
-    if (this.configService.get<string>('NODE_ENV') === 'production') {
-      throw new ForbiddenException('Dev login is disabled in production');
+    const isProduction =
+      this.configService.get<string>('NODE_ENV') === 'production';
+    const enabled = this.configService.get<boolean>('ENABLE_DEV_LOGIN');
+    if (isProduction || !enabled) {
+      throw new ForbiddenException('Dev login is disabled');
     }
 
     const user = await this.usersService.findOrCreateByTelegramId({

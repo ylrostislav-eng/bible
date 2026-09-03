@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Logger,
   type OnModuleDestroy,
   type OnModuleInit,
@@ -17,10 +18,17 @@ import {
   ROOM_WS_EVENTS,
   ROOM_WS_NAMESPACE,
   ROOM_WS_SERVER_EVENTS,
-  type RoomAnswerInput,
 } from '@bible-arena/shared';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import type { Server, Socket } from 'socket.io';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import {
+  RoomAnswerMessageDto,
+  RoomReadyDto,
+  RoomSessionIdDto,
+  RoomTargetUserDto,
+} from './dto/room-ws.dto';
 import { RoomsService } from './rooms.service';
 
 /** How long the reveal stays up before the room auto-advances to the next
@@ -201,9 +209,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.enter)
   async onEnter(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string },
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     try {
+      const body = await this.validateWsBody(RoomSessionIdDto, rawBody);
       // Validates membership before registering — getState throws for
       // anyone who isn't actually a participant of this room (e.g. kicked
       // or banned while they had no live connection to receive the
@@ -229,9 +238,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.leave)
   async onLeave(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string },
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     await this.guarded(socket, async () => {
+      const body = await this.validateWsBody(RoomSessionIdDto, rawBody);
       const result = await this.roomsService.leave(
         socket.data.userId,
         body.sessionId,
@@ -257,9 +267,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.ready)
   async onReady(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string; ready: boolean },
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     await this.guarded(socket, async () => {
+      const body = await this.validateWsBody(RoomReadyDto, rawBody);
       await this.roomsService.setReady(
         socket.data.userId,
         body.sessionId,
@@ -272,9 +283,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.kick)
   async onKick(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string; userId: string },
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     await this.guarded(socket, async () => {
+      const body = await this.validateWsBody(RoomTargetUserDto, rawBody);
       await this.roomsService.kick(
         socket.data.userId,
         body.sessionId,
@@ -292,9 +304,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.ban)
   async onBan(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string; userId: string },
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     await this.guarded(socket, async () => {
+      const body = await this.validateWsBody(RoomTargetUserDto, rawBody);
       await this.roomsService.ban(
         socket.data.userId,
         body.sessionId,
@@ -312,9 +325,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.start)
   async onStart(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string },
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     await this.guarded(socket, async () => {
+      const body = await this.validateWsBody(RoomSessionIdDto, rawBody);
       const state = await this.roomsService.start(
         socket.data.userId,
         body.sessionId,
@@ -337,9 +351,10 @@ export class RoomsGateway
   @SubscribeMessage(ROOM_WS_EVENTS.answer)
   async onAnswer(
     @ConnectedSocket() socket: AuthedSocket,
-    @MessageBody() body: { sessionId: string } & RoomAnswerInput,
+    @MessageBody() rawBody: unknown,
   ): Promise<void> {
     await this.guarded(socket, async () => {
+      const body = await this.validateWsBody(RoomAnswerMessageDto, rawBody);
       const state = await this.roomsService.submitAnswer(
         socket.data.userId,
         body.sessionId,
@@ -502,5 +517,28 @@ export class RoomsGateway
         message: err instanceof Error ? err.message : 'Ошибка',
       });
     }
+  }
+
+  /** WebSocket messages skip Nest's HTTP `ValidationPipe` entirely (it's
+   * only wired into the HTTP pipeline in `main.ts`), so every handler above
+   * validates its own body against a proper DTO instead of trusting the
+   * client-asserted TypeScript type — a malformed or malicious payload
+   * (missing field, wrong type, an out-of-range `answerIndex`) used to reach
+   * `RoomsService` calls unchecked. Thrown errors are plain `Error`s so
+   * they read the same as any other failure to `guarded()`/`onEnter`'s own
+   * catch, rather than surfacing as Nest's WS-specific exception format. */
+  private async validateWsBody<T extends object>(
+    cls: new () => T,
+    raw: unknown,
+  ): Promise<T> {
+    const instance = plainToInstance(cls, raw ?? {});
+    const errors = await validate(instance, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    if (errors.length > 0) {
+      throw new BadRequestException('Некорректные данные запроса');
+    }
+    return instance;
   }
 }

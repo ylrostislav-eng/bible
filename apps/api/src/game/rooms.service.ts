@@ -89,6 +89,16 @@ export class RoomsService {
       throw new BadRequestException('Введите название комнаты');
     }
 
+    // Checked up front so a shortfall is a clear error for the room's
+    // creator, not a match that silently starts with fewer questions than
+    // everyone in the lobby saw and agreed to.
+    const available = await this.questionsService.countAvailable();
+    if (available < dto.questionCount) {
+      throw new BadRequestException(
+        `Недостаточно вопросов в базе: доступно ${available}, запрошено ${dto.questionCount}`,
+      );
+    }
+
     let password: string | null = null;
     if (dto.visibility === 'PRIVATE') {
       password = await this.generateUniquePassword();

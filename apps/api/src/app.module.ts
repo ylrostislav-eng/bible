@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -23,6 +25,12 @@ import { UsersModule } from './users/users.module';
       isGlobal: true,
       validate: validateEnv,
     }),
+    // A general anti-abuse baseline for the whole API — generous enough
+    // not to bother a real user, but it caps how fast any single client
+    // can hammer an endpoint (e.g. guessing duel/room invite codes,
+    // brute-forcing a room password). Individual endpoints can tighten
+    // this further with `@Throttle(...)`.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     RedisModule,
     HealthModule,
@@ -38,6 +46,6 @@ import { UsersModule } from './users/users.module';
     TelemetryModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

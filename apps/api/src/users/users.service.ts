@@ -109,19 +109,34 @@ export class UsersService {
         where: { nickname: dto.nickname },
       });
       if (existing && existing.id !== id) {
-        throw new ConflictException('Nickname is already taken');
+        throw new ConflictException('Этот никнейм уже занят');
       }
     }
 
-    return this.prisma.user.update({
-      where: { id },
-      data: {
-        nickname: dto.nickname,
-        avatarUrl: dto.avatarUrl,
-        country: dto.country,
-        language: dto.language,
-      },
-    });
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data: {
+          nickname: dto.nickname,
+          avatarUrl: dto.avatarUrl,
+          country: dto.country,
+          language: dto.language,
+        },
+      });
+    } catch (error) {
+      // The check above is only a fast-path convenience — it can't close a
+      // race where two people claim the same free nickname at the same
+      // moment, so the actual guarantee is the DB's unique constraint.
+      // Without this, the second writer would get a raw Prisma
+      // constraint-violation error instead of a clean one.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Этот никнейм уже занят');
+      }
+      throw error;
+    }
   }
 
   /**

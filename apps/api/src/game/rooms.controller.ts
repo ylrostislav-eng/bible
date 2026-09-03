@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
@@ -40,6 +41,10 @@ export class RoomsController {
     return this.roomsService.listPublic();
   }
 
+  // Guards against brute-forcing either the invite code or a private
+  // room's password — both are 6-character codes, well below the global
+  // rate limit if left uncapped.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('join')
   join(@CurrentUser() user: JwtPayload, @Body() dto: JoinRoomDto) {
     return this.roomsService.join(user.sub, dto);

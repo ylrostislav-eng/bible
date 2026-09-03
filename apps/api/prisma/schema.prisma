@@ -84,6 +84,9 @@ model User {
   receivedFriendRequests FriendRequest[] @relation("ReceivedFriendRequests")
   /// One row per direction of a friendship — see `Friendship` doc comment.
   friendships            Friendship[]    @relation("FriendshipOwner")
+  /// The other side of every `Friendship` row naming this user as the
+  /// friend — see `Friendship.friend`.
+  friendOf               Friendship[]    @relation("FriendshipTarget")
 
   /// Bans are scoped to the leader who issued them — a user banned from one
   /// leader's rooms can still freely join everyone else's.
@@ -138,6 +141,12 @@ model Friendship {
   userId   String
   user     User   @relation("FriendshipOwner", fields: [userId], references: [id], onDelete: Cascade)
   friendId String
+  /// Was a bare, unenforced string before — no FK meant the other side of
+  /// a friendship could be left pointing at nothing once account deletion
+  /// exists. `onDelete: Cascade` here mirrors `user` above: deleting either
+  /// side of a friendship removes both directions of the row pair, not
+  /// just the half owned by the deleted account.
+  friend   User   @relation("FriendshipTarget", fields: [friendId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
