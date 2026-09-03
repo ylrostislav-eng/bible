@@ -40,6 +40,14 @@ export class DuelController {
     return this.duelService.challenge(user.sub, dto);
   }
 
+  @Post(':sessionId/cancel')
+  async cancel(
+    @CurrentUser() user: JwtPayload,
+    @Param('sessionId') sessionId: string,
+  ) {
+    await this.duelService.cancel(user.sub, sessionId);
+  }
+
   @Get('pending-challenges')
   pendingChallenges(@CurrentUser() user: JwtPayload) {
     return this.duelService.pendingChallenges(user.sub);

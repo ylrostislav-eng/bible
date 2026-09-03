@@ -33,27 +33,11 @@ export default function BlacklistPage() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const data = await apiClient.get<BannedUserView[]>('/rooms/banned');
-        if (!cancelled) {
-          setBanned(data);
-          setLoadError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(
-            err instanceof ApiError ? err.message : 'Не удалось загрузить чёрный список',
-          );
-        }
-      }
+    function fetchOnMount() {
+      void loadBanned();
     }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    fetchOnMount();
+  }, [loadBanned]);
 
   useEffect(() => {
     let cancelled = false;

@@ -4,6 +4,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -23,6 +24,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { Server, Socket } from 'socket.io';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { isAllowedWsOrigin } from '../config/ws-cors.util';
 import {
   RoomAnswerMessageDto,
   RoomReadyDto,
@@ -79,6 +81,13 @@ interface AuthedSocket extends Socket {
  * tracked in `roomSockets` (not socket.io's own room feature) precisely
  * because of that per-viewer payload requirement.
  */
+// `cors: { origin: true }` looks wide open, but it's inert in practice: the
+// client only ever connects with `transports: ['websocket']`, and browsers
+// don't apply CORS to a raw WebSocket handshake — only to the XHR-polling
+// transport this app never uses. The actual origin check that matters is
+// `isAllowedWsOrigin` in `handleConnection` below, which runs once
+// `ConfigService` is actually available (unlike this decorator's options,
+// evaluated before `ConfigModule` has loaded `.env`). See `ws-cors.util.ts`.
 @WebSocketGateway({
   namespace: ROOM_WS_NAMESPACE,
   cors: { origin: true, credentials: true },
@@ -100,6 +109,7 @@ export class RoomsGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly roomsService: RoomsService,
+    private readonly configService: ConfigService,
   ) {}
 
   onModuleInit(): void {
@@ -138,6 +148,12 @@ export class RoomsGateway
   }
 
   async handleConnection(socket: AuthedSocket): Promise<void> {
+    if (
+      !isAllowedWsOrigin(socket.handshake.headers.origin, this.configService)
+    ) {
+      socket.disconnect(true);
+      return;
+    }
     const token = this.extractToken(socket);
     if (!token) {
       socket.disconnect(true);

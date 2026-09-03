@@ -156,6 +156,12 @@ function ChatThread({
 
   useEffect(() => {
     function fetchThread() {
+      // Without this, switching from a conversation the user had scrolled
+      // up in (which leaves the ref at `false`, set by `loadOlder` below)
+      // straight into a different one kept that stale `false` — the new
+      // thread loaded pinned to whatever scroll position happened to
+      // carry over instead of snapping to the latest messages.
+      shouldStickToBottomRef.current = true;
       setMessages(null);
       void loadLatest();
     }

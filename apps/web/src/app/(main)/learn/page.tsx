@@ -18,6 +18,7 @@ import { CompletionHero } from '@/components/ui/completion-hero';
 import { StreakSection } from '@/components/ui/streak-section';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 type View = 'books' | 'chapters' | 'reader';
 
@@ -263,6 +264,7 @@ function ChapterCheckView({
   onClose: () => void;
 }) {
   const { user, updateProfile } = useAuth();
+  const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
 
   const [phase, setPhase] = useState<CheckPhase>('loading');
   const [settingGoal, setSettingGoal] = useState(false);
@@ -343,7 +345,7 @@ function ChapterCheckView({
         if (res.finished && res.summary) {
           setSummary(res.summary);
           // Refresh the cached profile so Profile reflects the new streak/rating.
-          void updateProfile({});
+          syncProfile();
         }
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Не удалось отправить ответ');
@@ -352,7 +354,7 @@ function ChapterCheckView({
         setSubmitting(false);
       }
     },
-    [sessionId, question, feedback, submitting, updateProfile],
+    [sessionId, question, feedback, submitting, syncProfile],
   );
 
   const setStreakGoal = useCallback(
@@ -483,6 +485,12 @@ function ChapterCheckView({
           onSetGoal={setStreakGoal}
           settingGoal={settingGoal}
         />
+        {profileSyncFailed && (
+          <p className="text-xs text-text-muted">
+            Награда сохранена, но профиль не успел обновиться — актуальные цифры появятся при
+            следующем заходе в приложение.
+          </p>
+        )}
 
         <Button onClick={onClose}>Готово</Button>
       </div>

@@ -17,7 +17,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
@@ -26,10 +26,10 @@ import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
-import { useAuth } from '@/lib/auth-context';
 import { pickEncouragement } from '@/lib/encouragement';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
+import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 const POLL_INTERVAL_MS = 1200;
 /** Set by the friends-tab "Вызвать" flow right before it navigates here, so
@@ -41,7 +41,7 @@ const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 type Menu = 'menu' | 'create' | 'createByCode' | 'join';
 
 export default function DuelPage() {
-  const { updateProfile } = useAuth();
+  const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
   const { activeGame, setActiveGame } = useActiveGame();
   const { challenges: pendingChallenges, removeChallenge } = useIncomingChallenges();
 
@@ -135,7 +135,7 @@ export default function DuelPage() {
         }
         if (state.status === 'COMPLETED') {
           setRewardsApplied((already) => {
-            if (!already) void updateProfile({});
+            if (!already) syncProfile();
             return true;
           });
           // A completed duel's result never changes again — polling every
@@ -174,7 +174,7 @@ export default function DuelPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [sessionId, updateProfile, setActiveGame]);
+  }, [sessionId, syncProfile, setActiveGame]);
 
   // A new question means a fresh choice — clear any highlight left over
   // from the previous round. Can't rely on `next()` alone for this: if the
@@ -315,19 +315,32 @@ export default function DuelPage() {
     [sessionId, duelState, loading],
   );
 
+  // Guards against the auto-advance timer and a manual "Далее" click
+  // firing within the same instant — `loading` alone doesn't close this,
+  // since a click event already queued right as the timer fires can start
+  // before React has re-rendered the button as disabled. Tracks *which*
+  // round a request was already sent for, so a genuine failure (cleared in
+  // the `catch` below) can still be retried, and the very next round is
+  // never blocked by a stale value from the one before it.
+  const advanceRequestedForRef = useRef<number | null>(null);
+
   const next = useCallback(async () => {
     if (!sessionId) return;
+    const forQuestion = duelState?.questionNumber ?? null;
+    if (advanceRequestedForRef.current === forQuestion) return;
+    advanceRequestedForRef.current = forQuestion;
     setLoading(true);
     try {
       const state = await apiClient.post<DuelState>(`/game/duel/${sessionId}/next`);
       setDuelState(state);
       setSelectedIndex(null);
     } catch (err) {
+      advanceRequestedForRef.current = null;
       setError(err instanceof ApiError ? err.message : 'Не удалось продолжить');
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, duelState?.questionNumber]);
 
   // Auto-advance ~5s after both players' answers are revealed, so the duel
   // doesn't stall waiting for someone to notice and click "Далее" — the
@@ -356,6 +369,25 @@ export default function DuelPage() {
     }
   }, [duelState]);
 
+  // The "Отменить" button on the waiting screen used to just call `reset`
+  // directly — clearing local state and navigating away without ever
+  // telling the server, so the session stayed WAITING_FOR_OPPONENT forever:
+  // a targeted challenge stayed fully acceptable by its recipient, and an
+  // open code stayed joinable, even though the creator believed they'd
+  // cancelled it. Best-effort on failure (e.g. the opponent joined in the
+  // same instant) — either way there's nothing left to wait for here.
+  const cancelWaiting = useCallback(async () => {
+    if (sessionId) {
+      try {
+        await apiClient.post(`/game/duel/${sessionId}/cancel`);
+      } catch {
+        // Already joined/finished/cancelled some other way — fine either
+        // way, this screen has nothing more to do with it.
+      }
+    }
+    reset();
+  }, [sessionId, reset]);
+
   // --- Active duel views (session already created/joined) ---
 
   if (sessionId && duelState) {
@@ -374,7 +406,7 @@ export default function DuelPage() {
           <Button onClick={copyInviteCode} variant="secondary" className="max-w-xs">
             Скопировать код
           </Button>
-          <button onClick={reset} className="text-sm text-text-secondary">
+          <button onClick={() => void cancelWaiting()} className="text-sm text-text-secondary">
             Отменить
           </button>
         </div>
@@ -450,6 +482,12 @@ export default function DuelPage() {
             <p className="text-xs text-text-muted">
               Дневной лимит очков «Знаний» с побед в дуэлях достигнут — победа засчитана, но без
               очков. Завтра лимит обновится.
+            </p>
+          )}
+          {profileSyncFailed && (
+            <p className="text-xs text-text-muted">
+              Награда сохранена, но профиль не успел обновиться — актуальные цифры появятся при
+              следующем заходе в приложение.
             </p>
           )}
 

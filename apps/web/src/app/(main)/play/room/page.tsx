@@ -21,17 +21,17 @@ import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { Spinner } from '@/components/ui/spinner';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
-import { useAuth } from '@/lib/auth-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useRoomSocket } from '@/lib/use-room-socket';
+import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 const PUBLIC_ROOMS_POLL_MS = 5000;
 
 type Menu = 'menu' | 'create' | 'join';
 
 export default function RoomPage() {
-  const { updateProfile } = useAuth();
+  const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
   const { activeGame, setActiveGame } = useActiveGame();
   const { invites: pendingInvites, removeInvite } = useIncomingRoomInvites();
 
@@ -142,12 +142,12 @@ export default function RoomPage() {
     if (roomState?.status !== 'COMPLETED') return;
     function applyRewardsOnce() {
       setRewardsApplied((already) => {
-        if (!already) void updateProfile({});
+        if (!already) syncProfile();
         return true;
       });
     }
     applyRewardsOnce();
-  }, [roomState?.status, updateProfile]);
+  }, [roomState?.status, syncProfile]);
 
   // A new question means a fresh choice — clear any highlight left over
   // from the previous round.
@@ -340,8 +340,8 @@ export default function RoomPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
               <TournamentIcon className="h-6 w-6 text-primary" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold">{roomState.roomName ?? 'Комната'}</h1>
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-bold">{roomState.roomName ?? 'Комната'}</h1>
               <p className="text-sm text-text-secondary">
                 {roomState.participants.length}/{roomState.maxParticipants} игроков
               </p>
@@ -549,6 +549,12 @@ export default function RoomPage() {
               частично. Завтра лимит обновится.
             </p>
           )}
+          {profileSyncFailed && (
+            <p className="text-xs text-text-muted">
+              Награда сохранена, но профиль не успел обновиться — актуальные цифры появятся при
+              следующем заходе в приложение.
+            </p>
+          )}
 
           <Button onClick={reset}>Новая комната</Button>
           <Link href="/" className="text-center text-sm text-text-secondary">
@@ -564,7 +570,7 @@ export default function RoomPage() {
     if (roomState.status === 'IN_PROGRESS' && introStep !== null) {
       return (
         <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
-          <p className="text-sm text-text-secondary">
+          <p className="w-full truncate text-sm text-text-secondary">
             {roomState.roomName ?? 'Комната'} · {roomState.participants.length} игроков
           </p>
           <div key={introStep} className="duel-intro-pop">

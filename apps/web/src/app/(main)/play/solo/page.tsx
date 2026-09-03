@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CompletionHero } from '@/components/ui/completion-hero';
 import { ApiError, apiClient } from '@/lib/api';
-import { useAuth } from '@/lib/auth-context';
+import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 type Phase = 'setup' | 'question' | 'summary';
 
@@ -33,7 +33,7 @@ interface Feedback {
 }
 
 export default function PlayPage() {
-  const { updateProfile } = useAuth();
+  const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
 
   const [phase, setPhase] = useState<Phase>('setup');
   const [questionCount, setQuestionCount] = useState<number>(10);
@@ -103,7 +103,7 @@ export default function PlayPage() {
           setSummary(res.summary);
           // Refresh the cached profile so Home/Profile reflect the new
           // level/coins/XP/gamesPlayed without a full reload.
-          void updateProfile({});
+          syncProfile();
         }
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Не удалось отправить ответ');
@@ -112,7 +112,7 @@ export default function PlayPage() {
         setLoading(false);
       }
     },
-    [sessionId, question, selectedIndex, loading, questionStartedAt, updateProfile],
+    [sessionId, question, selectedIndex, loading, questionStartedAt, syncProfile],
   );
 
   const continueGame = useCallback(() => {
@@ -214,6 +214,12 @@ export default function PlayPage() {
           <Card className="flex-col items-center border-primary">
             <p className="font-semibold text-primary">Новый уровень: {summary.level}! 🎉</p>
           </Card>
+        )}
+        {profileSyncFailed && (
+          <p className="text-xs text-text-muted">
+            Награда сохранена, но профиль не успел обновиться — актуальные цифры появятся при
+            следующем заходе в приложение.
+          </p>
         )}
 
         <Button onClick={playAgain}>Играть снова</Button>

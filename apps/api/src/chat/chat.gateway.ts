@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -14,6 +15,7 @@ import {
 } from '@bible-arena/shared';
 import type { Server, Socket } from 'socket.io';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { isAllowedWsOrigin } from '../config/ws-cors.util';
 import { ChatService } from './chat.service';
 
 interface AuthedSocket extends Socket {
@@ -32,6 +34,13 @@ interface AuthedSocket extends Socket {
  * from anywhere in the app — the app-wide `ChatProvider` keeps one socket
  * open for the whole session, not just while a specific thread is on screen.
  */
+// `cors: { origin: true }` looks wide open, but it's inert in practice: the
+// client only ever connects with `transports: ['websocket']`, and browsers
+// don't apply CORS to a raw WebSocket handshake — only to the XHR-polling
+// transport this app never uses. The actual origin check that matters is
+// `isAllowedWsOrigin` in `handleConnection` below, which runs once
+// `ConfigService` is actually available (unlike this decorator's options,
+// evaluated before `ConfigModule` has loaded `.env`). See `ws-cors.util.ts`.
 @WebSocketGateway({
   namespace: CHAT_WS_NAMESPACE,
   cors: { origin: true, credentials: true },
@@ -45,9 +54,16 @@ export class ChatGateway implements OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
+    private readonly configService: ConfigService,
   ) {}
 
   async handleConnection(socket: AuthedSocket): Promise<void> {
+    if (
+      !isAllowedWsOrigin(socket.handshake.headers.origin, this.configService)
+    ) {
+      socket.disconnect(true);
+      return;
+    }
     const token = this.extractToken(socket);
     if (!token) {
       socket.disconnect(true);

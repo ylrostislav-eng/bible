@@ -14,12 +14,16 @@ interface QuestionCountSliderProps {
 // fill here is a plain CSS gradient computed from the value instead — the
 // thumb itself is restyled via the (Tailwind v4) `[&::-webkit-slider-thumb]`
 // / `[&::-moz-range-thumb]` arbitrary-selector variants.
+// Thumb sized well past the 8px track for a real touch target (close to
+// Apple's ~28px HIG minimum) — the track stays visually thin, but almost
+// nobody grabs a slider by the track on a touchscreen anyway; the thumb is
+// what needs to be easy to land a finger on.
 const THUMB_CLASSES =
-  '[&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none ' +
+  '[&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-7 [&::-webkit-slider-thumb]:appearance-none ' +
   '[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-bg ' +
   '[&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[0_0_0_3px_rgba(232,176,75,0.25)] ' +
   '[&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 ' +
-  '[&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full ' +
+  '[&::-moz-range-thumb]:h-7 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:rounded-full ' +
   '[&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-bg [&::-moz-range-thumb]:bg-primary ' +
   '[&::-moz-range-thumb]:shadow-[0_0_0_3px_rgba(232,176,75,0.25)] [&::-moz-range-thumb]:transition-transform ' +
   '[&::-moz-range-thumb]:hover:scale-110 [&::-moz-range-track]:bg-transparent';
@@ -56,7 +60,7 @@ export function QuestionCountSlider({
           background: `linear-gradient(to right, var(--color-primary) ${percent}%, var(--color-surface-hover) ${percent}%)`,
         }}
         className={clsx(
-          'h-2 w-full cursor-pointer appearance-none rounded-full outline-none disabled:cursor-not-allowed disabled:opacity-50',
+          'h-3 w-full cursor-pointer appearance-none rounded-full outline-none disabled:cursor-not-allowed disabled:opacity-50',
           THUMB_CLASSES,
         )}
       />

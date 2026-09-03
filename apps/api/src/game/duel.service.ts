@@ -197,6 +197,29 @@ export class DuelService {
     }));
   }
 
+  /** Lets whoever created an open code or a targeted challenge give up on
+   * it before anyone joins — previously the "Отменить" button on the
+   * waiting screen only reset local state and navigated away, leaving the
+   * session parked in `WAITING_FOR_OPPONENT` forever: a targeted
+   * challenge stayed fully acceptable by its recipient, and an open code
+   * stayed joinable, even though the creator believed they'd cancelled it.
+   * Atomic claim for the same reason as everywhere else this status flip
+   * happens — if the opponent joins in the exact instant this is called,
+   * the join must win, not the cancel. */
+  async cancel(userId: string, sessionId: string): Promise<void> {
+    const session = await this.loadSession(sessionId);
+    if (session.participants[0]?.userId !== userId) {
+      throw new ForbiddenException('Только создатель может отменить вызов');
+    }
+    const claim = await this.prisma.gameSession.updateMany({
+      where: { id: sessionId, status: 'WAITING_FOR_OPPONENT' },
+      data: { status: 'ABANDONED', finishedAt: new Date() },
+    });
+    if (claim.count === 0) {
+      throw new ConflictException('Этот вызов уже принят или отменён');
+    }
+  }
+
   async respondToChallenge(
     userId: string,
     sessionId: string,
@@ -464,8 +487,15 @@ export class DuelService {
         ),
       );
       if (bothAnswered && session.currentOrder < session.questionCount - 1) {
-        await this.prisma.gameSession.update({
-          where: { id: sessionId },
+        // Atomic claim, same pattern as everywhere else a "first caller
+        // wins" transition happens in this file — the client's own
+        // auto-advance timer and a manual "Далее" click can fire within
+        // the same instant. A plain `update` here would let both pass the
+        // check above and both increment, silently skipping a question
+        // for everyone; the conditional `where` means only the request
+        // that still finds `currentOrder` unchanged actually applies it.
+        await this.prisma.gameSession.updateMany({
+          where: { id: sessionId, currentOrder: session.currentOrder },
           data: {
             currentOrder: { increment: 1 },
             currentQuestionStartedAt: new Date(),
