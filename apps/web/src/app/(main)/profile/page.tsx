@@ -128,7 +128,7 @@ export default function ProfilePage() {
           <Card className="flex-row items-center justify-between">
             <div className="flex flex-col gap-0.5">
               <h2 className="text-sm font-semibold">Настройки</h2>
-              <p className="text-xs text-text-secondary">Никнейм, аватар, страна и язык</p>
+              <p className="text-xs text-text-secondary">Профиль, язык, возраст и безопасность</p>
             </div>
             <span className="text-text-secondary">›</span>
           </Card>

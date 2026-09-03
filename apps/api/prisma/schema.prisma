@@ -20,6 +20,19 @@ model User {
   country   String?
   language  String  @default("ru")
 
+  /// Self-declared age band, asked once during onboarding. Null only for
+  /// accounts created before this existed — they keep full access, and the
+  /// app asks the next time the profile screen is opened.
+  ageBand AgeBand?
+  /// Set when the guardian screen shown for the CHILD band was accepted.
+  /// Kept as a timestamp rather than a flag so it stays meaningful if the
+  /// wording later changes.
+  guardianConfirmedAt DateTime?
+  /// scrypt hash of the optional guardian PIN (see `users.service.ts`).
+  /// While set, leaving the CHILD band requires the PIN — the point is to
+  /// stop a child flipping the setting themselves, not to secure anything.
+  guardianPinHash String?
+
   level      Int @default(1)
   experience Int @default(0)
   coins      Int @default(0)
@@ -113,6 +126,13 @@ model User {
 
   @@index([rating])
   @@map("users")
+}
+
+/// See `packages/shared/src/age.ts` for what each band changes.
+enum AgeBand {
+  CHILD
+  TEEN
+  ADULT
 }
 
 enum FriendRequestStatus {

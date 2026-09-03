@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CHILD_MODE_ROOMS_MESSAGE,
   ROOM_INTRO_TOTAL_MS,
   ROOM_MAX_PARTICIPANTS,
   ROOM_MIN_PARTICIPANTS_FOR_RATING,
@@ -183,10 +184,27 @@ export class RoomsService {
     return generateRoomPassword();
   }
 
-  /** Public, joinable (not full) rooms still accepting players. */
-  async listPublic(): Promise<RoomSummary[]> {
+  /**
+   * Public, joinable (not full) rooms still accepting players.
+   *
+   * For a child account the list is narrowed to rooms led by their own
+   * friends. That's the substance of the child mode: not a warning about
+   * strangers, but strangers' lobbies simply not being one tap away. The
+   * same rule is enforced again in `join`, since this list isn't the only
+   * way into a room.
+   */
+  async listPublic(userId: string): Promise<RoomSummary[]> {
+    const leaderFilter = (await this.usersService.isChildAccount(userId))
+      ? { leaderId: { in: await this.friendIds(userId) } }
+      : {};
+
     const sessions = await this.prisma.gameSession.findMany({
-      where: { mode: 'ROOM', status: 'LOBBY', visibility: 'PUBLIC' },
+      where: {
+        mode: 'ROOM',
+        status: 'LOBBY',
+        visibility: 'PUBLIC',
+        ...leaderFilter,
+      },
       include: { participants: { include: { user: true } } },
       orderBy: { startedAt: 'desc' },
       take: 30,
@@ -208,6 +226,16 @@ export class RoomsService {
         maxParticipants: s.maxParticipants ?? ROOM_MAX_PARTICIPANTS,
         questionCount: s.questionCount,
       }));
+  }
+
+  /** Ids of this user's friends — `Friendship` stores one row per
+   * direction, so a single `userId` lookup is the whole list. */
+  private async friendIds(userId: string): Promise<string[]> {
+    const rows = await this.prisma.friendship.findMany({
+      where: { userId },
+      select: { friendId: true },
+    });
+    return rows.map((r) => r.friendId);
   }
 
   async join(userId: string, dto: JoinRoomDto): Promise<JoinRoomResponse> {
@@ -242,6 +270,20 @@ export class RoomsService {
       if (session.visibility === 'PRIVATE') {
         if (!dto.password || dto.password.toUpperCase() !== session.password) {
           throw new BadRequestException('Неверный пароль комнаты');
+        }
+      }
+      if (
+        session.leaderId &&
+        (await this.usersService.isChildAccount(userId))
+      ) {
+        const friendship = await tx.friendship.findUnique({
+          where: { userId_friendId: { userId, friendId: session.leaderId } },
+        });
+        // A room code travels — it gets pasted into group chats and read out
+        // loud. Filtering the list alone would leave the code as an open
+        // door straight past the mode.
+        if (!friendship) {
+          throw new ForbiddenException(CHILD_MODE_ROOMS_MESSAGE);
         }
       }
       if (session.leaderId) {

@@ -14,6 +14,7 @@ import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
 import { BottomNav } from './navigation/bottom-nav';
 import { PendingInvitesWidget } from './pending-invites-widget';
+import { AgeBandGate } from './onboarding/age-band-gate';
 import { OnboardingForm } from './onboarding/onboarding-form';
 import { Button } from './ui/button';
 import { Spinner } from './ui/spinner';
@@ -77,6 +78,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (user?.needsOnboarding) {
     return <OnboardingForm />;
+  }
+
+  // Accounts that finished onboarding before the age question existed get
+  // asked once, here, rather than being quietly left without a band.
+  if (user && !user.ageBand) {
+    return <AgeBandGate />;
   }
 
   return (

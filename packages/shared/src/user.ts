@@ -1,3 +1,4 @@
+import type { AgeBand } from './age';
 import type { LanguageCode } from './language';
 
 export const NICKNAME_MIN_LENGTH = 3;
@@ -16,6 +17,14 @@ export interface UserProfile {
   avatarUrl: string | null;
   country: string | null;
   language: LanguageCode;
+
+  /** Self-declared age band, or null on accounts that predate the question. */
+  ageBand: AgeBand | null;
+  /** True while `ageBand` is CHILD — the flag the UI actually branches on,
+   * so screens don't have to know which bands count as "child". */
+  childMode: boolean;
+  /** Whether a guardian PIN is set. The PIN itself never leaves the server. */
+  guardianPinSet: boolean;
 
   level: number;
   experience: number;
@@ -53,6 +62,12 @@ export interface UpdateProfileInput {
   avatarUrl?: string | null;
   country?: string | null;
   language?: LanguageCode;
+  ageBand?: AgeBand;
+  /** Sent alongside `ageBand` when leaving the child mode on an account that
+   * has a guardian PIN set. */
+  guardianPin?: string;
+  /** Set when the guardian accepted the child-mode screen. */
+  guardianConfirmed?: boolean;
 }
 
 export interface AuthResponse {

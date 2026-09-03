@@ -12,6 +12,7 @@ import {
 import { useState, type FormEvent } from 'react';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { AgeSafetySection } from '@/components/settings/age-safety-section';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
@@ -119,6 +120,8 @@ export default function SettingsPage() {
           {submitting ? 'Сохранение…' : 'Сохранить'}
         </Button>
       </form>
+
+      <AgeSafetySection />
     </div>
   );
 }

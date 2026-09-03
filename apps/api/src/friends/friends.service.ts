@@ -33,10 +33,29 @@ export class FriendsService {
     const q = query.trim();
     if (q.length < 2) return [];
 
+    // Child accounts are deliberately harder to find: a partial search
+    // ("аня") is how an adult scans for children to approach, while a child
+    // adding a classmate types the nickname they were given. So they're
+    // reachable by an exact match only — the feature keeps working for the
+    // people who already know each other, and stops working as a way to
+    // browse for strangers.
     const users = await this.prisma.user.findMany({
       where: {
-        nickname: { not: null, contains: q, mode: 'insensitive' },
         id: { not: currentUserId },
+        OR: [
+          {
+            // `ageBand: { not: 'CHILD' }` alone would be wrong here: it
+            // compiles to `ageBand <> 'CHILD'`, which is NULL — not true —
+            // for every account that hasn't answered the age question yet,
+            // silently dropping all of them out of search. The null case
+            // has to be spelled out.
+            AND: [
+              { OR: [{ ageBand: null }, { ageBand: { not: 'CHILD' } }] },
+              { nickname: { not: null, contains: q, mode: 'insensitive' } },
+            ],
+          },
+          { nickname: { equals: q, mode: 'insensitive' } },
+        ],
       },
       take: SEARCH_RESULT_LIMIT,
       orderBy: { rating: 'desc' },

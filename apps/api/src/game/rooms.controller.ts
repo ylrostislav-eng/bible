@@ -37,8 +37,8 @@ export class RoomsController {
   }
 
   @Get()
-  listPublic() {
-    return this.roomsService.listPublic();
+  listPublic(@CurrentUser() user: JwtPayload) {
+    return this.roomsService.listPublic(user.sub);
   }
 
   // Guards against brute-forcing either the invite code or a private

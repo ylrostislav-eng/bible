@@ -21,6 +21,7 @@ import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { Spinner } from '@/components/ui/spinner';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useRoomSocket } from '@/lib/use-room-socket';
@@ -32,6 +33,7 @@ type Menu = 'menu' | 'create' | 'join';
 
 export default function RoomPage() {
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
+  const { user } = useAuth();
   const { activeGame, setActiveGame } = useActiveGame();
   const { invites: pendingInvites, removeInvite } = useIncomingRoomInvites();
 
@@ -872,9 +874,19 @@ export default function RoomPage() {
       )}
 
       <Card className="flex-col gap-3">
-        <p className="text-sm font-semibold text-text-secondary">Открытые комнаты</p>
+        <p className="text-sm font-semibold text-text-secondary">
+          {user?.childMode ? 'Открытые комнаты друзей' : 'Открытые комнаты'}
+        </p>
         {publicRooms.length === 0 ? (
-          <p className="py-2 text-center text-sm text-text-muted">Сейчас никто не играет</p>
+          // A child sees a filtered list, so the usual "nobody's playing"
+          // line would be a lie — there may well be rooms, just none of
+          // them a friend's. Saying which list this is beats leaving them
+          // to wonder why the app looks empty.
+          <p className="py-2 text-center text-sm text-text-muted">
+            {user?.childMode
+              ? 'Никто из друзей сейчас не играет. Позовите друга или создайте комнату сами.'
+              : 'Сейчас никто не играет'}
+          </p>
         ) : (
           publicRooms.map((room) => (
             <div key={room.sessionId} className="flex items-center justify-between gap-2">

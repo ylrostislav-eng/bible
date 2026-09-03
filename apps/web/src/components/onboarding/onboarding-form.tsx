@@ -9,10 +9,12 @@ import {
   SUPPORTED_LANGUAGES,
   type LanguageCode,
 } from '@bible-arena/shared';
+import type { AgeBand } from '@bible-arena/shared';
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 import { Button } from '../ui/button';
+import { AgeBandStep } from './age-band-step';
 
 export function OnboardingForm() {
   const { user, updateProfile } = useAuth();
@@ -21,16 +23,26 @@ export function OnboardingForm() {
   const [language, setLanguage] = useState<LanguageCode>(user?.language ?? 'ru');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Two steps rather than one long form: the age question decides who the
+  // player can reach, and it shouldn't be a fourth dropdown scrolled past
+  // on the way to the button. Nothing is saved until the second step, so
+  // the account isn't left half-set-up if someone closes the app midway.
+  const [step, setStep] = useState<'profile' | 'age'>('profile');
 
   const nicknameValid =
     nickname.length >= NICKNAME_MIN_LENGTH &&
     nickname.length <= NICKNAME_MAX_LENGTH &&
     NICKNAME_PATTERN.test(nickname);
 
-  async function handleSubmit(event: FormEvent) {
+  function handleContinue(event: FormEvent) {
     event.preventDefault();
-    if (!nicknameValid || submitting) return;
+    if (!nicknameValid) return;
+    setError(null);
+    setStep('age');
+  }
 
+  async function handleFinish(payload: { ageBand: AgeBand; guardianConfirmed: boolean }) {
+    if (submitting) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -38,12 +50,33 @@ export function OnboardingForm() {
         nickname,
         country: country || null,
         language,
+        ageBand: payload.ageBand,
+        guardianConfirmed: payload.guardianConfirmed,
       });
     } catch (err) {
+      // A nickname taken while the second step was open surfaces here, so
+      // the message has to send the player back to the field it's about.
       setError(err instanceof ApiError ? err.message : 'Что-то пошло не так, попробуйте ещё раз');
+      setStep('profile');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (step === 'age') {
+    return (
+      <div className="pt-safe flex min-h-screen flex-col justify-center px-6 py-10">
+        <AgeBandStep
+          heading="Сколько вам лет?"
+          subtitle="От этого зависит, с кем можно играть и переписываться."
+          submitLabel="Начать играть"
+          submitting={submitting}
+          error={error}
+          onBack={() => setStep('profile')}
+          onSubmit={handleFinish}
+        />
+      </div>
+    );
   }
 
   return (
@@ -54,7 +87,7 @@ export function OnboardingForm() {
           Настройте профиль, чтобы начать изучать Библию и соревноваться с друзьями.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
+        <form onSubmit={handleContinue} className="mt-8 flex flex-col gap-5">
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-text-secondary">Никнейм</span>
             <input
@@ -105,8 +138,8 @@ export function OnboardingForm() {
 
           {error && <p className="text-sm text-danger">{error}</p>}
 
-          <Button type="submit" disabled={!nicknameValid || submitting}>
-            {submitting ? 'Сохранение…' : 'Продолжить'}
+          <Button type="submit" disabled={!nicknameValid}>
+            Продолжить
           </Button>
         </form>
       </div>

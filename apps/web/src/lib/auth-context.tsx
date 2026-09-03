@@ -15,6 +15,9 @@ interface AuthContextValue {
   /** Local-development-only login bypass; the backend rejects it in production. */
   devLogin: () => void;
   updateProfile: (input: UpdateProfileInput) => Promise<void>;
+  /** Sets, changes or clears the guardian PIN. `pin: null` clears it;
+   * `currentPin` is required whenever one is already set. */
+  updateGuardianPin: (input: { pin: string | null; currentPin?: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -91,9 +94,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(profile);
   }, []);
 
+  const updateGuardianPin = useCallback(
+    async (input: { pin: string | null; currentPin?: string }) => {
+      const profile = await apiClient.patch<UserProfile>('/users/me/guardian-pin', input);
+      setUser(profile);
+    },
+    [],
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, errorMessage, retry, devLogin, updateProfile }),
-    [status, user, errorMessage, retry, devLogin, updateProfile],
+    () => ({
+      status,
+      user,
+      errorMessage,
+      retry,
+      devLogin,
+      updateProfile,
+      updateGuardianPin,
+    }),
+    [status, user, errorMessage, retry, devLogin, updateProfile, updateGuardianPin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

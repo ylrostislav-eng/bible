@@ -1,16 +1,24 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import type {
+  AgeBand,
   LanguageCode,
   LeaderboardEntry,
   StreakGoalDays,
   UserProfile,
 } from '@bible-arena/shared';
 import {
+  CHILD_MODE_PIN_MESSAGE,
+  GUARDIAN_PIN_PATTERN,
+  isChildBand,
   isReservedNickname,
   normalizeNickname,
   NICKNAME_PATTERN,
@@ -23,7 +31,42 @@ import {
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
+
+// Annotated rather than asserted: `promisify`'s overloads leave the result
+// unresolved here, and an `as` cast gets stripped by eslint's autofix.
+const scryptAsync: (
+  password: string,
+  salt: Buffer,
+  keylen: number,
+) => Promise<Buffer> = promisify(scrypt);
+
+/** A four-digit PIN is 10 000 guesses; without a limit an app-wide 120
+ * requests/minute budget walks the whole space in under an hour-and-a-half.
+ * Five wrong tries an hour keeps a forgetful parent workable and a patient
+ * child out. */
+const PIN_ATTEMPT_WINDOW_SECONDS = 3600;
+const PIN_MAX_ATTEMPTS = 5;
+
+/** `salt:derivedKey`, both hex. scrypt rather than a plain digest because a
+ * four-digit PIN has so little entropy that a fast hash of a leaked column
+ * would be reversed instantly; scrypt makes each guess cost real work.
+ * Node's own crypto, so this adds no dependency. */
+async function hashPin(pin: string): Promise<string> {
+  const salt = randomBytes(16);
+  const derived = await scryptAsync(pin, salt, 32);
+  return `${salt.toString('hex')}:${derived.toString('hex')}`;
+}
+
+async function verifyPin(pin: string, stored: string): Promise<boolean> {
+  const [saltHex, keyHex] = stored.split(':');
+  if (!saltHex || !keyHex) return false;
+  const derived = await scryptAsync(pin, Buffer.from(saltHex, 'hex'), 32);
+  const expected = Buffer.from(keyHex, 'hex');
+  if (expected.length !== derived.length) return false;
+  return timingSafeEqual(derived, expected);
+}
 
 const LEADERBOARD_SIZE = 50;
 
@@ -44,7 +87,12 @@ const INACTIVITY_DECAY_PER_DAY = 1;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+  ) {}
 
   /**
    * Runs `fn` with the user row locked for the duration of the transaction
@@ -133,6 +181,31 @@ export class UsersService {
       }
     }
 
+    // Age band changes can be gated by the guardian PIN, so they need the
+    // current row — read it once and reuse it for both checks below.
+    let guardianConfirmedAt: Date | undefined;
+    if (dto.ageBand !== undefined || dto.guardianConfirmed) {
+      const current = await this.findById(id);
+      if (dto.ageBand !== undefined && dto.ageBand !== current.ageBand) {
+        await this.assertMayChangeAgeBand(
+          current,
+          dto.ageBand,
+          dto.guardianPin,
+        );
+      }
+      // Only meaningful for the child mode — recorded when the guardian
+      // screen was accepted, and cleared when the account leaves that mode
+      // so a later return to it asks again rather than reusing an old
+      // acceptance.
+      if (dto.guardianConfirmed) {
+        guardianConfirmedAt = new Date();
+      } else if (dto.ageBand !== undefined && !isChildBand(dto.ageBand)) {
+        guardianConfirmedAt = undefined;
+      }
+    }
+    const leavingChildMode =
+      dto.ageBand !== undefined && !isChildBand(dto.ageBand);
+
     try {
       return await this.prisma.user.update({
         where: { id },
@@ -141,6 +214,11 @@ export class UsersService {
           avatarUrl: dto.avatarUrl,
           country: dto.country,
           language: dto.language,
+          ageBand: dto.ageBand,
+          ...(guardianConfirmedAt ? { guardianConfirmedAt } : {}),
+          ...(leavingChildMode && !guardianConfirmedAt
+            ? { guardianConfirmedAt: null }
+            : {}),
         },
       });
     } catch (error) {
@@ -157,6 +235,116 @@ export class UsersService {
       }
       throw error;
     }
+  }
+
+  // ---- age band and the guardian PIN ----
+
+  /**
+   * Moving *into* the child mode is always allowed — it only ever removes
+   * access. Moving out of it is the direction that matters: if a guardian
+   * set a PIN, that's exactly the switch they set it for.
+   *
+   * This is a household lock, not a security boundary. Nothing here can
+   * prove how old anyone is, and a determined teenager with the family
+   * phone will find a way round any such setting. What it does buy is that
+   * the mode can't be turned off by tapping through a settings screen.
+   */
+  private async assertMayChangeAgeBand(
+    current: User,
+    next: AgeBand,
+    pin: string | undefined,
+  ): Promise<void> {
+    const leavingChildMode = isChildBand(current.ageBand) && !isChildBand(next);
+    if (!leavingChildMode || !current.guardianPinHash) return;
+
+    if (!pin) {
+      throw new ForbiddenException(CHILD_MODE_PIN_MESSAGE);
+    }
+    await this.assertPinAttemptAllowed(current.id);
+    if (!(await verifyPin(pin, current.guardianPinHash))) {
+      throw new ForbiddenException('Неверный PIN-код');
+    }
+    await this.clearPinAttempts(current.id);
+  }
+
+  /**
+   * Sets, changes or clears the guardian PIN. Changing or clearing needs the
+   * current one — otherwise the lock would be trivially removable from the
+   * same screen it protects.
+   */
+  async setGuardianPin(
+    id: string,
+    pin: string | null,
+    currentPin?: string,
+  ): Promise<User> {
+    const user = await this.findById(id);
+
+    if (user.guardianPinHash) {
+      if (!currentPin) {
+        throw new ForbiddenException('Введите текущий PIN-код');
+      }
+      await this.assertPinAttemptAllowed(id);
+      if (!(await verifyPin(currentPin, user.guardianPinHash))) {
+        throw new ForbiddenException('Неверный PIN-код');
+      }
+      await this.clearPinAttempts(id);
+    }
+
+    if (pin !== null && !GUARDIAN_PIN_PATTERN.test(pin)) {
+      throw new BadRequestException('PIN-код — 4 цифры');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { guardianPinHash: pin === null ? null : await hashPin(pin) },
+    });
+  }
+
+  private pinAttemptKey(userId: string): string {
+    return `guardian:pin:attempts:${userId}`;
+  }
+
+  /** Counts wrong PIN entries in Redis, like the chat flood limit — and,
+   * for the same reason, fails open: a Redis outage shouldn't lock a parent
+   * out of their own settings. */
+  private async assertPinAttemptAllowed(userId: string): Promise<void> {
+    let count: number;
+    try {
+      count = await this.redisService.client.incr(this.pinAttemptKey(userId));
+      if (count === 1) {
+        await this.redisService.client.expire(
+          this.pinAttemptKey(userId),
+          PIN_ATTEMPT_WINDOW_SECONDS,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(`PIN attempt limit unavailable: ${String(error)}`);
+      return;
+    }
+    if (count > PIN_MAX_ATTEMPTS) {
+      throw new ForbiddenException(
+        'Слишком много попыток ввода PIN-кода — попробуйте позже',
+      );
+    }
+  }
+
+  private async clearPinAttempts(userId: string): Promise<void> {
+    try {
+      await this.redisService.client.del(this.pinAttemptKey(userId));
+    } catch {
+      // Nothing to do — the counter expires on its own.
+    }
+  }
+
+  /** Whether this account is in the reduced-contact child mode. Callers are
+   * services enforcing that mode (rooms, friend search), so it answers with
+   * a plain boolean rather than throwing. */
+  async isChildAccount(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { ageBand: true },
+    });
+    return isChildBand(user?.ageBand);
   }
 
   /**
@@ -653,6 +841,9 @@ export class UsersService {
       avatarUrl: user.avatarUrl,
       country: user.country,
       language: user.language as LanguageCode,
+      ageBand: user.ageBand,
+      childMode: isChildBand(user.ageBand),
+      guardianPinSet: user.guardianPinHash !== null,
       level: user.level,
       experience: user.experience,
       coins: user.coins,
