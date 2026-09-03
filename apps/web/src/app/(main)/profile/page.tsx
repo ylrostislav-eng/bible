@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { pluralDraws, pluralDuels, pluralLosses, pluralWins } from '@/lib/plural';
-import { COUNTRIES } from '@bible-arena/shared';
+import { COUNTRIES, getTitleProgress } from '@bible-arena/shared';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
@@ -20,6 +20,7 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const country = COUNTRIES.find((c) => c.code === user.country);
+  const titleProgress = getTitleProgress(user.rating);
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
@@ -76,6 +77,26 @@ export default function ProfilePage() {
           </div>
         </Card>
       </div>
+
+      {/* A title on its own is a label. A title with "ещё 180 до
+          «Читающий»" is a reason to play one more game today — and it's the
+          only place the ladder is visible at all. */}
+      {titleProgress.nextTitle && (
+        <Card className="flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold">{titleProgress.title}</p>
+            <p className="text-xs text-text-secondary">
+              до «{titleProgress.nextTitle}»: {titleProgress.ratingToNext}
+            </p>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
+            <div
+              className="h-full rounded-full bg-primary transition-[width]"
+              style={{ width: `${titleProgress.percent}%` }}
+            />
+          </div>
+        </Card>
+      )}
 
       <Card className="flex-col gap-3">
         <div className="flex items-baseline justify-between">
