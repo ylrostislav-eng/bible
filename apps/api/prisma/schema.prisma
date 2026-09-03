@@ -88,6 +88,15 @@ model User {
   /// friend — see `Friendship.friend`.
   friendOf               Friendship[]    @relation("FriendshipTarget")
 
+  /// Set by moderation when a complaint is upheld: until this moment the
+  /// user can still read and play, but can't send chat messages. A mute is
+  /// deliberately time-boxed rather than permanent — the common case is a
+  /// heated moment, not a malicious account.
+  mutedUntil DateTime?
+
+  abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
+  abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
+
   /// Bans are scoped to the leader who issued them — a user banned from one
   /// leader's rooms can still freely join everyone else's.
   roomBansIssued   RoomBan[] @relation("RoomBansIssued")
@@ -590,4 +599,67 @@ model ErrorReport {
   @@index([resolved, createdAt])
   @@index([source, kind, createdAt])
   @@map("error_reports")
+}
+
+enum AbuseReportKind {
+  USER
+  MESSAGE
+}
+
+enum AbuseReportReason {
+  INSULT
+  SPAM
+  INAPPROPRIATE
+  IMPERSONATION
+  OTHER
+}
+
+enum AbuseReportStatus {
+  PENDING
+  ACTIONED
+  DISMISSED
+}
+
+/// A complaint one player files about another. Until this existed the only
+/// recourse was the personal blacklist — which hides the offender from the
+/// victim but tells nobody, so nothing is ever acted on. That gap is the
+/// reason this table exists: it is the difference between "I can avoid
+/// them" and "someone can stop them", which matters most for the youngest
+/// players.
+///
+/// `messageBody` deliberately copies the reported message's text instead of
+/// only pointing at it: the offender can delete the conversation, and a
+/// complaint whose evidence disappears is not reviewable.
+model AbuseReport {
+  id String @id @default(cuid())
+
+  kind   AbuseReportKind
+  reason AbuseReportReason
+  /// Optional free-text detail from the reporter.
+  comment String?
+
+  reporterId String
+  reporter   User   @relation("AbuseReportsFiled", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  targetUserId String
+  targetUser   User   @relation("AbuseReportsAgainst", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  /// Set only for MESSAGE reports — the id and a frozen copy of the text.
+  messageId   String?
+  messageBody String?
+
+  status     AbuseReportStatus @default(PENDING)
+  reviewedAt DateTime?
+  /// Free-text note from whoever reviewed it.
+  reviewNote String?
+
+  createdAt DateTime @default(now())
+
+  /// One player can't file the same complaint about the same person twice —
+  /// stops a brigade (or a misclick) from inflating the report count that
+  /// moderation triage sorts by.
+  @@unique([reporterId, targetUserId, messageId])
+  @@index([status, createdAt])
+  @@index([targetUserId, status])
+  @@map("abuse_reports")
 }

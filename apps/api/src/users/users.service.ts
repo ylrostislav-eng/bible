@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,10 @@ import type {
   UserProfile,
 } from '@bible-arena/shared';
 import {
+  isReservedNickname,
+  normalizeNickname,
+  NICKNAME_PATTERN,
+  RESERVED_NICKNAME_MESSAGE,
   ROOM_DAILY_RATING_CAP,
   getTitleForRating,
   STREAK_GOAL_COIN_REWARD,
@@ -104,9 +109,24 @@ export class UsersService {
   }
 
   async updateProfile(id: string, dto: UpdateProfileDto): Promise<User> {
-    if (dto.nickname) {
+    // What gets stored is the normalized form, not what was typed: styled
+    // Unicode letters read as ordinary ones ("𝓐𝓭𝓶𝓲𝓷" is just "Admin" to
+    // anyone looking at it), so storing them raw would let two visually
+    // identical names live as two separate accounts and slip past both the
+    // uniqueness constraint and the reserved-word check.
+    const nickname = dto.nickname ? normalizeNickname(dto.nickname) : undefined;
+
+    if (nickname) {
+      if (!NICKNAME_PATTERN.test(nickname)) {
+        throw new BadRequestException(
+          'Никнейм может содержать только буквы, цифры и подчёркивание',
+        );
+      }
+      if (isReservedNickname(nickname)) {
+        throw new BadRequestException(RESERVED_NICKNAME_MESSAGE);
+      }
       const existing = await this.prisma.user.findUnique({
-        where: { nickname: dto.nickname },
+        where: { nickname },
       });
       if (existing && existing.id !== id) {
         throw new ConflictException('Этот никнейм уже занят');
@@ -117,7 +137,7 @@ export class UsersService {
       return await this.prisma.user.update({
         where: { id },
         data: {
-          nickname: dto.nickname,
+          nickname,
           avatarUrl: dto.avatarUrl,
           country: dto.country,
           language: dto.language,

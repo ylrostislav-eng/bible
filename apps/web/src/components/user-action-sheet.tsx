@@ -1,7 +1,12 @@
 'use client';
 
+import { useState } from 'react';
+import { ReportSheet } from './report-sheet';
+
 interface UserActionSheetProps {
   nickname: string | null;
+  /** Needed for the report action — a complaint has to name someone. */
+  userId: string;
   isBanned: boolean;
   busy?: boolean;
   onClose: () => void;
@@ -24,6 +29,7 @@ interface UserActionSheetProps {
  */
 export function UserActionSheet({
   nickname,
+  userId,
   isBanned,
   busy,
   onClose,
@@ -31,6 +37,21 @@ export function UserActionSheet({
   onAddFriend,
   onToggleBan,
 }: UserActionSheetProps) {
+  const [reporting, setReporting] = useState(false);
+
+  if (reporting) {
+    return (
+      <ReportSheet
+        targetUserId={userId}
+        targetNickname={nickname}
+        onClose={() => {
+          setReporting(false);
+          onClose();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
@@ -68,6 +89,16 @@ export function UserActionSheet({
             className="h-12 rounded-xl bg-surface-hover text-sm font-semibold text-danger disabled:opacity-50"
           >
             {isBanned ? 'Разбанить' : 'Забанить'}
+          </button>
+          {/* Separate from "Забанить" on purpose: banning hides someone from
+              you, reporting tells someone who can actually stop them. A
+              player who only bans thinks they've dealt with it. */}
+          <button
+            onClick={() => setReporting(true)}
+            disabled={busy}
+            className="h-12 rounded-xl text-sm font-medium text-text-secondary disabled:opacity-50"
+          >
+            Пожаловаться
           </button>
         </div>
       </div>

@@ -348,6 +348,7 @@ export function FriendChallengeList({
       {actionSheetFor && (
         <UserActionSheet
           nickname={actionSheetFor.nickname}
+          userId={actionSheetFor.userId}
           isBanned={bannedIds.has(actionSheetFor.userId)}
           busy={actionBusy}
           onClose={() => setActionSheetFor(null)}

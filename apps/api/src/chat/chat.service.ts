@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
@@ -10,15 +11,58 @@ import {
   type ChatMessageView,
   type ChatMessagesPage,
 } from '@bible-arena/shared';
+import { ModerationService } from '../moderation/moderation.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+
+/** Flood limits, deliberately generous for a real conversation and hard for
+ * a script: a person typing fast sends a handful of short messages in a
+ * burst, not thirty. Measured before this existed: 60 messages went through
+ * in 2.5 seconds without a single refusal. */
+const FLOOD_WINDOW_SECONDS = 10;
+const FLOOD_MAX_MESSAGES = 12;
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly presenceService: PresenceService,
+    private readonly redisService: RedisService,
+    private readonly moderationService: ModerationService,
   ) {}
+
+  /**
+   * Rate limit for sending. Lives here rather than on the transport for the
+   * same reason the length check does: chat is sent over WebSocket, and the
+   * app-wide HTTP rate limiter never sees a WebSocket event at all — so a
+   * limiter attached to the controller would protect nothing.
+   *
+   * Counts in Redis so the limit holds across restarts and across more than
+   * one API instance. If Redis is unreachable the send is allowed: losing
+   * flood protection for a moment is better than making chat unusable
+   * whenever Redis blinks.
+   */
+  private async assertNotFlooding(senderId: string): Promise<void> {
+    const key = `chat:rate:${senderId}`;
+    let count: number;
+    try {
+      count = await this.redisService.client.incr(key);
+      if (count === 1) {
+        await this.redisService.client.expire(key, FLOOD_WINDOW_SECONDS);
+      }
+    } catch (error) {
+      this.logger.warn(`Chat rate limit unavailable: ${String(error)}`);
+      return;
+    }
+    if (count > FLOOD_MAX_MESSAGES) {
+      throw new ForbiddenException(
+        'Слишком много сообщений подряд — подождите несколько секунд',
+      );
+    }
+  }
 
   /** Sorted pair of ids — one shared key per friendship regardless of who
    * sent to whom, so a whole thread is a single `where conversationKey = ...`
@@ -67,6 +111,10 @@ export class ChatService {
     body: string,
   ): Promise<ChatMessageView> {
     await this.assertCanMessage(senderId, recipientId);
+    // Both of these guard the same thing the length check does — a caller
+    // on any transport — and both are cheap enough to run before the write.
+    await this.moderationService.assertNotMuted(senderId);
+    await this.assertNotFlooding(senderId);
     // Length is enforced here rather than as a DTO on the transport: sending
     // goes through the WebSocket gateway, whose handler took a raw object
     // and never ran the validation class that existed for it — so the limit

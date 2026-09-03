@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api';
 import { useChat } from '@/lib/chat-context';
+import { ReportSheet } from './report-sheet';
 import { Spinner } from './ui/spinner';
 
 function formatTime(iso: string): string {
@@ -141,6 +142,7 @@ function ChatThread({
   const [loadingMore, setLoadingMore] = useState(false);
   const [draft, setDraft] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
+  const [reportingMessage, setReportingMessage] = useState<ChatMessageView | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
 
@@ -253,26 +255,44 @@ function ChatThread({
             )}
             {messages.map((m) => {
               const mine = m.fromUserId === user?.id;
-              return (
-                <div key={m.id} className={mine ? 'flex justify-end' : 'flex justify-start'}>
-                  <div
+              const bubble = (
+                <div
+                  className={
+                    mine
+                      ? 'max-w-[75%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-on-primary'
+                      : 'max-w-[75%] rounded-2xl rounded-bl-sm bg-surface-hover px-3 py-2 text-left'
+                  }
+                >
+                  <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>
+                  <p
                     className={
                       mine
-                        ? 'max-w-[75%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-on-primary'
-                        : 'max-w-[75%] rounded-2xl rounded-bl-sm bg-surface-hover px-3 py-2'
+                        ? 'mt-0.5 text-right text-[10px] text-on-primary/70'
+                        : 'mt-0.5 text-right text-[10px] text-text-muted'
                     }
                   >
-                    <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>
-                    <p
-                      className={
-                        mine
-                          ? 'mt-0.5 text-right text-[10px] text-on-primary/70'
-                          : 'mt-0.5 text-right text-[10px] text-text-muted'
-                      }
+                    {formatTime(m.createdAt)}
+                  </p>
+                </div>
+              );
+              return (
+                <div key={m.id} className={mine ? 'flex justify-end' : 'flex justify-start'}>
+                  {/* Only the other person's messages are reportable — and
+                      tapping one is the whole gesture, because a complaint
+                      has to be reachable the moment something upsetting
+                      arrives, not two screens away. */}
+                  {mine ? (
+                    bubble
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setReportingMessage(m)}
+                      className="flex max-w-[85%] justify-start"
+                      aria-label="Пожаловаться на это сообщение"
                     >
-                      {formatTime(m.createdAt)}
-                    </p>
-                  </div>
+                      {bubble}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -308,6 +328,16 @@ function ChatThread({
           </svg>
         </button>
       </div>
+
+      {reportingMessage && (
+        <ReportSheet
+          targetUserId={friendUserId}
+          targetNickname={nickname}
+          messageId={reportingMessage.id}
+          messageBody={reportingMessage.body}
+          onClose={() => setReportingMessage(null)}
+        />
+      )}
     </>
   );
 }

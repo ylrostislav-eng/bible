@@ -12,6 +12,7 @@ import { FriendsModule } from './friends/friends.module';
 import { GameModule } from './game/game.module';
 import { HealthModule } from './health/health.module';
 import { LearnModule } from './learn/learn.module';
+import { ModerationModule } from './moderation/moderation.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PresenceModule } from './presence/presence.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -43,6 +44,7 @@ import { UsersModule } from './users/users.module';
     FriendsModule,
     ChatModule,
     NotificationsModule,
+    ModerationModule,
     TelemetryModule,
   ],
   controllers: [AppController],

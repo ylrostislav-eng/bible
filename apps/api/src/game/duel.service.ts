@@ -148,6 +148,27 @@ export class DuelService {
       throw new ForbiddenException('Этот игрок заблокировал вас');
     }
 
+    // One outstanding challenge per pair. Without this, a single player
+    // could fire off any number of challenges at the same person — measured
+    // before this check existed: 20 in a row all landed, giving the
+    // recipient 20 full-screen popups to dismiss and leaving 20 dead
+    // sessions behind. A challenge is an interruption of someone else's
+    // screen, so the right number of pending ones is one.
+    const outstanding = await this.prisma.gameSession.findFirst({
+      where: {
+        mode: 'DUEL',
+        status: 'WAITING_FOR_OPPONENT',
+        targetUserId: dto.friendUserId,
+        participants: { some: { userId } },
+      },
+      select: { id: true },
+    });
+    if (outstanding) {
+      throw new ConflictException(
+        'Вы уже вызвали этого игрока — дождитесь ответа или отмените прошлый вызов',
+      );
+    }
+
     for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {
       const inviteCode = generateInviteCode();
       try {
