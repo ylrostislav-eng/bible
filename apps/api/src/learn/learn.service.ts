@@ -9,7 +9,7 @@ import type {
   StartChapterCheckResponse,
   SubmitChapterCheckAnswerResult,
 } from '@bible-arena/shared';
-import { BIBLE_BOOKS } from '@bible-arena/shared';
+import { BIBLE_BOOKS, QUESTION_PACE_SECONDS } from '@bible-arena/shared';
 import type { ChapterQuestion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -75,6 +75,16 @@ export class LearnService {
       ...shuffleOptions(question),
     }));
 
+    // The pace is copied onto the session rather than read live from the
+    // profile, so changing the setting mid-check-up can't retroactively
+    // expire a question the player is already looking at.
+    const player = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { questionPace: true },
+    });
+    const timeLimitSeconds =
+      QUESTION_PACE_SECONDS[player?.questionPace ?? 'NORMAL'];
+
     const session = await this.prisma.chapterCheckSession.create({
       data: {
         userId,
@@ -82,6 +92,7 @@ export class LearnService {
         chapter: dto.chapter,
         totalQuestions: order.length,
         currentQuestionStartedAt: new Date(),
+        timeLimitSeconds,
       },
     });
 

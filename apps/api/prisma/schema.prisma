@@ -79,6 +79,13 @@ model User {
   /// and the streak has to roll over on *their* midnight.
   timezoneOffsetMinutes Int @default(0)
 
+  /// Accessibility settings — see `packages/shared/src/accessibility.ts`.
+  /// `questionPace` applies to the solo chapter check-up only: duels and
+  /// rooms share one clock between competitors, so a per-player timer there
+  /// would be an advantage rather than a setting.
+  questionPace QuestionPace @default(NORMAL)
+  textScale    TextScale    @default(NORMAL)
+
   /// Evening reminder when the daily streak is about to lapse. On by
   /// default, off with one tap in settings — and turned off automatically
   /// if Telegram reports the bot was blocked, so a person who walked away
@@ -146,6 +153,18 @@ model User {
 
   @@index([rating])
   @@map("users")
+}
+
+enum QuestionPace {
+  NORMAL
+  RELAXED
+  UNTIMED
+}
+
+enum TextScale {
+  NORMAL
+  LARGE
+  XLARGE
 }
 
 /// See `packages/shared/src/age.ts` for what each band changes.

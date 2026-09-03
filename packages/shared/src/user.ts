@@ -1,3 +1,4 @@
+import type { QuestionPace, TextScale } from './accessibility';
 import type { AgeBand } from './age';
 import type { LanguageCode } from './language';
 
@@ -27,6 +28,10 @@ export interface UserProfile {
   guardianPinSet: boolean;
   /** Evening Telegram reminder when the daily streak is about to lapse. */
   remindersEnabled: boolean;
+  /** Timer for the solo chapter check-up — see `accessibility.ts`. */
+  questionPace: QuestionPace;
+  /** Interface text size. */
+  textScale: TextScale;
 
   level: number;
   experience: number;
@@ -75,6 +80,8 @@ export interface UpdateProfileInput {
   /** Set when the guardian accepted the child-mode screen. */
   guardianConfirmed?: boolean;
   remindersEnabled?: boolean;
+  questionPace?: QuestionPace;
+  textScale?: TextScale;
 }
 
 export interface AuthResponse {

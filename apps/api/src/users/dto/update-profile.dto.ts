@@ -1,5 +1,7 @@
 import {
   AGE_BANDS,
+  QUESTION_PACES,
+  TEXT_SCALES,
   COUNTRY_CODES,
   GUARDIAN_PIN_PATTERN,
   NICKNAME_MAX_LENGTH,
@@ -8,6 +10,8 @@ import {
   SUPPORTED_LANGUAGES,
   type AgeBand,
   type LanguageCode,
+  type QuestionPace,
+  type TextScale,
 } from '@bible-arena/shared';
 import {
   IsBoolean,
@@ -55,4 +59,12 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   remindersEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(QUESTION_PACES)
+  questionPace?: QuestionPace;
+
+  @IsOptional()
+  @IsIn(TEXT_SCALES)
+  textScale?: TextScale;
 }

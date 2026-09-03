@@ -13,6 +13,7 @@ import { ChatWidget } from './chat-widget';
 import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
 import { BottomNav } from './navigation/bottom-nav';
+import { TextScaleProvider } from './text-scale-provider';
 import { PendingInvitesWidget } from './pending-invites-widget';
 import { AgeBandGate } from './onboarding/age-band-gate';
 import { OnboardingForm } from './onboarding/onboarding-form';
@@ -87,26 +88,28 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ActiveGameProvider>
-      <IncomingChallengesProvider>
-        <IncomingRoomInvitesProvider>
-          <DeclineNoticesProvider>
-            <ChatProvider>
-              {/* Bottom padding has to clear the floating widgets, not just the
+    <TextScaleProvider>
+      <ActiveGameProvider>
+        <IncomingChallengesProvider>
+          <IncomingRoomInvitesProvider>
+            <DeclineNoticesProvider>
+              <ChatProvider>
+                {/* Bottom padding has to clear the floating widgets, not just the
                   nav bar: the chat and room-invite buttons sit at bottom-24 and
                   are 56px tall, so they occupy up to 152px from the bottom.
                   With the old pb-24 (96px) the last card on a fully scrolled
                   page ended up underneath them, with its text cut off. */}
-              <div className="pt-safe pb-40">{children}</div>
-              <IncomingNotifications />
-              <DeclineNoticeToast />
-              <PendingInvitesWidget />
-              <ChatWidget />
-              <BottomNav />
-            </ChatProvider>
-          </DeclineNoticesProvider>
-        </IncomingRoomInvitesProvider>
-      </IncomingChallengesProvider>
-    </ActiveGameProvider>
+                <div className="pt-safe pb-40">{children}</div>
+                <IncomingNotifications />
+                <DeclineNoticeToast />
+                <PendingInvitesWidget />
+                <ChatWidget />
+                <BottomNav />
+              </ChatProvider>
+            </DeclineNoticesProvider>
+          </IncomingRoomInvitesProvider>
+        </IncomingChallengesProvider>
+      </ActiveGameProvider>
+    </TextScaleProvider>
   );
 }

@@ -230,6 +230,8 @@ export class UsersService {
           language: dto.language,
           ageBand: dto.ageBand,
           remindersEnabled: dto.remindersEnabled,
+          questionPace: dto.questionPace,
+          textScale: dto.textScale,
           ...(guardianConfirmedAt ? { guardianConfirmedAt } : {}),
           ...(leavingChildMode && !guardianConfirmedAt
             ? { guardianConfirmedAt: null }
@@ -922,6 +924,8 @@ export class UsersService {
       childMode: isChildBand(user.ageBand),
       guardianPinSet: user.guardianPinHash !== null,
       remindersEnabled: user.remindersEnabled,
+      questionPace: user.questionPace,
+      textScale: user.textScale,
       level: user.level,
       experience: user.experience,
       coins: user.coins,
