@@ -29,6 +29,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       headers: {
         'Content-Type': 'application/json',
+        // The player's own UTC offset. The daily streak rolls over at their
+        // midnight, and the modes that finish server-side (a duel, a room
+        // match) have no request of theirs to read a clock from — so the
+        // server stores whatever this header last said.
+        'X-Timezone-Offset': String(new Date().getTimezoneOffset()),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
+import { DailyGoalCard } from '@/components/daily-goal-card';
 import { LearnIcon, PlayIcon, SettingsIcon, TournamentIcon } from '@/components/icons/nav-icons';
 
 const QUICK_LINKS = [
@@ -27,6 +28,11 @@ export default function HomePage() {
           </span>
         </div>
       </div>
+
+      {/* Above the stat tiles on purpose: the stats say how the account is
+          doing overall, this says what today needs — and today is the only
+          thing a player can still act on. */}
+      <DailyGoalCard user={user} />
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="flex-col items-center text-center">

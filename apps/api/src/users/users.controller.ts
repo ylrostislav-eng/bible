@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,9 +20,19 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  /** The client sends its `getTimezoneOffset()` on every request; this is
+   * the call that persists it, since it runs on every app launch. See
+   * `User.timezoneOffsetMinutes` for why the offset has to be stored. */
   @Get('me')
-  async getMe(@CurrentUser() currentUser: JwtPayload) {
-    const user = await this.usersService.touchActivity(currentUser.sub);
+  async getMe(
+    @CurrentUser() currentUser: JwtPayload,
+    @Headers('x-timezone-offset') timezoneOffset?: string,
+  ) {
+    const parsed = Number(timezoneOffset);
+    const user = await this.usersService.touchActivity(
+      currentUser.sub,
+      Number.isFinite(parsed) && timezoneOffset ? parsed : undefined,
+    );
     return this.usersService.toProfile(user);
   }
 

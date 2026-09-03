@@ -85,6 +85,20 @@ const DAILY_DUEL_RATING_WIN_CAP = 10;
 const INACTIVITY_GRACE_DAYS = 30;
 const INACTIVITY_DECAY_PER_DAY = 1;
 
+/** What a finished game reports back about the daily streak. Every reward
+ * path returns the same shape, so a result screen doesn't have to know
+ * which mode it came from. */
+export interface StreakOutcome {
+  current: number;
+  longest: number;
+  /** True when this game was the first one today — i.e. it's what moved the
+   * streak. The result screen only celebrates in that case. */
+  increased: boolean;
+  goalDays: number | null;
+  goalReachedNow: boolean;
+  goalCoinsEarned: number;
+}
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
@@ -354,12 +368,31 @@ export class UsersService {
    * day-by-day while they're gone. Skips the write entirely on repeat calls
    * within the same day so this doesn't hammer the DB on every request.
    */
-  async touchActivity(userId: string): Promise<User> {
+  async touchActivity(
+    userId: string,
+    timezoneOffsetMinutes?: number,
+  ): Promise<User> {
     // Called on every login/profile fetch, so the common case (already
     // touched today) must stay a cheap, lock-free read — only fall through
     // to the locked read-modify-write when a write actually looks needed.
-    const user = await this.findById(userId);
+    let user = await this.findById(userId);
     const now = new Date();
+
+    // The offset is the player's clock, and the streak rolls over on their
+    // midnight — but a duel or room match finishes on the server's own
+    // schedule, with no request of theirs in flight to read it from. So it
+    // gets stored here, on the one call every app launch makes. Written
+    // only on an actual change, which is rare (a trip, or DST).
+    if (timezoneOffsetMinutes !== undefined) {
+      const offset = this.normalizeTimezoneOffset(timezoneOffsetMinutes);
+      if (offset !== user.timezoneOffsetMinutes) {
+        user = await this.prisma.user.update({
+          where: { id: userId },
+          data: { timezoneOffsetMinutes: offset },
+        });
+      }
+    }
+
     const daysSinceActive = Math.floor(
       (now.getTime() - user.lastActiveAt.getTime()) / 86_400_000,
     );
@@ -417,6 +450,7 @@ export class UsersService {
     leveledUp: boolean;
     ratingDelta: number;
     ratingCapped: boolean;
+    streak: StreakOutcome;
   }> {
     return this.withUserLock(userId, async (tx, user) => {
       let ratingDelta = params.ratingDelta ?? 0;
@@ -448,6 +482,11 @@ export class UsersService {
       const level = Math.floor(experience / XP_PER_LEVEL) + 1;
       const leveledUp = level > user.level;
       const rating = user.rating + ratingDelta;
+      // Any finished game counts toward the daily streak, not only a
+      // chapter check — a player who duels every evening used to watch
+      // their streak sit at zero, which reads as the app not noticing them.
+      const streak = this.computeStreakUpdate(user, user.timezoneOffsetMinutes);
+      const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
 
       const updated = await tx.user.update({
         where: { id: userId },
@@ -455,7 +494,11 @@ export class UsersService {
           experience,
           level,
           rating,
-          coins: { increment: params.coinsEarned },
+          coins: { increment: params.coinsEarned + goalReward.coins },
+          currentStreak: streak.currentStreak,
+          longestStreak: streak.longestStreak,
+          lastActivityDate: streak.lastActivityDate,
+          ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
           gamesPlayed: { increment: 1 },
           // `outcome` is only ever passed for duels — solo games leave it
           // undefined, so this is how a duel is told apart from a solo game.
@@ -469,7 +512,13 @@ export class UsersService {
         },
       });
 
-      return { user: updated, leveledUp, ratingDelta, ratingCapped };
+      return {
+        user: updated,
+        leveledUp,
+        ratingDelta,
+        ratingCapped,
+        streak: this.toStreakOutcome(user, streak, goalReward),
+      };
     });
   }
 
@@ -489,6 +538,7 @@ export class UsersService {
     leveledUp: boolean;
     ratingDelta: number;
     ratingCapped: boolean;
+    streak: StreakOutcome;
   }> {
     return this.withUserLock(userId, async (tx, user) => {
       const today = new Date();
@@ -522,6 +572,8 @@ export class UsersService {
       const level = Math.floor(experience / XP_PER_LEVEL) + 1;
       const leveledUp = level > user.level;
       const rating = user.rating + ratingDelta;
+      const streak = this.computeStreakUpdate(user, user.timezoneOffsetMinutes);
+      const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
 
       const updated = await tx.user.update({
         where: { id: userId },
@@ -529,14 +581,24 @@ export class UsersService {
           experience,
           level,
           rating,
-          coins: { increment: params.coinsEarned },
+          coins: { increment: params.coinsEarned + goalReward.coins },
+          currentStreak: streak.currentStreak,
+          longestStreak: streak.longestStreak,
+          lastActivityDate: streak.lastActivityDate,
+          ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
           gamesPlayed: { increment: 1 },
           roomRatingPointsToday: newPointsToday,
           roomRatingCapDate: today,
         },
       });
 
-      return { user: updated, leveledUp, ratingDelta, ratingCapped };
+      return {
+        user: updated,
+        leveledUp,
+        ratingDelta,
+        ratingCapped,
+        streak: this.toStreakOutcome(user, streak, goalReward),
+      };
     });
   }
 
@@ -564,14 +626,7 @@ export class UsersService {
     ratingEarned: number;
     xpEarned: number;
     coinsEarned: number;
-    streak: {
-      current: number;
-      longest: number;
-      increased: boolean;
-      goalDays: number | null;
-      goalReachedNow: boolean;
-      goalCoinsEarned: number;
-    };
+    streak: StreakOutcome;
   }> {
     return this.withUserLock(userId, async (tx, user) => {
       const ratingEarned = params.awardsPoints
@@ -589,9 +644,14 @@ export class UsersService {
       const level = Math.floor(experience / XP_PER_LEVEL) + 1;
       const leveledUp = level > user.level;
       const rating = user.rating + ratingEarned;
+      // Prefer the offset the client just sent (it's the freshest reading of
+      // their clock) and fall back to the stored one, which is what the
+      // modes that finish server-side have to rely on.
       const streak = this.computeStreakUpdate(
         user,
-        this.normalizeTimezoneOffset(params.timezoneOffsetMinutes),
+        params.timezoneOffsetMinutes !== undefined
+          ? this.normalizeTimezoneOffset(params.timezoneOffsetMinutes)
+          : user.timezoneOffsetMinutes,
       );
       const goalReward = this.checkStreakGoalReward(user, streak.currentStreak);
 
@@ -615,21 +675,37 @@ export class UsersService {
         ratingEarned,
         xpEarned,
         coinsEarned,
-        streak: {
-          current: streak.currentStreak,
-          longest: streak.longestStreak,
-          increased: streak.increased,
-          goalDays: user.streakGoalDays,
-          goalReachedNow: goalReward.reachedNow,
-          goalCoinsEarned: goalReward.coins,
-        },
+        streak: this.toStreakOutcome(user, streak, goalReward),
       };
     });
   }
 
+  /** The one place a streak update is turned into what a result screen
+   * reads, so all four modes report it identically. `before` is the user row
+   * as it was when the lock was taken — `streakGoalDays` is read from there
+   * because the update doesn't change it. */
+  private toStreakOutcome(
+    before: User,
+    streak: {
+      currentStreak: number;
+      longestStreak: number;
+      increased: boolean;
+    },
+    goalReward: { reachedNow: boolean; coins: number },
+  ): StreakOutcome {
+    return {
+      current: streak.currentStreak,
+      longest: streak.longestStreak,
+      increased: streak.increased,
+      goalDays: before.streakGoalDays,
+      goalReachedNow: goalReward.reachedNow,
+      goalCoinsEarned: goalReward.coins,
+    };
+  }
+
   /** A streak goal pays out once — the first time `newStreak` reaches it
-   * while it hasn't already been rewarded. Shared by the chapter-check
-   * reward path and by picking a goal that the current streak already meets. */
+   * while it hasn't already been rewarded. Shared by every reward path and
+   * by picking a goal that the current streak already meets. */
   private checkStreakGoalReward(
     user: User,
     newStreak: number,
@@ -857,6 +933,14 @@ export class UsersService {
       winRate,
       currentStreak: user.currentStreak,
       longestStreak: user.longestStreak,
+      // Whether today's game is already in. Computed here rather than in the
+      // client because "today" means the player's own calendar day, and the
+      // server is the only side that knows which day `lastActivityDate` was
+      // stored under.
+      streakActiveToday:
+        user.lastActivityDate !== null &&
+        user.lastActivityDate.getTime() ===
+          this.localDateLabel(new Date(), user.timezoneOffsetMinutes).getTime(),
       streakGoalDays: user.streakGoalDays,
       streakGoalRewarded: user.streakGoalRewardedAt !== null,
       createdAt: user.createdAt.toISOString(),

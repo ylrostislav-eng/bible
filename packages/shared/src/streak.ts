@@ -13,3 +13,20 @@ export const STREAK_GOAL_COIN_REWARD: Record<StreakGoalDays, number> = {
 export interface SetStreakGoalInput {
   days: StreakGoalDays;
 }
+
+/** What a finished game reports about the daily streak. Every mode — solo,
+ * duel, room, chapter check — returns this same shape, so a result screen
+ * doesn't have to know which one it came from. */
+export interface StreakSummary {
+  current: number;
+  longest: number;
+  /** True only when this game was the first one today — i.e. it's what moved
+   * the streak. Result screens celebrate on this, not on `current`. */
+  increased: boolean;
+  /** The player's chosen streak-goal target, or null if none set. */
+  goalDays: number | null;
+  /** True only on the game that pushed `current` across `goalDays` for the
+   * first time; `goalCoinsEarned` came with this result. */
+  goalReachedNow: boolean;
+  goalCoinsEarned: number;
+}

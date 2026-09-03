@@ -56,7 +56,8 @@ model User {
   /// solo games.
   duelsPlayed Int @default(0)
 
-  /// Consecutive days with at least one completed chapter check-up.
+  /// Consecutive days with at least one finished game of any kind — solo,
+  /// duel, room or chapter check.
   currentStreak    Int       @default(0)
   longestStreak    Int       @default(0)
   lastActivityDate DateTime? @db.Date
@@ -69,6 +70,14 @@ model User {
   /// already meets the new goal, which grants immediately).
   streakGoalDays       Int?
   streakGoalRewardedAt DateTime?
+
+  /// The player's own UTC offset, in `Date.prototype.getTimezoneOffset()`
+  /// units (positive = behind UTC). Refreshed from a request header on
+  /// every profile fetch. Stored rather than passed per-call because a duel
+  /// or a room match finishes on the server's own schedule — there's no
+  /// request in flight from the player to read a clock off at that moment,
+  /// and the streak has to roll over on *their* midnight.
+  timezoneOffsetMinutes Int @default(0)
 
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak

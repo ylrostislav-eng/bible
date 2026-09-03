@@ -1,3 +1,5 @@
+import type { StreakSummary } from './streak';
+
 export const TESTAMENTS = ['OLD', 'NEW'] as const;
 export type Testament = (typeof TESTAMENTS)[number];
 
@@ -75,4 +77,6 @@ export interface GameSummary {
   coinsEarned: number;
   leveledUp: boolean;
   level: number;
+  /** How this game left the daily streak — solo games count toward it too. */
+  streak: StreakSummary;
 }

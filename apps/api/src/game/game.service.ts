@@ -187,13 +187,11 @@ export class GameService {
       }),
     ]);
 
-    const { user, leveledUp } = await this.usersService.applyGameRewards(
-      userId,
-      {
+    const { user, leveledUp, streak } =
+      await this.usersService.applyGameRewards(userId, {
         xpEarned,
         coinsEarned,
-      },
-    );
+      });
 
     return {
       ...result,
@@ -206,6 +204,7 @@ export class GameService {
         coinsEarned,
         leveledUp,
         level: user.level,
+        streak,
       },
     };
   }

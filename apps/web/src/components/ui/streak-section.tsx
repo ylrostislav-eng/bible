@@ -7,24 +7,9 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { pluralCoins, pluralDays } from '@/lib/plural';
+import { buildStreakWeek } from '@/lib/streak-week';
 import { Card } from './card';
 import { OilLampFlame } from './oil-lamp-flame';
-
-const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-
-function buildWeekStrip(currentStreak: number): { label: string; done: boolean }[] {
-  const today = new Date();
-  const cells: { label: string; done: boolean }[] = [];
-  for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - daysAgo);
-    cells.push({
-      label: WEEKDAY_LABELS[d.getDay()],
-      done: daysAgo < Math.min(currentStreak, 7),
-    });
-  }
-  return cells;
-}
 
 interface StreakSectionProps {
   current: number;
@@ -51,7 +36,9 @@ export function StreakSection({
   onSetGoal,
   settingGoal,
 }: StreakSectionProps) {
-  const week = buildWeekStrip(current);
+  // This section only ever renders on a finished check-up's summary, so
+  // today's game is, by definition, already in.
+  const week = buildStreakWeek(current, true);
   const daysToGoal = goalDays !== null ? goalDays - current : null;
 
   return (

@@ -45,6 +45,10 @@ export interface UserProfile {
   /** Consecutive days with at least one completed chapter check-up. */
   currentStreak: number;
   longestStreak: number;
+  /** True once today's game (any mode) is done — i.e. the streak is already
+   * safe for today. Computed server-side against the player's own calendar
+   * day. */
+  streakActiveToday: boolean;
   /** Chosen streak-goal target in days (see `STREAK_GOAL_OPTIONS`), or null
    * if none set yet. */
   streakGoalDays: number | null;

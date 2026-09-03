@@ -18,7 +18,9 @@ import { PlayIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CompletionHero } from '@/components/ui/completion-hero';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ApiError, apiClient } from '@/lib/api';
+import { pluralCoins, pluralDays } from '@/lib/plural';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 type Phase = 'setup' | 'question' | 'summary';
@@ -213,6 +215,26 @@ export default function PlayPage() {
         {summary.leveledUp && (
           <Card className="flex-col items-center border-primary">
             <p className="font-semibold text-primary">Новый уровень: {summary.level}! 🎉</p>
+          </Card>
+        )}
+
+        {/* Only on the game that actually moved the streak. Repeating
+            "серия: 5" after every game of the day would turn the one moment
+            that means something into wallpaper. */}
+        {summary.streak.increased && (
+          <Card className="flex-row items-center justify-center gap-2 border-primary">
+            <OilLampFlame size={28} glow={false} />
+            <p className="font-semibold text-primary">
+              Серия продлена: {summary.streak.current} {pluralDays(summary.streak.current)} подряд
+            </p>
+          </Card>
+        )}
+        {summary.streak.goalReachedNow && (
+          <Card className="flex-col items-center border-primary">
+            <p className="font-semibold text-primary">
+              Цель по серии достигнута — +{summary.streak.goalCoinsEarned}{' '}
+              {pluralCoins(summary.streak.goalCoinsEarned)}!
+            </p>
           </Card>
         )}
         {profileSyncFailed && (
