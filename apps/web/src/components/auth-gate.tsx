@@ -6,6 +6,7 @@ import { ActiveGameProvider } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
 import { ChatProvider } from '@/lib/chat-context';
 import { DeclineNoticesProvider } from '@/lib/decline-notices-context';
+import { ImmersiveProvider, useImmersive } from '@/lib/immersive-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
@@ -94,22 +95,41 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <IncomingRoomInvitesProvider>
             <DeclineNoticesProvider>
               <ChatProvider>
-                {/* Bottom padding has to clear the floating widgets, not just the
-                  nav bar: the chat and room-invite buttons sit at bottom-24 and
-                  are 56px tall, so they occupy up to 152px from the bottom.
-                  With the old pb-24 (96px) the last card on a fully scrolled
-                  page ended up underneath them, with its text cut off. */}
-                <div className="pt-safe pb-40">{children}</div>
-                <IncomingNotifications />
-                <DeclineNoticeToast />
-                <PendingInvitesWidget />
-                <ChatWidget />
-                <BottomNav />
+                <ImmersiveProvider>
+                  <AppChrome>{children}</AppChrome>
+                </ImmersiveProvider>
               </ChatProvider>
             </DeclineNoticesProvider>
           </IncomingRoomInvitesProvider>
         </IncomingChallengesProvider>
       </ActiveGameProvider>
     </TextScaleProvider>
+  );
+}
+
+/**
+ * Собственный хром приложения: отступы под плавающие элементы, нижняя
+ * навигация, виджеты и уведомления. В полноэкранном режиме не рендерится
+ * ничего из этого — экран целиком отдан тому, что на нём происходит.
+ */
+function AppChrome({ children }: { children: React.ReactNode }) {
+  const { immersive } = useImmersive();
+
+  if (immersive) return <>{children}</>;
+
+  return (
+    <>
+      {/* Bottom padding has to clear the floating widgets, not just the
+        nav bar: the chat and room-invite buttons sit at bottom-24 and
+        are 56px tall, so they occupy up to 152px from the bottom.
+        With the old pb-24 (96px) the last card on a fully scrolled
+        page ended up underneath them, with its text cut off. */}
+      <div className="pt-safe pb-40">{children}</div>
+      <IncomingNotifications />
+      <DeclineNoticeToast />
+      <PendingInvitesWidget />
+      <ChatWidget />
+      <BottomNav />
+    </>
   );
 }

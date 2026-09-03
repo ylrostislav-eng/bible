@@ -38,3 +38,19 @@ export function pluralFriends(n: number): string {
 export function pluralPlayers(n: number): string {
   return pluralize(n, ['игрок', 'игрока', 'игроков']);
 }
+
+export function pluralTeams(n: number): string {
+  return pluralize(n, ['команда', 'команды', 'команд']);
+}
+
+export function pluralWords(n: number): string {
+  return pluralize(n, ['слово', 'слова', 'слов']);
+}
+
+export function pluralPoints(n: number): string {
+  return pluralize(n, ['очко', 'очка', 'очков']);
+}
+
+export function pluralRounds(n: number): string {
+  return pluralize(n, ['раунд', 'раунда', 'раундов']);
+}

@@ -34,6 +34,26 @@ export default function PlayModePage() {
         </Card>
       </Link>
 
+      {/* Единственный режим, где играют не через сеть, а вокруг одного
+          телефона — поэтому он и стоит отдельно от дуэлей и комнат. */}
+      <Link href="/play/alias">
+        <Card className="flex-row items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-hover">
+            <span className="text-xl" aria-hidden>
+              🗣
+            </span>
+          </div>
+          <div>
+            <p className="font-semibold">
+              Alias <span className="text-xs font-medium text-primary">компанией</span>
+            </p>
+            <p className="text-sm text-text-secondary">
+              Объясняйте слова на время. Один телефон, две команды, рядом за столом
+            </p>
+          </div>
+        </Card>
+      </Link>
+
       <Link href="/play/room">
         <Card className="flex-row items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-hover">

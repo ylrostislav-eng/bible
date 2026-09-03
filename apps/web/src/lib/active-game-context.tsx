@@ -2,7 +2,11 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-export type ActiveGameType = 'duel' | 'room';
+/** `alias` — партия за одним телефоном. Она попадает сюда не ради
+ * переподключения (партия целиком на устройстве и никуда не девается), а
+ * ради двух побочных эффектов: вкладка «Играть» возвращает в неё, а входящие
+ * вызовы и приглашения не всплывают посреди раунда. */
+export type ActiveGameType = 'duel' | 'room' | 'alias';
 
 export interface ActiveGame {
   type: ActiveGameType;
@@ -36,7 +40,7 @@ function readStored(): ActiveGame | null {
       typeof parsed === 'object' &&
       'type' in parsed &&
       'sessionId' in parsed &&
-      (parsed.type === 'duel' || parsed.type === 'room') &&
+      (parsed.type === 'duel' || parsed.type === 'room' || parsed.type === 'alias') &&
       typeof parsed.sessionId === 'string'
     ) {
       const status =

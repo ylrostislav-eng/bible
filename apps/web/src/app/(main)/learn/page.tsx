@@ -10,7 +10,8 @@ import type {
 } from '@bible-arena/shared';
 import { BIBLE_BOOKS } from '@bible-arena/shared';
 import clsx from 'clsx';
-import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LearnIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -567,10 +568,33 @@ function ChapterCheckView({
   );
 }
 
+/** Разбирает `/learn?book=1&chapter=3` — ссылку на конкретную главу.
+ * Проверяет и номер книги, и что такая глава в ней есть: подсунутый в адрес
+ * мусор должен открыть список книг, а не пустую читалку. */
+function readChapterFromQuery(params: URLSearchParams): { bookId: number; chapter: number } | null {
+  const bookId = Number(params.get('book'));
+  const chapter = Number(params.get('chapter'));
+  if (!Number.isInteger(bookId) || !Number.isInteger(chapter)) return null;
+  const book = BIBLE_BOOKS.find((item) => item.id === bookId);
+  if (!book || chapter < 1 || chapter > book.chapters) return null;
+  return { bookId, chapter };
+}
+
 export default function LearnPage() {
-  const [view, setView] = useState<View>('books');
-  const [bookId, setBookId] = useState<number | null>(null);
-  const [chapter, setChapter] = useState<number | null>(null);
+  const searchParams = useSearchParams();
+  // Ссылка на главу приходит снаружи — из разбора раунда в Alias, из
+  // будущих подсказок и уведомлений. Читаем её один раз при входе: дальше
+  // читалка живёт своим состоянием, и переписывать его под адресную строку
+  // на каждом перелистывании значило бы ломать кнопку «назад».
+  const initial = useMemo(
+    () => readChapterFromQuery(new URLSearchParams(searchParams.toString())),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const [view, setView] = useState<View>(initial ? 'reader' : 'books');
+  const [bookId, setBookId] = useState<number | null>(initial?.bookId ?? null);
+  const [chapter, setChapter] = useState<number | null>(initial?.chapter ?? null);
 
   if (view === 'chapters' && bookId !== null) {
     return (
