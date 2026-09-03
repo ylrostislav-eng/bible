@@ -87,6 +87,12 @@ export function AliasSetupScreen({
 
   const namesFilled = teamNames.every((name) => name.trim().length > 0);
   const thinDeck = available !== null && available < ALIAS_MIN_COMFORTABLE_DECK;
+  /** Ничего не отфильтровано — значит пустая колода означает пустую базу, а
+   * не слишком узкий выбор. */
+  const allFiltersOn =
+    settings.difficulty === null &&
+    settings.categories.length === ALIAS_CATEGORIES.length &&
+    settings.testaments.length === ALIAS_TESTAMENTS.length;
 
   return (
     <div className="pt-safe mx-auto flex max-w-md flex-col gap-6 px-4 pb-36">
@@ -254,15 +260,25 @@ export function AliasSetupScreen({
 
       <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg/95 backdrop-blur">
         <div className="mx-auto flex max-w-md flex-col gap-2 px-4 py-3">
+          {/* Три разных случая, и путать их нельзя. Ноль слов при всех
+              выбранных категориях — это не «сузьте фильтр», это пустая база
+              на сервере, и совет «добавьте категорию» тут звучит издевкой:
+              добавлять нечего, всё уже выбрано. */}
           <p
             className={clsx(
               'text-center text-xs',
-              thinDeck ? 'text-primary' : 'text-text-secondary',
+              available === 0 ? 'text-danger' : thinDeck ? 'text-primary' : 'text-text-secondary',
             )}
             aria-live="polite"
           >
             {available === null ? (
               'Считаем колоду…'
+            ) : available === 0 ? (
+              allFiltersOn ? (
+                <>Слова не загружены на сервере — колода пуста</>
+              ) : (
+                <>Под эти настройки не подошло ни одного слова</>
+              )
             ) : thinDeck ? (
               <>
                 В колоде всего {available} {pluralWords(available)} — добавьте категорию, иначе

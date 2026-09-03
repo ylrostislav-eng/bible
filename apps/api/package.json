@@ -24,7 +24,9 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
     "prisma:seed-bible": "ts-node prisma/seed-bible.ts",
-    "prisma:seed-chapter-questions": "ts-node prisma/seed-chapter-questions.ts"
+    "prisma:seed-alias": "ts-node prisma/seed-alias.ts",
+    "prisma:seed-chapter-questions": "ts-node prisma/seed-chapter-questions.ts",
+    "prisma:seed-all": "pnpm run prisma:seed && pnpm run prisma:seed-bible && pnpm run prisma:seed-alias"
   },
   "dependencies": {
     "@bible-arena/shared": "workspace:*",

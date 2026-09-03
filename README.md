@@ -63,7 +63,7 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
 docker compose up -d
 pnpm --filter @bible-arena/api run prisma:migrate
-pnpm --filter @bible-arena/api run prisma:seed
+pnpm --filter @bible-arena/api run prisma:seed-all
 pnpm dev
 ```
 
@@ -81,17 +81,36 @@ pnpm dev
 | `pnpm lint`   | Запускает линтинг во всех приложениях и пакетах         |
 | `pnpm format` | Форматирует код через Prettier                          |
 
-После `git pull` применяйте новые миграции:
-`pnpm --filter @bible-arena/api run prisma:migrate`
+После `git pull`:
+
+```bash
+pnpm install
+pnpm --filter @bible-arena/shared run build
+pnpm --filter @bible-arena/api run prisma:migrate
+pnpm --filter @bible-arena/api run prisma:seed-all
+```
+
+Одних миграций мало: новая функция обычно приезжает с новой таблицей,
+которую нужно ещё и наполнить. Пустая таблица не ломает приложение — оно
+просто показывает пустой экран, и понять, что данных нет, а не «всё
+сломалось», по интерфейсу невозможно. `prisma:seed-all` можно запускать
+повторно.
 
 Prisma (из `apps/api` или через `pnpm --filter @bible-arena/api run …`):
 
-| Команда           | Описание                         |
-| ----------------- | -------------------------------- |
-| `prisma:generate` | Сгенерировать Prisma Client      |
-| `prisma:migrate`  | Создать и применить миграцию     |
-| `prisma:seed`     | Заполнить банк вопросов (40 шт.) |
-| `prisma:studio`   | Открыть Prisma Studio            |
+| Команда             | Описание                           |
+| ------------------- | ---------------------------------- |
+| `prisma:generate`   | Сгенерировать Prisma Client        |
+| `prisma:migrate`    | Создать и применить миграцию       |
+| `prisma:seed`       | Банк вопросов (40 шт.)             |
+| `prisma:seed-bible` | Текст Синодального перевода        |
+| `prisma:seed-alias` | Слова для Библейского Alias        |
+| `prisma:seed-all`   | Всё перечисленное выше, по порядку |
+| `prisma:studio`     | Открыть Prisma Studio              |
+
+`prisma:seed-chapter-questions` стоит отдельно: он пересоздаёт вопросы к
+главам и удаляет связанные с ними ответы игроков, поэтому в `seed-all` не
+входит.
 
 По умолчанию:
 

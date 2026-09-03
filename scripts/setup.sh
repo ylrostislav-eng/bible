@@ -60,6 +60,22 @@ docker compose up -d
 echo "Generating Prisma client..."
 pnpm --filter @bible-arena/api run prisma:generate
 
+# Миграции и данные — часть установки, а не отдельный ритуал. Без них
+# приложение поднимается, но пустое: экран без слов, режим без вопросов, и
+# ни одного намёка на то, что чего-то не хватает. Ровно так и выглядела
+# первая попытка сыграть в Alias после git pull.
+echo "Waiting for Postgres..."
+for _ in $(seq 1 30); do
+  if docker compose exec -T postgres pg_isready -q 2>/dev/null; then break; fi
+  sleep 1
+done
+
+echo "Applying migrations..."
+pnpm --filter @bible-arena/api run prisma:migrate
+
+echo "Seeding data (questions, Bible text, Alias words)..."
+pnpm --filter @bible-arena/api run prisma:seed-all
+
 echo
 if [ "$missing_keys_found" -eq 1 ]; then
   echo "Done, but see the missing env settings listed above first."
