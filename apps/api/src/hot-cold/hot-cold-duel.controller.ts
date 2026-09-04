@@ -48,6 +48,12 @@ export class HotColdDuelController {
     };
   }
 
+  /** «Найти соперника» — подбор незнакомца вместо кода от друга. */
+  @Post('find-opponent')
+  async findOpponent(@CurrentUser() currentUser: JwtPayload) {
+    return this.duels.findOpponent(currentUser.sub);
+  }
+
   @Post('join')
   async join(
     @CurrentUser() currentUser: JwtPayload,

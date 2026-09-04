@@ -22,6 +22,7 @@ import {
   type HotColdDuelGuess,
   type HotColdDuelState,
 } from '@bible-arena/shared';
+import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { generateInviteCode } from '../game/invite-code';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -234,7 +235,11 @@ export class HotColdDuelService {
    * `targetUserId` — вызов конкретному другу: тогда по коду зайдёт только
    * он. Без него зайдёт любой, кому код дали.
    */
-  async create(userId: string, targetUserId?: string): Promise<string> {
+  async create(
+    userId: string,
+    targetUserId?: string,
+    openToMatchmaking = false,
+  ): Promise<string> {
     if (targetUserId === userId) {
       throw new BadRequestException('Нельзя вызвать самого себя');
     }
@@ -252,11 +257,69 @@ export class HotColdDuelService {
       data: {
         inviteCode: generateInviteCode(),
         targetUserId: targetUserId ?? null,
+        openToMatchmaking,
         wordId: word.id,
         players: { create: { userId } },
       },
     });
     return duel.id;
+  }
+
+  /**
+   * Найти соперника — незнакомца, а не друга по коду.
+   *
+   * Очередь тут не отдельная сущность, а сами ожидающие партии: одна из
+   * них уже есть, у неё есть владелец, её видно, и уборка для неё
+   * написана. Заводить рядом «билеты» значило бы завести и все способы их
+   * рассинхронизировать с партиями.
+   *
+   * Возвращает id партии и сел ли игрок к сопернику или ждёт сам, —
+   * экрану надо показать разное.
+   */
+  async findOpponent(
+    userId: string,
+  ): Promise<{ duelId: string; matched: boolean }> {
+    const mine = await this.activeFor(userId);
+    if (mine) return { duelId: mine, matched: false };
+
+    const blocked = await blockedWith(this.prisma, userId);
+
+    for (let attempt = 0; attempt < MATCH_ATTEMPTS; attempt += 1) {
+      const waiting = await this.prisma.hotColdDuel.findFirst({
+        where: {
+          status: 'WAITING',
+          openToMatchmaking: true,
+          targetUserId: null,
+          // Ни своя партия, ни партия того, с кем мы друг друга не хотим
+          // видеть. Второе — в обе стороны: иначе заблокировавший всё
+          // равно окажется в партии со мной, просто по моей инициативе.
+          players: {
+            none: { userId: { in: [userId, ...blocked] } },
+          },
+        },
+        // Кто дольше ждёт, тот и получает соперника: иначе при живой
+        // очереди самый первый ждал бы дольше всех.
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (!waiting) break;
+
+      try {
+        return {
+          duelId: await this.joinDuel(userId, waiting.id),
+          matched: true,
+        };
+      } catch {
+        // Кто-то сел раньше — пробуем следующую. Без этого проигравший
+        // гонку остался бы ни с чем, хотя рядом могла ждать другая.
+        continue;
+      }
+    }
+
+    return {
+      duelId: await this.create(userId, undefined, true),
+      matched: false,
+    };
   }
 
   /** Незакрытая дуэль игрока, если есть. */
@@ -277,9 +340,25 @@ export class HotColdDuelService {
     const code = rawCode.trim().toUpperCase();
     const duel = await this.prisma.hotColdDuel.findUnique({
       where: { inviteCode: code },
-      include: { players: true },
+      select: { id: true },
     });
     if (!duel) throw new NotFoundException('Дуэль по такому коду не найдена');
+    return this.joinDuel(userId, duel.id);
+  }
+
+  /**
+   * Сесть вторым в ожидающую партию.
+   *
+   * Общий путь для входа по коду и для подбора: правила одинаковы, и
+   * разъехаться они не должны. Особенно это касается атомарного захвата —
+   * повторить его во втором месте и однажды забыть слишком легко.
+   */
+  private async joinDuel(userId: string, duelId: string): Promise<string> {
+    const duel = await this.prisma.hotColdDuel.findUnique({
+      where: { id: duelId },
+      include: { players: true },
+    });
+    if (!duel) throw new NotFoundException('Дуэль не найдена');
     if (duel.players.some((player) => player.userId === userId)) return duel.id;
     if (duel.status !== 'WAITING') {
       throw new BadRequestException('К этой дуэли уже нельзя присоединиться');

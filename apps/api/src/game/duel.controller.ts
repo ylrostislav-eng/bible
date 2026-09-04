@@ -29,6 +29,24 @@ export class DuelController {
     return this.duelService.join(user.sub, dto);
   }
 
+  /**
+   * «Найти соперника» — подбор незнакомца вместо кода от друга.
+   *
+   * Ограничение своё: каждый промах подбора заводит ожидающую дуэль, и без
+   * потолка их можно наплодить сколько угодно. Стоит эта кнопка **после**
+   * `join`: декоратор действует на следующий за ним метод, и вставленный
+   * между `@Throttle` и `join` обработчик молча забрал бы себе чужое
+   * ограничение, оставив угадывание кодов без потолка вовсе.
+   */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('find-opponent')
+  async findOpponent(
+    @CurrentUser() currentUser: JwtPayload,
+    @Body() dto: CreateDuelDto,
+  ) {
+    return this.duelService.findOpponent(currentUser.sub, dto);
+  }
+
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Get('preview/:inviteCode')
   preview(@Param('inviteCode') inviteCode: string) {

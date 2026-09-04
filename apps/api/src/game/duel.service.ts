@@ -17,6 +17,7 @@ import {
   type PendingChallenge,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
+import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
@@ -84,6 +85,7 @@ export class DuelService {
   async create(
     userId: string,
     dto: CreateDuelDto,
+    openToMatchmaking = false,
   ): Promise<CreateDuelResponse> {
     await this.assertEnoughQuestions(dto.questionCount);
     for (let attempt = 0; attempt < CREATE_CODE_ATTEMPTS; attempt++) {
@@ -95,6 +97,7 @@ export class DuelService {
             status: 'WAITING_FOR_OPPONENT',
             questionCount: dto.questionCount,
             inviteCode,
+            openToMatchmaking,
             participants: { create: { userId } },
           },
         });
@@ -110,6 +113,58 @@ export class DuelService {
       }
     }
     throw new ConflictException('Не удалось создать дуэль, попробуйте ещё раз');
+  }
+
+  /**
+   * Найти соперника — незнакомца, а не друга по коду.
+   *
+   * Очередь здесь не отдельная сущность, а сами ожидающие дуэли: такая
+   * дуэль уже есть, у неё есть владелец и уже написана уборка. Заводить
+   * рядом «билеты» значило бы завести и все способы их рассинхронизировать.
+   *
+   * Число вопросов входит в подбор: сажать того, кто просил пять, к тому,
+   * кто просил двадцать, — значит навязать одному чужие правила. Лучше
+   * подождать, чем начать не ту партию.
+   */
+  async findOpponent(
+    userId: string,
+    dto: CreateDuelDto,
+  ): Promise<{ sessionId: string; matched: boolean }> {
+    const blocked = await blockedWith(this.prisma, userId);
+
+    for (let attempt = 0; attempt < MATCH_ATTEMPTS; attempt += 1) {
+      const waiting = await this.prisma.gameSession.findFirst({
+        where: {
+          mode: 'DUEL',
+          status: 'WAITING_FOR_OPPONENT',
+          openToMatchmaking: true,
+          targetUserId: null,
+          questionCount: dto.questionCount,
+          // Ни своя дуэль, ни дуэль того, с кем мы друг друга не хотим
+          // видеть, — и второе в обе стороны.
+          participants: { none: { userId: { in: [userId, ...blocked] } } },
+        },
+        // Кто дольше ждёт, тот и получает соперника.
+        orderBy: { startedAt: 'asc' },
+        include: sessionInclude,
+      });
+      if (!waiting) break;
+
+      try {
+        const { sessionId } = await this.startDuel(
+          waiting,
+          userId,
+          dto.questionCount,
+        );
+        return { sessionId, matched: true };
+      } catch {
+        // Кто-то сел раньше — пробуем следующую.
+        continue;
+      }
+    }
+
+    const created = await this.create(userId, dto, true);
+    return { sessionId: created.sessionId, matched: false };
   }
 
   /** Like `create`, but pre-targeted at a specific friend instead of an open
