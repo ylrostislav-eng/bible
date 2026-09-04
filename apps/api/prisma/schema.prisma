@@ -134,6 +134,7 @@ model User {
 
   achievements UserAchievement[]
   aliasMatches AliasMatch[]
+  dailyWords   DailyWordAttempt[]
 
   abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
   abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
@@ -799,6 +800,8 @@ model AliasWord {
 
   createdAt DateTime @default(now())
 
+  dailyAttempts DailyWordAttempt[]
+
   @@index([difficulty])
   @@index([category])
   @@map("alias_words")
@@ -830,4 +833,39 @@ model AliasMatch {
 
   @@index([hostUserId, playedAt])
   @@map("alias_matches")
+}
+
+/// Попытка игрока за один день. Одна строка на человека в сутки — она же и
+/// журнал (сколько попыток, сколько подсказок), и защита от повторного
+/// прохождения: уникальность по `[userId, date]`.
+///
+/// `date` — локальная дата игрока, а не UTC. Слово дня должно меняться в
+/// его полночь, ровно как серия дней: человек в UTC+10, играющий каждый
+/// вечер, иначе получал бы «завтрашнее» слово или терял день ни за что.
+model DailyWordAttempt {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date   DateTime @db.Date
+  wordId String
+  word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  attemptsUsed Int     @default(0)
+  hintsUsed    Int     @default(0)
+  solved       Boolean @default(false)
+  /// Проставляется, когда игра за день закончена — угадал или потратил все
+  /// попытки. Пока `null`, день ещё можно доиграть.
+  finishedAt   DateTime?
+
+  xpEarned    Int @default(0)
+  coinsEarned Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("daily_word_attempts")
 }

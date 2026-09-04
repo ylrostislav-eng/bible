@@ -14,6 +14,7 @@ import { HealthModule } from './health/health.module';
 import { LearnModule } from './learn/learn.module';
 import { AchievementsModule } from './achievements/achievements.module';
 import { AliasModule } from './alias/alias.module';
+import { DailyWordModule } from './daily-word/daily-word.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PresenceModule } from './presence/presence.module';
@@ -49,6 +50,7 @@ import { UsersModule } from './users/users.module';
     ModerationModule,
     AchievementsModule,
     AliasModule,
+    DailyWordModule,
     TelemetryModule,
   ],
   controllers: [AppController],
