@@ -34,6 +34,17 @@ const WARM = 2000;
 /** Без модели: та же настройка, но её голос ничего не весит. */
 const WITHOUT_MODEL = { ...DEFAULT_FUSION, rerankWeight: 0 };
 
+/**
+ * Как модели верили сначала: наравне с выписанными руками связями. При
+ * таком доверии её первая десятка становится первой десяткой игры, и
+ * держать этот вариант в отчёте стоит — по нему видно, что именно
+ * ограничение доверия убирает и чего оно заодно лишает.
+ */
+const AS_ORACLE = {
+  ...DEFAULT_FUSION,
+  rerankSmoothing: DEFAULT_FUSION.statedSmoothing,
+};
+
 interface Moved {
   secret: string;
   guess: string;
@@ -93,6 +104,7 @@ function main(): void {
 
   const before: number[] = [];
   const after: number[] = [];
+  const asOracle: number[] = [];
   const moved: Moved[] = [];
 
   // Ранжирование стоит около ста миллисекунд, поэтому считаем его один раз
@@ -102,6 +114,7 @@ function main(): void {
     {
       with: ReturnType<SemanticsService['rank']>;
       without: ReturnType<SemanticsService['rank']>;
+      oracle: ReturnType<SemanticsService['rank']>;
     }
   >();
 
@@ -114,14 +127,17 @@ function main(): void {
       ranking = {
         with: service.rank(s, DEFAULT_FUSION),
         without: service.rank(s, WITHOUT_MODEL),
+        oracle: service.rank(s, AS_ORACLE),
       };
       cache.set(secret, ranking);
     }
     const wasAt = ranking.without.rankOf(g);
     const nowAt = ranking.with.rankOf(g);
+    const oracleAt = ranking.oracle.rankOf(g);
     if (wasAt === null || nowAt === null) continue;
     before.push(wasAt);
     after.push(nowAt);
+    if (oracleAt !== null) asOracle.push(oracleAt);
     if (wasAt !== nowAt)
       moved.push({ secret, guess, before: wasAt, after: nowAt });
   }
@@ -137,7 +153,8 @@ function main(): void {
       `${''.padEnd(14)}${'медиана'.padStart(8)}${'горячо'.padStart(9)}${'тепло'.padStart(8)}${'худшее'.padStart(9)}`,
     );
     console.log(line('без модели', before));
-    console.log(line('с моделью', after));
+    console.log(line('как пятая', after));
+    console.log(line('как оракул', asOracle));
 
     const diff = median(after) - median(before);
     const verdict =
@@ -185,6 +202,7 @@ function main(): void {
     const ranking = cache.get(secret) ?? {
       with: service.rank(s, DEFAULT_FUSION),
       without: service.rank(s, WITHOUT_MODEL),
+      oracle: service.rank(s, AS_ORACLE),
     };
     const top = (r: ReturnType<SemanticsService['rank']>): string =>
       r
@@ -193,7 +211,8 @@ function main(): void {
         .join(', ');
     console.log(`${secret}`);
     console.log(`  без модели: ${top(ranking.without)}`);
-    console.log(`  с моделью:  ${top(ranking.with)}`);
+    console.log(`  как пятая:  ${top(ranking.with)}`);
+    console.log(`  как оракул: ${top(ranking.oracle)}`);
   }
   console.log();
 }
