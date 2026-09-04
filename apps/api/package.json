@@ -29,7 +29,8 @@
     "prisma:seed-chapter-questions": "ts-node prisma/seed-chapter-questions.ts",
     "prisma:seed-all": "pnpm run prisma:seed && pnpm run prisma:seed-bible && pnpm run prisma:seed-alias",
     "semantics:report": "ts-node src/semantics/benchmark.ts",
-    "semantics:feedback": "ts-node src/semantics/feedback-report.ts"
+    "semantics:feedback": "ts-node src/semantics/feedback-report.ts",
+    "semantics:rerank": "ts-node src/semantics/rerank-report.ts"
   },
   "dependencies": {
     "@bible-arena/shared": "workspace:*",

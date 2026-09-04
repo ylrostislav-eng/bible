@@ -682,6 +682,11 @@ export class SemanticsService implements OnModuleInit {
     return places;
   }
 
+  /** Загаданные слова, которые модель успела переставить. Для отчёта. */
+  rerankedWords(): string[] {
+    return [...this.reranked.keys()].map((lemma) => this.lemmas[lemma]);
+  }
+
   /** Места из порядка модели, или `null`, если для слова его нет. */
   private modelOrder(lemmaIndex: number): Int32Array | null {
     const order = this.reranked.get(lemmaIndex);

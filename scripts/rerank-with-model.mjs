@@ -45,6 +45,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,12 +152,31 @@ async function askAnthropic(model, text, key) {
   return (await response.json()).content?.[0]?.text ?? '';
 }
 
-/** Запуск программы из node_modules: на Windows это .cmd, ему нужна оболочка. */
-function run(command, args, cwd) {
-  return execFileSync(command, args, {
+/**
+ * Путь к запускаемому файлу пакета — тому, что стоит у него в `bin`.
+ *
+ * Через `npx` было бы короче, но на Windows `npx` — это `npx.cmd`, а .cmd
+ * без оболочки не запускается; оболочка же заставляет Node ругаться
+ * (DEP0190: аргументы склеиваются, а не экранируются) и обещает вовсе
+ * пропасть. Здесь мы вместо этого находим сам js-файл и зовём его нашим
+ * же `node`: одинаково на всех системах, без оболочки и без npx.
+ */
+function binOf(pkg, name, cwd) {
+  const require = createRequire(join(cwd, 'noop.js'));
+  const manifest = require.resolve(`${pkg}/package.json`);
+  const { bin } = JSON.parse(readFileSync(manifest, 'utf8'));
+  const entry = typeof bin === 'string' ? bin : bin[name];
+  if (!entry) {
+    throw new Error(`У пакета ${pkg} нет команды ${name}. Забыли pnpm install?`);
+  }
+  return join(dirname(manifest), entry);
+}
+
+/** Запуск программы из node_modules нашим же node. */
+function run(pkg, name, args, cwd) {
+  return execFileSync(process.execPath, [binOf(pkg, name, cwd), ...args], {
     cwd,
     maxBuffer: 200 * 1024 * 1024,
-    shell: process.platform === 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).toString();
 }
@@ -172,7 +192,12 @@ function run(command, args, cwd) {
 function buildShared() {
   console.log('Пересобираю @bible-arena/shared…');
   try {
-    run('npx', ['tsc', '-p', 'tsconfig.json'], join(ROOT, 'packages/shared'));
+    run(
+      'typescript',
+      'tsc',
+      ['-p', 'tsconfig.json'],
+      join(ROOT, 'packages/shared'),
+    );
   } catch (error) {
     const details = [error.stdout, error.stderr]
       .map((chunk) => chunk?.toString().trim())
@@ -206,17 +231,17 @@ function collectCandidates() {
     }
     process.stdout.write('@@' + JSON.stringify(out) + '@@');
   `;
-  // Скрипт уходит файлом, а не через `-e`. На Windows `npx` — это `npx.cmd`,
-  // а .cmd без оболочки не запускается; оболочка же здесь cmd.exe, и она
-  // порубила бы многострочный аргумент по переносам строк. Путь к файлу —
-  // один короткий аргумент без кавычек и переносов, и проблемы нет.
+  // Скрипт уходит файлом, а не через `-e`: многострочный аргумент с
+  // кавычками — лишний повод сломаться на чужой системе, а путь к файлу
+  // безобиден везде.
   const scriptFile = join(ROOT, 'apps/api/.rerank-candidates.ts');
   writeFileSync(scriptFile, script, 'utf8');
   let raw;
   try {
     raw = run(
-      'npx',
-      ['ts-node', '--project', 'tsconfig.json', '.rerank-candidates.ts'],
+      'ts-node',
+      'ts-node',
+      ['--project', 'tsconfig.json', '.rerank-candidates.ts'],
       join(ROOT, 'apps/api'),
     );
   } catch (error) {
