@@ -111,6 +111,15 @@ export const HOT_COLD_HINT_COMMON_LIMIT = 15_000;
 export const HOT_COLD_SECRET_COMMON_LIMIT = 20_000;
 export const HOT_COLD_SECRET_MIN_EPISODES = 30;
 
+/**
+ * Сколько жалоб «должно быть ближе» игрок может оставить за день.
+ *
+ * Ограничение не против злого умысла, а против бесполезного шума: если
+ * человек отметил двадцать слов, он уже не показывает промах, а перебирает
+ * список. Настоящих несогласий за партию бывает одно-два.
+ */
+export const HOT_COLD_FEEDBACK_LIMIT = 8;
+
 /** Одна догадка в списке. */
 export interface HotColdGuess {
   /** Слово так, как его понял разбор ввода. */
@@ -119,6 +128,8 @@ export interface HotColdGuess {
   rank: number;
   /** Открыто подсказкой, а не угадано. */
   revealed?: boolean;
+  /** Игрок отметил, что слово должно стоять ближе. */
+  disputed?: boolean;
 }
 
 export interface HotColdState {
@@ -129,6 +140,8 @@ export interface HotColdState {
   /** Сколько слов участвует в ранжировании: знаменатель для «места». */
   vocabulary: number;
   hintsLeft: number;
+  /** Сколько ещё раз можно сказать «должно быть ближе». */
+  disputesLeft: number;
   solved: boolean;
   finished: boolean;
   /** Награда, если угадать прямо сейчас. */

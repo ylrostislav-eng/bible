@@ -12,6 +12,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
 import { HotColdService } from './hot-cold.service';
 
+export class HotColdDisputeDto {
+  @IsString()
+  @Length(1, 64)
+  word!: string;
+}
+
 export class HotColdGuessDto {
   @IsString()
   @Length(1, 64)
@@ -52,6 +58,19 @@ export class HotColdController {
       currentUser.sub,
       readOffset(offset),
       dto.guess,
+    );
+  }
+
+  @Post('dispute')
+  async dispute(
+    @CurrentUser() currentUser: JwtPayload,
+    @Body() dto: HotColdDisputeDto,
+    @Headers('x-timezone-offset') offset?: string,
+  ) {
+    return this.hotColdService.dispute(
+      currentUser.sub,
+      readOffset(offset),
+      dto.word,
     );
   }
 

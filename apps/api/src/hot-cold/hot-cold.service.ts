@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import {
   HOT_COLD_HINT_COUNT,
   HOT_COLD_HINT_DIVISOR,
+  HOT_COLD_FEEDBACK_LIMIT,
   HOT_COLD_HINT_COMMON_LIMIT,
   HOT_COLD_HINT_FIRST,
   HOT_COLD_HINT_FLOOR,
@@ -184,6 +185,11 @@ export class HotColdService {
       guesses: [...guesses].sort((a, b) => a.rank - b.rank),
       vocabulary: this.semantics.size,
       hintsLeft: Math.max(0, HOT_COLD_HINT_COUNT - attempt.hintsUsed),
+      disputesLeft: Math.max(
+        0,
+        HOT_COLD_FEEDBACK_LIMIT -
+          guesses.filter((entry) => entry.disputed).length,
+      ),
       solved: attempt.solved,
       finished,
       rewardIfSolvedNow: hotColdReward(
@@ -297,6 +303,64 @@ export class HotColdService {
   }
 
   /**
+   * «Это слово должно быть ближе» — несогласие игрока с расстоянием.
+   *
+   * Ради этого всё и затевалось. Связи в `known-links.ts` написаны из одной
+   * головы, и что они совпадают с чужими ассоциациями — ничем не доказано.
+   * Здесь копятся настоящие промахи: те, что заметили живые люди, а не те,
+   * что я сам придумал проверить.
+   *
+   * Отметка живёт и в партии (чтобы игрок видел, что его услышали), и
+   * отдельной строкой в базе — партия через день никому не нужна, а список
+   * промахов нужен долго.
+   */
+  async dispute(
+    userId: string,
+    timezoneOffsetMinutes: number,
+    rawWord: string,
+  ): Promise<HotColdState> {
+    const { attempt, date } = await this.loadOrCreateAttempt(
+      userId,
+      timezoneOffsetMinutes,
+    );
+    const guesses = readGuesses(attempt.guesses);
+    const target = guesses.find((entry) => entry.word === rawWord.trim());
+    if (!target) {
+      throw new BadRequestException('Такого слова в этой партии не было');
+    }
+    if (target.disputed) return this.toState(attempt, date);
+    if (
+      guesses.filter((entry) => entry.disputed).length >=
+      HOT_COLD_FEEDBACK_LIMIT
+    ) {
+      throw new BadRequestException('На сегодня отметок хватит');
+    }
+
+    target.disputed = true;
+    const updated = await this.prisma.hotColdAttempt.update({
+      where: { id: attempt.id },
+      data: { guesses: writeGuesses(guesses) },
+      include: { word: true },
+    });
+    // Отдельная строка — то, ради чего кнопка и существует. `upsert`
+    // потому, что два нажатия подряд с одного устройства — обычное дело.
+    await this.prisma.hotColdFeedback.upsert({
+      where: {
+        userId_date_guess: { userId, date, guess: target.word },
+      },
+      create: {
+        userId,
+        date,
+        wordId: attempt.word.id,
+        guess: target.word,
+        rank: target.rank,
+      },
+      update: {},
+    });
+    return this.toState(updated, date);
+  }
+
+  /**
    * Подсказка открывает слово вдвое ближе лучшего найденного.
    *
    * Приём из оригинальной игры, и он честнее фиксированного места: пока
@@ -369,11 +433,12 @@ export class HotColdService {
  * задаётся, что именно лежит в базе.
  */
 function writeGuesses(guesses: HotColdGuess[]): Prisma.InputJsonValue {
-  return guesses.map((entry) =>
-    entry.revealed
-      ? { word: entry.word, rank: entry.rank, revealed: true }
-      : { word: entry.word, rank: entry.rank },
-  );
+  return guesses.map((entry) => ({
+    word: entry.word,
+    rank: entry.rank,
+    ...(entry.revealed ? { revealed: true } : {}),
+    ...(entry.disputed ? { disputed: true } : {}),
+  }));
 }
 
 function readGuesses(value: unknown): HotColdGuess[] {

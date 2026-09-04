@@ -136,6 +136,7 @@ model User {
   aliasMatches AliasMatch[]
   dailyWords   DailyWordAttempt[]
   hotColdDays  HotColdAttempt[]
+  hotColdNotes HotColdFeedback[]
 
   abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
   abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
@@ -809,6 +810,7 @@ model AliasWord {
 
   dailyAttempts DailyWordAttempt[]
   hotColdAttempts HotColdAttempt[]
+  hotColdNotes    HotColdFeedback[]
 
   @@index([difficulty])
   @@index([category])
@@ -914,4 +916,36 @@ model HotColdAttempt {
   @@unique([userId, date])
   @@index([date])
   @@map("hot_cold_attempts")
+}
+
+/// «Это слово должно быть ближе» — жалоба игрока на расстояние.
+///
+/// Ради неё всё и затевалось: связи в `known-links.ts` написаны из одной
+/// головы, и совпадение с чужими ассоциациями ничем не доказано. Здесь
+/// копятся настоящие промахи — те, что заметили живые люди, а не те, что я
+/// сам придумал проверить.
+model HotColdFeedback {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Загаданное слово того дня.
+  wordId String
+  word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  /// Слово игрока — уже разобранное, в словарной форме.
+  guess String
+  /// Какое место оно занимало в момент жалобы. Нужно, чтобы отличить
+  /// «стояло на трёх тысячах» от «стояло на сотне и всё равно обидно».
+  rank  Int
+
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+
+  /// Одна жалоба на слово в день от игрока: повторные нажатия — это
+  /// сомнение, а не второй голос.
+  @@unique([userId, date, guess])
+  @@index([wordId, guess])
+  @@map("hot_cold_feedback")
 }

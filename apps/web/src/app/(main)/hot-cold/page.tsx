@@ -90,6 +90,16 @@ export default function HotColdPage() {
     }
   }, [guess, busy]);
 
+  const dispute = useCallback(async (word: string) => {
+    // Кнопку не блокируем на время запроса: жалоба — не ход в игре, и
+    // ждать ответа сервера, чтобы нажать следующую, незачем.
+    try {
+      setState(await apiClient.post<HotColdState>('/hot-cold/dispute', { word }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось отправить отметку');
+    }
+  }, []);
+
   const takeHint = useCallback(async () => {
     if (busy) return;
     setBusy(true);
@@ -191,7 +201,20 @@ export default function HotColdPage() {
         </p>
       )}
 
-      <GuessList guesses={state.guesses} highlight={last?.rank ?? null} />
+      {state.guesses.length > 0 && (
+        // Объяснение стрелки — один раз и мелко. Без него кнопка выглядит
+        // как «поднять слово в списке», то есть как читерство.
+        <p className="text-center text-xs text-text-muted">
+          Не согласны с расстоянием? Нажмите ↑ у слова — это поправит игру
+        </p>
+      )}
+
+      <GuessList
+        guesses={state.guesses}
+        highlight={last?.rank ?? null}
+        onDispute={(word) => void dispute(word)}
+        disputesLeft={state.disputesLeft}
+      />
     </div>
   );
 }
@@ -226,7 +249,18 @@ function Verdict({ result }: { result: HotColdGuessResult }) {
  * взгляда. Число рядом нужно тем, кто хочет точности, но игра идёт по
  * полоскам.
  */
-function GuessList({ guesses, highlight }: { guesses: HotColdGuess[]; highlight: number | null }) {
+function GuessList({
+  guesses,
+  highlight,
+  onDispute,
+  disputesLeft,
+}: {
+  guesses: HotColdGuess[];
+  highlight: number | null;
+  /** Не передан — значит спорить не с чем: это разбор после игры. */
+  onDispute?: (word: string) => void;
+  disputesLeft?: number;
+}) {
   if (guesses.length === 0) {
     return (
       <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">
@@ -274,6 +308,30 @@ function GuessList({ guesses, highlight }: { guesses: HotColdGuess[]; highlight:
               >
                 {entry.rank}
               </span>
+              {/* Кнопка несогласия стоит у каждой строки, а не прячется в
+                  меню: промах замечают в ту секунду, когда видят число, и
+                  если ради жалобы надо куда-то идти, её не оставят. */}
+              {onDispute && (
+                <button
+                  type="button"
+                  onClick={() => onDispute(entry.word)}
+                  disabled={entry.disputed || disputesLeft === 0}
+                  aria-label={
+                    entry.disputed
+                      ? `«${entry.word}» — отмечено, что должно быть ближе`
+                      : `Отметить, что «${entry.word}» должно быть ближе`
+                  }
+                  title={entry.disputed ? 'Отмечено — спасибо' : 'Должно быть ближе'}
+                  className={clsx(
+                    'shrink-0 rounded-lg px-1.5 py-0.5 text-sm transition',
+                    entry.disputed
+                      ? 'text-success'
+                      : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary disabled:opacity-40',
+                  )}
+                >
+                  {entry.disputed ? '✓' : '↑'}
+                </button>
+              )}
             </span>
           </li>
         );
