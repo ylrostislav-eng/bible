@@ -151,12 +151,44 @@ async function askAnthropic(model, text, key) {
   return (await response.json()).content?.[0]?.text ?? '';
 }
 
+/** Запуск программы из node_modules: на Windows это .cmd, ему нужна оболочка. */
+function run(command, args, cwd) {
+  return execFileSync(command, args, {
+    cwd,
+    maxBuffer: 200 * 1024 * 1024,
+    shell: process.platform === 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).toString();
+}
+
+/**
+ * `@bible-arena/shared` подключается собранным `dist`, а не исходником, и
+ * после `git pull` он на машине старый: новые константы в нём ещё не
+ * появились. Обычная разработка это не замечает — `pnpm dev` собирает
+ * пакет первым делом, — но скрипт запускают отдельно, поэтому он
+ * пересобирает пакет сам. Это несколько секунд и делается вхолостую, если
+ * всё и так свежее.
+ */
+function buildShared() {
+  console.log('Пересобираю @bible-arena/shared…');
+  try {
+    run('npx', ['tsc', '-p', 'tsconfig.json'], join(ROOT, 'packages/shared'));
+  } catch (error) {
+    const details = [error.stdout, error.stderr]
+      .map((chunk) => chunk?.toString().trim())
+      .filter(Boolean)
+      .join('\n');
+    throw new Error(`Не удалось собрать общий пакет.\n${details}`);
+  }
+}
+
 /** Кандидатов готовит сам сервер: у него уже есть все четыре меры. */
 function collectCandidates() {
   if (existsSync(CANDIDATES_FILE)) {
     console.log(`Беру кандидатов из кэша: ${CANDIDATES_FILE}`);
     return JSON.parse(readFileSync(CANDIDATES_FILE, 'utf8'));
   }
+  buildShared();
   console.log('Собираю кандидатов текущим порядком (это займёт минуту)…');
   const script = `
     import { SemanticsService } from './src/semantics/semantics.service';
@@ -182,15 +214,19 @@ function collectCandidates() {
   writeFileSync(scriptFile, script, 'utf8');
   let raw;
   try {
-    raw = execFileSync(
+    raw = run(
       'npx',
       ['ts-node', '--project', 'tsconfig.json', '.rerank-candidates.ts'],
-      {
-        cwd: join(ROOT, 'apps/api'),
-        maxBuffer: 200 * 1024 * 1024,
-        shell: process.platform === 'win32',
-      },
-    ).toString();
+      join(ROOT, 'apps/api'),
+    );
+  } catch (error) {
+    // Свою ошибку ts-node уже написал в stderr; пересказывать её стеком
+    // самого скрипта — значит утопить единственную полезную строку.
+    const details = [error.stdout, error.stderr]
+      .map((chunk) => chunk?.toString().trim())
+      .filter(Boolean)
+      .join('\n');
+    throw new Error(`Сервер не смог собрать кандидатов.\n${details}`);
   } finally {
     rmSync(scriptFile, { force: true });
   }
