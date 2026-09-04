@@ -38,7 +38,13 @@
  * Через платный API:          $env:ANTHROPIC_API_KEY="sk-ant-..."  и  --provider anthropic
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,10 +174,26 @@ function collectCandidates() {
     }
     process.stdout.write('@@' + JSON.stringify(out) + '@@');
   `;
-  const raw = execFileSync('npx', ['ts-node', '--project', 'tsconfig.json', '-e', script], {
-    cwd: join(ROOT, 'apps/api'),
-    maxBuffer: 200 * 1024 * 1024,
-  }).toString();
+  // Скрипт уходит файлом, а не через `-e`. На Windows `npx` — это `npx.cmd`,
+  // а .cmd без оболочки не запускается; оболочка же здесь cmd.exe, и она
+  // порубила бы многострочный аргумент по переносам строк. Путь к файлу —
+  // один короткий аргумент без кавычек и переносов, и проблемы нет.
+  const scriptFile = join(ROOT, 'apps/api/.rerank-candidates.ts');
+  writeFileSync(scriptFile, script, 'utf8');
+  let raw;
+  try {
+    raw = execFileSync(
+      'npx',
+      ['ts-node', '--project', 'tsconfig.json', '.rerank-candidates.ts'],
+      {
+        cwd: join(ROOT, 'apps/api'),
+        maxBuffer: 200 * 1024 * 1024,
+        shell: process.platform === 'win32',
+      },
+    ).toString();
+  } finally {
+    rmSync(scriptFile, { force: true });
+  }
   const candidates = JSON.parse(raw.split('@@')[1]);
   mkdirSync(dirname(CANDIDATES_FILE), { recursive: true });
   writeFileSync(CANDIDATES_FILE, JSON.stringify(candidates), 'utf8');

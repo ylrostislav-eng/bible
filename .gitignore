@@ -36,3 +36,7 @@ dump.rdb
 # ConceptNet, из которых собирается apps/api/data/semantics-ru.bin. Сам
 # словарь лежит в репозитории — собирать его на каждой машине незачем.
 .cache/
+
+# Временный файл, которым scripts/rerank-with-model.mjs спрашивает сервер о
+# кандидатах. Он удаляется сам, но если прогон оборвать — останется лежать.
+apps/api/.rerank-candidates.ts
