@@ -4268,6 +4268,125 @@ const WORDS: Entry[] = [
 ];
 
 /**
+ * Ответы, которые засчитываются наравне с самим словом.
+ *
+ * Две беды, из-за которых человек, угадавший верно, получал «не то»:
+ * составные имена («Добрый самарянин» — а ответили «самарянин») и
+ * общепринятые другие написания («Далила» вместо «Далида»).
+ *
+ * Часть вариантов выводится автоматически (см. `buildAccepts`), а здесь —
+ * то, что никаким правилом не выведешь: другие имена того же самого,
+ * привычные написания, устоявшиеся названия.
+ */
+const MANUAL_ACCEPTS: Record<string, string[]> = {
+  Далида: ['Далила'],
+  Аод: ['Ехуд'],
+  Тавифа: ['Серна'],
+  Эммаус: ['Еммаус'],
+  Мегиддон: ['Армагеддон', 'Мегиддо'],
+  'Красное море': ['Чермное море'],
+  'Геннисаретское озеро': ['Галилейское море', 'Тивериадское море'],
+  Голгофа: ['Лобное место'],
+  'Мене, текел, фарес': ['Мене текел упарсин'],
+  Иаков: ['Израиль'],
+  Вифезда: ['Вефезда'],
+  Ииуй: ['Иегу'],
+  Гофолия: ['Аталия'],
+  Сепфора: ['Циппора'],
+  Мариам: ['Мирьям'],
+  Есфирь: ['Эсфирь'],
+  Мафусал: ['Мафусаил'],
+  'Мафусаилов век': ['Мафусаилов возраст'],
+  Иоппия: ['Яффа'],
+  Кесария: ['Кесария Приморская'],
+  'Вавилонское столпотворение': ['Столпотворение'],
+  Синедрион: ['Санхедрин'],
+  'Сыны громовы': ['Воанергес'],
+};
+
+/** Слова, которые сами по себе ничего не называют: из составного имени их
+ * брать нельзя. Прилагательные отсекаются по окончанию отдельно. */
+const NOT_A_NAME = new Set([
+  'через',
+  'пяти',
+  'тысяч',
+  'семью',
+  'лет',
+  'ног',
+  'сын',
+  'сына',
+  'сорок',
+  'двенадцать',
+  'десять',
+  'два',
+  'три',
+  'пять',
+  'дня',
+  'день',
+  'весь',
+  'море',
+  'гора',
+  'год',
+  'года',
+]);
+
+const ADJECTIVE_ENDING = /(ый|ий|ое|ая|ые|ой|ую|ым|их|ого|ская|ский|ское)$/;
+
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^а-я]/g, '');
+}
+
+/**
+ * Достраивает список принимаемых ответов для каждого слова.
+ *
+ * Правило одно и оно же и есть защита: часть составного имени принимается,
+ * **только если она однозначно указывает ровно на одно слово банка**. Из-за
+ * него сами собой отпадают «Иисус» (Навин и Христос), «Иоанн» (Креститель,
+ * Богослов и Марк), «камень» (четыре разных) — то есть ровно те случаи,
+ * где засчитать ответ значило бы засчитать не то, что человек имел в виду.
+ */
+function buildAccepts(entries: Entry[]): Map<string, string[]> {
+  const byNormalizedWord = new Map(
+    entries.map((entry) => [normalize(entry.word), entry.word]),
+  );
+
+  // Сначала считаем, на сколько слов указывает каждый кандидат.
+  const owners = new Map<string, string[]>();
+  for (const entry of entries) {
+    const parts = entry.word.split(/[\s,-]+/).filter(Boolean);
+    if (parts.length < 2) continue;
+    for (const part of parts) {
+      const candidate = normalize(part);
+      if (candidate.length < 5) continue;
+      if (ADJECTIVE_ENDING.test(candidate)) continue;
+      if (NOT_A_NAME.has(candidate)) continue;
+      // Кандидат, который сам есть отдельным словом банка, — не вариант
+      // ответа, а другое слово.
+      if (byNormalizedWord.has(candidate)) continue;
+      const list = owners.get(candidate) ?? [];
+      list.push(entry.word);
+      owners.set(candidate, list);
+    }
+  }
+
+  const accepts = new Map<string, string[]>();
+  for (const entry of entries) {
+    const manual = MANUAL_ACCEPTS[entry.word] ?? [];
+    const parts = entry.word.split(/[\s,-]+/).filter(Boolean);
+    const derived = parts.filter((part) => {
+      const candidate = normalize(part);
+      return owners.get(candidate)?.length === 1;
+    });
+    const all = [...new Set([...manual, ...derived])];
+    if (all.length > 0) accepts.set(entry.word, all);
+  }
+  return accepts;
+}
+
+/**
  * Проверяет банк до единой записи в базу. Всё, что здесь ловится, — это
  * ошибки, которые в игре выглядели бы как враньё: две карточки с одним
  * словом, пояснение в три строки или ссылка на стих, которого нет.
@@ -4343,10 +4462,13 @@ async function main(): Promise<void> {
 
   // upsert, а не пересоздание: сид запускают повторно, а партии ссылаются на
   // слова по id — пересоздание порвало бы эти ссылки без всякой пользы.
+  const accepts = buildAccepts(WORDS);
+
   let created = 0;
   let updated = 0;
   for (const entry of WORDS) {
     const fields = {
+      accepts: accepts.get(entry.word) ?? [],
       difficulty: entry.difficulty,
       category: entry.category,
       testament: entry.testament,
@@ -4393,6 +4515,11 @@ async function main(): Promise<void> {
     console.log(`  ${row.category}: ${row._count._all}`);
   }
   console.log(`Без ссылки на стих (сквозные понятия): ${withoutReference}`);
+
+  const withAccepts = await prisma.aliasWord.count({
+    where: { NOT: { accepts: { isEmpty: true } } },
+  });
+  console.log(`Со списком принимаемых ответов: ${withAccepts}`);
 }
 
 main()

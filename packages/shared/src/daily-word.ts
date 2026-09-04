@@ -90,6 +90,9 @@ export interface DailyWordState {
 
 export interface DailyWordGuessResult {
   correct: boolean;
+  /** Ответ — часть верного слова или наоборот. Попытка потрачена, но игроку
+   * стоит сказать, что он думает в верную сторону. */
+  near?: boolean;
   state: DailyWordState;
   /** Ответ был почти верным — отличается только регистром, «ё» или
    * дефисом. Считаем такой ответ верным, но говорим об этом: человек
@@ -138,6 +141,60 @@ export function normalizeDailyWordGuess(value: string): string {
 export function isDailyWordMatch(guess: string, word: string): boolean {
   const normalizedGuess = normalizeDailyWordGuess(guess);
   return normalizedGuess.length > 0 && normalizedGuess === normalizeDailyWordGuess(word);
+}
+
+/** На сколько букв ответ может разойтись со словом в окончании. Три
+ * покрывают русские падежи («Авраам» → «Авраама», «Иакова», «Соломоном») и
+ * не дотягиваются до других имён. */
+const DAILY_WORD_ENDING_TOLERANCE = 3;
+
+/** Ниже этой длины отбрасывать окончание нельзя: от короткого слова
+ * останется огрызок, совпадающий с чем угодно. */
+const DAILY_WORD_STEM_MIN_LENGTH = 4;
+
+/**
+ * Отличается ли ответ от слова только окончанием: «Авраама» вместо
+ * «Авраам», «Соломона» вместо «Соломон».
+ *
+ * Это самая частая причина, по которой верный ответ отвергался: человек
+ * читает пояснение («Пророк, которого остановила заговорившая ослица») и
+ * отвечает в том падеже, в котором думал. Требовать именительный — значит
+ * проверять грамматику вместо знания.
+ *
+ * Само по себе это правило слепое: «Сила» — приемлемая основа для «Силом»,
+ * хотя это разные вещи. Поэтому вызывающий обязан сначала убедиться, что
+ * ответ не является отдельным словом банка — см. `isKnownWord` в сервисе.
+ */
+export function isDailyWordInflection(guess: string, word: string): boolean {
+  const a = normalizeDailyWordGuess(guess);
+  const b = normalizeDailyWordGuess(word);
+  if (a === b) return false;
+  const shorter = a.length < b.length ? a : b;
+  const longer = a.length < b.length ? b : a;
+  if (shorter.length < DAILY_WORD_STEM_MIN_LENGTH) return false;
+  if (longer.length - shorter.length > DAILY_WORD_ENDING_TOLERANCE) return false;
+  return longer.startsWith(shorter);
+}
+
+/** Минимальная длина, при которой «часть слова» ещё что-то значит. Короче —
+ * и в любое слово попадёт случайный слог. */
+const DAILY_WORD_NEAR_MIN_LENGTH = 4;
+
+/**
+ * Ответ попал в цель, но не целиком: «тайна» вместо «тайна за семью
+ * печатями», «самарянин» вместо «доброго самарянина».
+ *
+ * Нужно вот зачем: пояснения к словам писались для игры в объяснение — как
+ * «что это», — а не как загадки с единственным ответом. Человек, который
+ * думает правильно и промахивается по форме, не должен получать то же
+ * безразличное «не то», что и человек, назвавший наугад: первому надо
+ * сказать «дальше в ту же сторону», иначе он бросит верную мысль.
+ */
+export function isDailyWordNearMatch(guess: string, word: string): boolean {
+  const a = normalizeDailyWordGuess(guess);
+  const b = normalizeDailyWordGuess(word);
+  if (a.length < DAILY_WORD_NEAR_MIN_LENGTH || a === b) return false;
+  return b.includes(a) || a.includes(b);
 }
 
 /** Текст для отправки другу. Слова в нём нет намеренно: это приглашение

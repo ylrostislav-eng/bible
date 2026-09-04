@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { DailyGoalCard } from '@/components/daily-goal-card';
+import { DailyWordCard } from '@/components/daily-word-card';
 import { LearnIcon, PlayIcon, SettingsIcon, TournamentIcon } from '@/components/icons/nav-icons';
 
 const QUICK_LINKS = [
@@ -33,6 +34,10 @@ export default function HomePage() {
           doing overall, this says what today needs — and today is the only
           thing a player can still act on. */}
       <DailyGoalCard user={user} />
+
+      {/* Сразу под целью дня: обе карточки про сегодня, и слово дня — самый
+          короткий способ эту цель начать. */}
+      <DailyWordCard />
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="flex-col items-center text-center">

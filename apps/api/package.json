@@ -25,6 +25,7 @@
     "prisma:seed": "prisma db seed",
     "prisma:seed-bible": "ts-node prisma/seed-bible.ts",
     "prisma:seed-alias": "ts-node prisma/seed-alias.ts",
+    "check:accepts": "ts-node prisma/check-accepts.ts",
     "prisma:seed-chapter-questions": "ts-node prisma/seed-chapter-questions.ts",
     "prisma:seed-all": "pnpm run prisma:seed && pnpm run prisma:seed-bible && pnpm run prisma:seed-alias"
   },

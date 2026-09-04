@@ -6,7 +6,10 @@ import {
   DAILY_WORD_MAX_ATTEMPTS,
   dailyWordReward,
   formatAliasReference,
+  isDailyWordInflection,
   isDailyWordMatch,
+  isDailyWordNearMatch,
+  normalizeDailyWordGuess,
   type AliasCategory,
   type AliasReference,
   type AliasTestament,
@@ -42,6 +45,8 @@ interface AttemptRow {
 interface WordRow {
   id: string;
   word: string;
+  /** Другие ответы, засчитываемые как верные — см. `seed-alias.ts`. */
+  accepts: string[];
   gloss: string;
   category: AliasCategory;
   testament: AliasTestament;
@@ -56,6 +61,47 @@ export class DailyWordService {
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
   ) {}
+
+  /**
+   * Все слова банка в нормализованном виде. Нужны, чтобы отличить падеж от
+   * другого слова: «Сила» — приемлемая основа для «Силом» по форме, но это
+   * отдельное слово банка, и засчитывать его как форму нельзя.
+   *
+   * Банк меняется только при заливке сида, поэтому список держится в памяти
+   * до перезапуска — 520 коротких строк.
+   */
+  private knownWords: Set<string> | null = null;
+
+  private async loadKnownWords(): Promise<Set<string>> {
+    if (this.knownWords) return this.knownWords;
+    const rows = await this.prisma.aliasWord.findMany({
+      select: { word: true },
+    });
+    this.knownWords = new Set(
+      rows.map((row) => normalizeDailyWordGuess(row.word)),
+    );
+    return this.knownWords;
+  }
+
+  /**
+   * Засчитывается ли ответ. Три уровня снисходительности, каждый со своей
+   * защитой:
+   *
+   * 1. точное совпадение (с точностью до регистра, «ё» и дефисов);
+   * 2. один из принимаемых вариантов слова — значимая часть составного
+   *    имени или другое написание, заранее проверенные на однозначность;
+   * 3. та же основа, другое окончание — но только если ответ не является
+   *    отдельным словом банка.
+   */
+  private async isAccepted(guess: string, word: WordRow): Promise<boolean> {
+    const variants = [word.word, ...word.accepts];
+    if (variants.some((variant) => isDailyWordMatch(guess, variant)))
+      return true;
+
+    const known = await this.loadKnownWords();
+    if (known.has(normalizeDailyWordGuess(guess))) return false;
+    return variants.some((variant) => isDailyWordInflection(guess, variant));
+  }
 
   // ---- какое слово сегодня ----
 
@@ -102,6 +148,7 @@ export class DailyWordService {
       select: {
         id: true,
         word: true,
+        accepts: true,
         gloss: true,
         category: true,
         testament: true,
@@ -262,7 +309,7 @@ export class DailyWordService {
       throw new BadRequestException('Слово дня на сегодня уже сыграно');
     }
 
-    const correct = isDailyWordMatch(guess, attempt.word.word);
+    const correct = await this.isAccepted(guess, attempt.word);
     const attemptsUsed = attempt.attemptsUsed + 1;
     const outOfAttempts = !correct && attemptsUsed >= DAILY_WORD_MAX_ATTEMPTS;
     const reward = dailyWordReward(attempt.hintsUsed);
@@ -297,6 +344,11 @@ export class DailyWordService {
 
     return {
       correct,
+      near:
+        !correct &&
+        [attempt.word.word, ...attempt.word.accepts].some((variant) =>
+          isDailyWordNearMatch(guess, variant),
+        ),
       state: this.toState(fresh as AttemptRow, date),
       normalizedMatch: correct && guess !== attempt.word.word,
     };
