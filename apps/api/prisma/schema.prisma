@@ -893,6 +893,10 @@ model HotColdAttempt {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   date   DateTime @db.Date
+  /// Номер партии за день. Ноль — слово дня, общее для всех; дальше идут
+  /// свободные, которые игрок берёт сам, сколько захочет. Без этого поля
+  /// партия была одна на день, и «ещё одну» сказать было некому.
+  round  Int      @default(0)
   wordId String
   word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
@@ -913,7 +917,7 @@ model HotColdAttempt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, date])
+  @@unique([userId, date, round])
   @@index([date])
   @@map("hot_cold_attempts")
 }
@@ -943,9 +947,11 @@ model HotColdFeedback {
   date      DateTime @db.Date
   createdAt DateTime @default(now())
 
-  /// Одна жалоба на слово в день от игрока: повторные нажатия — это
-  /// сомнение, а не второй голос.
-  @@unique([userId, date, guess])
+  /// Одна жалоба на пару «загаданное — слово» в день. Загаданное входит
+  /// в ключ, потому что за день партий теперь несколько: «кровь» рядом с
+  /// «Каином» и «кровь» рядом с «Пасхой» — разные промахи, и второй не
+  /// должен пропадать из-за первого.
+  @@unique([userId, date, wordId, guess])
   @@index([wordId, guess])
   @@map("hot_cold_feedback")
 }

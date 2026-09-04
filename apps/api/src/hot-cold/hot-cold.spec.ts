@@ -1,4 +1,6 @@
 import {
+  HOT_COLD_FREE_REWARD_SHARE,
+  HOT_COLD_FREE_XP_PER_DAY,
   HOT_COLD_HINT_FLOOR,
   hotColdAttemptsLabel,
   hotColdBand,
@@ -55,6 +57,34 @@ describe('правила «Горячо-холодно»', () => {
     });
     expect(text).toContain('12 попыток');
     expect(text).toContain('подсказок 1');
+  });
+});
+
+describe('свободные партии', () => {
+  it('дают заметно меньше слова дня', () => {
+    // Иначе вечер свободных партий стоил бы больше месяца ежедневной игры,
+    // и слово дня перестало бы что-либо значить.
+    expect(HOT_COLD_FREE_REWARD_SHARE).toBeGreaterThan(0);
+    expect(HOT_COLD_FREE_REWARD_SHARE).toBeLessThan(0.5);
+  });
+
+  it('дневной потолок сопоставим с одним словом дня', () => {
+    // Не «сколько угодно опыта»: у долгой игры должен быть предел, иначе
+    // доля от чего-то, повторённого двести раз, всё равно много. И не
+    // «крохи»: за вечер должно набегать примерно как за одно слово дня,
+    // угаданное хорошо, — 60 XP.
+    const best = hotColdReward(1, 0).xp;
+    expect(HOT_COLD_FREE_XP_PER_DAY).toBeGreaterThanOrEqual(best / 2);
+    expect(HOT_COLD_FREE_XP_PER_DAY).toBeLessThanOrEqual(best * 2);
+  });
+
+  it('потолок достигается не с первой партии', () => {
+    // Если бы одна свободная партия выбирала весь дневной остаток, потолок
+    // был бы неотличим от «одна свободная партия в день».
+    const perGame = Math.round(
+      hotColdReward(1, 0).xp * HOT_COLD_FREE_REWARD_SHARE,
+    );
+    expect(HOT_COLD_FREE_XP_PER_DAY / perGame).toBeGreaterThanOrEqual(2);
   });
 });
 

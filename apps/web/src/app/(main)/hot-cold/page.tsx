@@ -52,6 +52,10 @@ export default function HotColdPage() {
   /** Последний ответ сервера — чтобы сказать про конкретное слово. */
   const [last, setLast] = useState<HotColdGuessResult | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Номер партии вынут отдельным значением, а не читается из `state` внутри
+  // обработчиков: так в зависимостях стоит число, а не весь объект,
+  // меняющийся на каждый ход.
+  const round = state?.round;
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +82,7 @@ export default function HotColdPage() {
     try {
       const result = await apiClient.post<HotColdGuessResult>('/hot-cold/guess', {
         guess: value,
+        round,
       });
       setState(result.state);
       setLast(result);
@@ -90,31 +95,63 @@ export default function HotColdPage() {
     } finally {
       setBusy(false);
     }
-  }, [guess, busy]);
+  }, [guess, busy, round]);
 
-  const dispute = useCallback(async (word: string) => {
-    // Кнопку не блокируем на время запроса: жалоба — не ход в игре, и
-    // ждать ответа сервера, чтобы нажать следующую, незачем.
+  const dispute = useCallback(
+    async (word: string) => {
+      // Кнопку не блокируем на время запроса: жалоба — не ход в игре, и
+      // ждать ответа сервера, чтобы нажать следующую, незачем.
+      try {
+        setState(
+          await apiClient.post<HotColdState>('/hot-cold/dispute', {
+            word,
+            round,
+          }),
+        );
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Не удалось отправить отметку');
+      }
+    },
+    [round],
+  );
+
+  /**
+   * «Ещё слово» — следующая свободная партия.
+   *
+   * Список догадок и последний вердикт сбрасываются здесь, а не приходят
+   * пустыми с сервера: состояние новой партии он и так пришлёт пустым, но
+   * `last` живёт только на клиенте, и без сброса под новым словом висела
+   * бы оценка предыдущего.
+   */
+  const nextWord = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
     try {
-      setState(await apiClient.post<HotColdState>('/hot-cold/dispute', { word }));
+      setState(await apiClient.post<HotColdState>('/hot-cold/next', {}));
+      setLast(null);
+      setGuess('');
+      inputRef.current?.focus();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось отправить отметку');
+      setError(err instanceof ApiError ? err.message : 'Не удалось взять новое слово');
+    } finally {
+      setBusy(false);
     }
-  }, []);
+  }, [busy]);
 
   const takeHint = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      setState(await apiClient.post<HotColdState>('/hot-cold/hint', {}));
+      setState(await apiClient.post<HotColdState>('/hot-cold/hint', { round }));
       setLast(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось взять подсказку');
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, round]);
 
   if (loadError) {
     return (
@@ -140,17 +177,19 @@ export default function HotColdPage() {
         <BackLink href="/" label="Назад на главную" />
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-text-muted">
-            {formatDate(state.date)}
+            {state.free ? `Своё слово №${state.round}` : formatDate(state.date)}
           </p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Пишите любые слова. Игра скажет, насколько вы близко.
+            {state.free
+              ? 'Слово только ваше — играйте сколько хотите.'
+              : 'Слово дня, одно на всех. Пишите любые слова.'}
           </p>
         </div>
       </header>
 
       {state.finished ? (
-        <FinishedCard state={state} />
+        <FinishedCard state={state} onNext={() => void nextWord()} busy={busy} />
       ) : (
         <>
           <div className="flex flex-col gap-2">
@@ -347,7 +386,15 @@ function GuessList({
   );
 }
 
-function FinishedCard({ state }: { state: HotColdState }) {
+function FinishedCard({
+  state,
+  onNext,
+  busy,
+}: {
+  state: HotColdState;
+  onNext: () => void;
+  busy: boolean;
+}) {
   const guessCount = state.guesses.filter((entry) => !entry.revealed).length;
   const shareText = hotColdShareText({
     solved: state.solved,
@@ -402,13 +449,19 @@ function FinishedCard({ state }: { state: HotColdState }) {
         </section>
       )}
 
-      {/* Куда идти дальше. Раньше здесь стояла одна строчка «новое слово —
-          завтра», и экран превращался в тупик: сыграть заново нельзя, а
-          уйти не предложено. Сказать «нельзя» мало — надо дать, что
-          можно. */}
+      {/* «Ещё одну» — то, ради чего в такие игры возвращаются. Раньше
+          здесь стояла строчка «новое слово — завтра», и на этом игра
+          кончалась: пять минут в день и до свидания. */}
       <section className="flex flex-col gap-2 border-t border-border pt-4">
+        <Button onClick={onNext} disabled={busy}>
+          {busy ? <Spinner /> : 'Ещё слово'}
+        </Button>
+        {/* Про награду сказано до партии, а не после: узнать, что играл
+            вхолостую, постфактум — обидно, даже когда всё честно. */}
         <p className="text-center text-xs text-text-muted">
-          Слово одно на всех и меняется в полночь — переиграть его нельзя.
+          {state.freeXpLeft > 0
+            ? `Свои слова — сколько угодно. Опыта за них сегодня ещё ${state.freeXpLeft} XP.`
+            : 'Свои слова — сколько угодно, но опыт за них на сегодня исчерпан.'}
         </p>
         <div className="flex gap-2">
           <Link

@@ -9,6 +9,9 @@ import {
   HOT_COLD_HINT_FLOOR,
   HOT_COLD_SECRET_COMMON_LIMIT,
   HOT_COLD_SECRET_MIN_EPISODES,
+  HOT_COLD_DAILY_ROUND,
+  HOT_COLD_FREE_REWARD_SHARE,
+  HOT_COLD_FREE_XP_PER_DAY,
   hotColdReward,
   type HotColdGuess,
   type HotColdGuessResult,
@@ -56,6 +59,7 @@ interface WordRow {
 
 interface AttemptRow {
   id: string;
+  round: number;
   guesses: unknown;
   guessCount: number;
   hintsUsed: number;
@@ -91,7 +95,7 @@ export class HotColdService {
    * Из 520 слов Alias проходят 259 — это двести пятьдесят девять дней без
    * повтора.
    */
-  private async pickWordFor(date: Date): Promise<WordRow> {
+  private async usableWords(): Promise<WordRow[]> {
     const words = await this.prisma.aliasWord.findMany({
       select: { id: true, word: true, gloss: true },
     });
@@ -110,8 +114,45 @@ export class HotColdService {
           : 'Словарь смыслов не загружен — игра недоступна',
       );
     }
+    return usable;
+  }
+
+  private async pickWordFor(date: Date): Promise<WordRow> {
+    const usable = await this.usableWords();
     const ordered = shuffledByKey(usable, (row) => row.id);
     return ordered[dayIndex(date, ordered.length)];
+  }
+
+  /**
+   * Слово для свободной партии.
+   *
+   * Порядок свой у каждого игрока и на каждый день: перестановка считается
+   * от связки «кто, когда, какое слово». Общий порядок здесь был бы хуже —
+   * двое сидящих рядом получали бы одно и то же, и вторая партия
+   * превращалась бы в подглядывание.
+   *
+   * Уже сыгранные сегодня слова пропускаются, включая слово дня: получить
+   * его второй раз, уже зная ответ, — не партия. Слов проходит 259, так
+   * что «кончились» — случай теоретический, но обработан: там честное
+   * сообщение, а не пустой экран.
+   */
+  private async pickFreeWord(
+    userId: string,
+    date: Date,
+    used: Set<string>,
+  ): Promise<WordRow> {
+    const usable = await this.usableWords();
+    const ordered = shuffledByKey(
+      usable,
+      (row) => `${userId}:${dateLabel(date)}:${row.id}`,
+    );
+    const next = ordered.find((row) => !used.has(row.id));
+    if (!next) {
+      throw new BadRequestException(
+        'Слова на сегодня кончились — все сыграны. Возвращайтесь завтра.',
+      );
+    }
+    return next;
   }
 
   /** Отранжированный словарь для загаданного слова. */
@@ -138,48 +179,137 @@ export class HotColdService {
 
   // ---- состояние дня ----
 
+  /**
+   * Партия, в которую игрок вернётся, открыв экран.
+   *
+   * Последняя начатая, а не слово дня: человек, бросивший третью свободную
+   * партию на середине, ждёт увидеть именно её. Слово дня при этом никуда
+   * не девается — его можно открыть по номеру.
+   */
   private async loadOrCreateAttempt(
     userId: string,
     timezoneOffsetMinutes: number,
+    round?: number,
   ) {
     const date = localDate(timezoneOffsetMinutes);
-    const existing = await this.prisma.hotColdAttempt.findUnique({
-      where: { userId_date: { userId, date } },
-      include: { word: true },
-    });
-    if (existing) return { attempt: existing, date };
+    if (round === undefined) {
+      const latest = await this.prisma.hotColdAttempt.findFirst({
+        where: { userId, date },
+        orderBy: { round: 'desc' },
+        include: { word: true },
+      });
+      if (latest) return { attempt: latest, date };
+    } else {
+      const existing = await this.prisma.hotColdAttempt.findUnique({
+        where: { userId_date_round: { userId, date, round } },
+        include: { word: true },
+      });
+      if (existing) return { attempt: existing, date };
+      if (round !== HOT_COLD_DAILY_ROUND) {
+        // Свободные партии заводит только «Ещё слово»: создавать их по
+        // номеру из запроса значило бы позволить клиенту перескочить через
+        // десяток и получить слово, до которого он не доиграл.
+        throw new BadRequestException('Такой партии не было');
+      }
+    }
 
     const word = await this.pickWordFor(date);
     // `upsert`, а не `create`: два запроса подряд с одного устройства —
     // обычное дело при быстром открытии экрана, и второй не должен падать
     // на уникальном индексе.
     const attempt = await this.prisma.hotColdAttempt.upsert({
-      where: { userId_date: { userId, date } },
-      create: { userId, date, wordId: word.id },
+      where: {
+        userId_date_round: { userId, date, round: HOT_COLD_DAILY_ROUND },
+      },
+      create: { userId, date, round: HOT_COLD_DAILY_ROUND, wordId: word.id },
       update: {},
       include: { word: true },
     });
     return { attempt, date };
   }
 
+  /** Сколько опыта свободные партии сегодня уже принесли. */
+  private async freeXpSpent(userId: string, date: Date): Promise<number> {
+    const spent = await this.prisma.hotColdAttempt.aggregate({
+      where: { userId, date, round: { gt: HOT_COLD_DAILY_ROUND } },
+      _sum: { xpEarned: true },
+    });
+    return spent._sum.xpEarned ?? 0;
+  }
+
   async getState(
     userId: string,
     timezoneOffsetMinutes: number,
+    round?: number,
   ): Promise<HotColdState> {
     const { attempt, date } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
+      round,
     );
-    return this.toState(attempt, date);
+    return this.toState(attempt, date, await this.freeXpSpent(userId, date));
   }
 
-  private toState(attempt: AttemptRow, date: Date): HotColdState {
+  /**
+   * Следующая свободная партия — то самое «ещё одну».
+   *
+   * Раньше игра кончалась на угаданном слове дня, и это была её главная
+   * дыра: в такие игры возвращаются именно за «ещё одну», а сказать это
+   * было некому. Слово дня при этом остаётся одним на всех и своей
+   * ценности не теряет — свободные партии идут отдельным счётом и дают
+   * заметно меньше.
+   */
+  async startNextRound(
+    userId: string,
+    timezoneOffsetMinutes: number,
+  ): Promise<HotColdState> {
+    const date = localDate(timezoneOffsetMinutes);
+    const played = await this.prisma.hotColdAttempt.findMany({
+      where: { userId, date },
+      select: { round: true, wordId: true, finishedAt: true },
+      orderBy: { round: 'desc' },
+    });
+    const current = played[0];
+    if (current && current.finishedAt === null) {
+      // Недоигранную партию новая не отменяет: иначе «ещё слово», нажатое
+      // случайно, стирало бы полчаса работы.
+      throw new BadRequestException(
+        'Сначала доиграйте текущее слово — или откройте его и угадайте',
+      );
+    }
+
+    const round = (current?.round ?? HOT_COLD_DAILY_ROUND) + 1;
+    const word = await this.pickFreeWord(
+      userId,
+      date,
+      new Set(played.map((row) => row.wordId)),
+    );
+    const attempt = await this.prisma.hotColdAttempt.upsert({
+      where: { userId_date_round: { userId, date, round } },
+      create: { userId, date, round, wordId: word.id },
+      update: {},
+      include: { word: true },
+    });
+    return this.toState(attempt, date, await this.freeXpSpent(userId, date));
+  }
+
+  private toState(
+    attempt: AttemptRow,
+    date: Date,
+    freeXpSpent: number,
+  ): HotColdState {
     const finished = attempt.finishedAt !== null;
     const guesses = readGuesses(attempt.guesses);
     const ranking = finished ? this.rankingFor(attempt.word) : null;
 
+    const free = attempt.round !== HOT_COLD_DAILY_ROUND;
+    const freeXpLeft = Math.max(0, HOT_COLD_FREE_XP_PER_DAY - freeXpSpent);
+
     return {
       date: dateLabel(date),
+      round: attempt.round,
+      free,
+      freeXpLeft,
       // Ближайшая догадка сверху: список читается как «насколько я близко»,
       // а не как история ходов, и порядок появления здесь ничего не значит.
       guesses: [...guesses].sort((a, b) => a.rank - b.rank),
@@ -192,9 +322,10 @@ export class HotColdService {
       ),
       solved: attempt.solved,
       finished,
-      rewardIfSolvedNow: hotColdReward(
-        attempt.guessCount + 1,
-        attempt.hintsUsed,
+      rewardIfSolvedNow: capFreeReward(
+        hotColdReward(attempt.guessCount + 1, attempt.hintsUsed),
+        free,
+        freeXpLeft,
       ),
       // Ответ уезжает клиенту только после конца игры: иначе он приезжал бы
       // в самом первом запросе, и вся игра сводилась бы к открытой вкладке
@@ -219,6 +350,7 @@ export class HotColdService {
     userId: string,
     timezoneOffsetMinutes: number,
     rawGuess: string,
+    round?: number,
   ): Promise<HotColdGuessResult> {
     const trimmed = rawGuess.trim();
     if (trimmed.length === 0) throw new BadRequestException('Пустой ответ');
@@ -226,17 +358,19 @@ export class HotColdService {
     const { attempt, date } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
+      round,
     );
     if (attempt.finishedAt) {
-      throw new BadRequestException('Слово на сегодня уже угадано');
+      throw new BadRequestException('Это слово уже угадано');
     }
+    const freeXpSpent = await this.freeXpSpent(userId, date);
 
     const resolved = this.semantics.resolve(trimmed);
     if (!resolved) {
       // Честное «не знаю такого слова» — и оно не стоит попытки: наказывать
       // за то, что словарь чего-то не содержит, было бы нечестно.
       return {
-        state: this.toState(attempt, date),
+        state: this.toState(attempt, date, freeXpSpent),
         rank: null,
         fix: 'none',
         understood: null,
@@ -250,7 +384,7 @@ export class HotColdService {
       // Повтор тоже не стоит попытки: чаще всего это опечатка, приведшая к
       // тому же слову, а не попытка обмануть счёт.
       return {
-        state: this.toState(attempt, date),
+        state: this.toState(attempt, date, freeXpSpent),
         rank: already.rank,
         fix: resolved.fix,
         understood: resolved.fix === 'none' ? null : resolved.word,
@@ -262,7 +396,11 @@ export class HotColdService {
     const rank = ranking.rankOf(resolved.lemma);
     const solved = rank === 1;
     const guessCount = attempt.guessCount + 1;
-    const reward = hotColdReward(guessCount, attempt.hintsUsed);
+    const reward = capFreeReward(
+      hotColdReward(guessCount, attempt.hintsUsed),
+      attempt.round !== HOT_COLD_DAILY_ROUND,
+      Math.max(0, HOT_COLD_FREE_XP_PER_DAY - freeXpSpent),
+    );
 
     // Одна запись на весь исход: `updateMany` с условием «ещё не закончено»
     // отсекает второй одновременный ответ, который иначе начислил бы
@@ -279,7 +417,7 @@ export class HotColdService {
       },
     });
 
-    if (solved && claimed.count > 0) {
+    if (solved && claimed.count > 0 && (reward.xp > 0 || reward.coins > 0)) {
       // Награда и серия дней — общим путём со всеми режимами, чтобы игра
       // двигала серию так же, как сыгранная партия.
       await this.usersService.applyGameRewards(userId, {
@@ -294,7 +432,15 @@ export class HotColdService {
     });
 
     return {
-      state: this.toState(fresh as AttemptRow, date),
+      state: this.toState(
+        fresh as AttemptRow,
+        date,
+        // Только свободные партии тратят свободный бюджет. Слово дня
+        // считается отдельно, и без этой оговорки оно съедало весь дневной
+        // остаток разом — «ещё слово» сразу после него обещало ноль опыта.
+        freeXpSpent +
+          (solved && attempt.round !== HOT_COLD_DAILY_ROUND ? reward.xp : 0),
+      ),
       rank,
       fix: resolved.fix,
       understood: resolved.fix === 'none' ? null : resolved.word,
@@ -318,21 +464,27 @@ export class HotColdService {
     userId: string,
     timezoneOffsetMinutes: number,
     rawWord: string,
+    round?: number,
   ): Promise<HotColdState> {
     const { attempt, date } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
+      round,
     );
+    const freeXpSpent = await this.freeXpSpent(userId, date);
     const guesses = readGuesses(attempt.guesses);
     const target = guesses.find((entry) => entry.word === rawWord.trim());
     if (!target) {
       throw new BadRequestException('Такого слова в этой партии не было');
     }
-    if (target.disputed) return this.toState(attempt, date);
-    if (
-      guesses.filter((entry) => entry.disputed).length >=
-      HOT_COLD_FEEDBACK_LIMIT
-    ) {
+    if (target.disputed) return this.toState(attempt, date, freeXpSpent);
+    // Считаем по базе, а не по этой партии: партий за день теперь сколько
+    // угодно, и лимит «восемь за день» иначе стал бы «восемь за партию»,
+    // то есть никаким.
+    const marksToday = await this.prisma.hotColdFeedback.count({
+      where: { userId, date },
+    });
+    if (marksToday >= HOT_COLD_FEEDBACK_LIMIT) {
       throw new BadRequestException('На сегодня отметок хватит');
     }
 
@@ -346,7 +498,12 @@ export class HotColdService {
     // потому, что два нажатия подряд с одного устройства — обычное дело.
     await this.prisma.hotColdFeedback.upsert({
       where: {
-        userId_date_guess: { userId, date, guess: target.word },
+        userId_date_wordId_guess: {
+          userId,
+          date,
+          wordId: attempt.word.id,
+          guess: target.word,
+        },
       },
       create: {
         userId,
@@ -357,7 +514,7 @@ export class HotColdService {
       },
       update: {},
     });
-    return this.toState(updated, date);
+    return this.toState(updated, date, freeXpSpent);
   }
 
   /**
@@ -371,13 +528,15 @@ export class HotColdService {
   async takeHint(
     userId: string,
     timezoneOffsetMinutes: number,
+    round?: number,
   ): Promise<HotColdState> {
     const { attempt, date } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
+      round,
     );
     if (attempt.finishedAt) {
-      throw new BadRequestException('Слово на сегодня уже угадано');
+      throw new BadRequestException('Это слово уже угадано');
     }
     if (attempt.hintsUsed >= HOT_COLD_HINT_COUNT) {
       throw new BadRequestException('Подсказки на сегодня кончились');
@@ -414,8 +573,38 @@ export class HotColdService {
       },
       include: { word: true },
     });
-    return this.toState(updated, date);
+    return this.toState(updated, date, await this.freeXpSpent(userId, date));
   }
+}
+
+/**
+ * Награда свободной партии: доля от обычной, и не больше дневного остатка.
+ *
+ * Обе границы нужны по разным причинам. Доля — чтобы слово дня осталось
+ * главным: без неё вечер свободных партий давал бы больше, чем месяц
+ * ежедневной игры. Дневной потолок — чтобы у долгой игры вообще был предел:
+ * доля от чего-то, повторённого двести раз, всё равно много.
+ *
+ * Ноль в остатке не запрещает играть — он только останавливает начисление,
+ * и игра говорит об этом до партии, а не после.
+ */
+function capFreeReward(
+  reward: { xp: number; coins: number },
+  free: boolean,
+  xpLeft: number,
+): { xp: number; coins: number } {
+  if (!free) return reward;
+  const xp = Math.min(
+    xpLeft,
+    Math.max(1, Math.round(reward.xp * HOT_COLD_FREE_REWARD_SHARE)),
+  );
+  // Монеты идут за опытом: начислять их, когда опыт кончился, значило бы
+  // оставить обходной путь к той же ферме.
+  const coins =
+    xp === 0
+      ? 0
+      : Math.max(1, Math.round(reward.coins * HOT_COLD_FREE_REWARD_SHARE));
+  return { xp: Math.max(0, xp), coins };
 }
 
 /**
