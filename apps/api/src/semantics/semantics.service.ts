@@ -63,8 +63,69 @@ const MAGIC = 'BSEM3';
  */
 const RANK_SMOOTHING = 60;
 
+/**
+ * Настройки слияния.
+ *
+ * Вынесены в параметр не ради гибкости, а ради честного подбора: значения
+ * выбираются замером на отведённой для этого половине набора
+ * (`CONTROL_DEEP_DEV`), а не на глаз. Игра всегда зовёт `rank` без
+ * аргумента и получает эти значения.
+ */
+export interface FusionTuning {
+  /** Насколько весит выписанная руками связь против статистики. */
+  statedWeight: number;
+  /**
+   * Своё смягчение для выписанных связей. У статистики места идут до
+   * пятидесяти тысяч, а здесь их десятки, и общее смягчение съедало бы всю
+   * разницу между первым и шестым местом списка.
+   */
+  statedSmoothing: number;
+  /**
+   * Учитывать ли связи через одну: голубь связан с Ноем, Ной с ковчегом,
+   * значит голубь и ковчег тоже связаны — слабее, но связаны. Ноль
+   * выключает.
+   */
+  secondOrderWeight: number;
+  /**
+   * Насколько весит порядок, расставленный моделью. Ноль — не учитывать,
+   * даже если файл есть.
+   */
+  rerankWeight: number;
+}
+
+/**
+ * Выбрано замером на `CONTROL_DEEP_DEV`, не на глаз. На той половине:
+ * медиана 50 → 15, доля попаданий в «горячо» 59% → 70%, а посторонние пары
+ * не сдвинулись.
+ *
+ * Своё смягчение вдесятеро меньше общего, потому что шкалы разные: у
+ * статистики места идут до пятидесяти тысяч, а выписанных связей у слова
+ * десяток, и общее смягчение стирало разницу между первым и шестым.
+ * Больший вес поверх этого не дал ничего — значит, дело было в шкале, а не
+ * в том, что знание недооценено.
+ */
+export const DEFAULT_FUSION: FusionTuning = {
+  statedWeight: 1,
+  statedSmoothing: 10,
+  secondOrderWeight: 1,
+  rerankWeight: 1,
+};
+
 /** Где искать словарь. Второй путь — для собранного `dist`, из которого
  * до корня репозитория на уровень дальше. */
+/**
+ * Порядок верха списка, расставленный языковой моделью.
+ *
+ * Файла может не быть — тогда игра работает ровно как раньше. Он не
+ * обязателен и появляется только после `scripts/rerank-with-model.mjs`.
+ */
+const RERANK_PATHS = [
+  join(process.cwd(), 'data/rerank-ru.json.gz'),
+  join(process.cwd(), 'apps/api/data/rerank-ru.json.gz'),
+  join(__dirname, '../../data/rerank-ru.json.gz'),
+  join(__dirname, '../../../data/rerank-ru.json.gz'),
+];
+
 const CANDIDATE_PATHS = [
   join(process.cwd(), 'data/semantics-ru.bin.gz'),
   join(process.cwd(), 'apps/api/data/semantics-ru.bin.gz'),
@@ -202,6 +263,10 @@ export class SemanticsService implements OnModuleInit {
    * список соседей по убыванию близости, уже в обе стороны.
    */
   private readonly known = new Map<number, number[]>();
+  /** Связи через одну: соседи соседей, которых нет среди прямых. */
+  private readonly knownSecond = new Map<number, number[]>();
+  /** Верх списка в порядке модели: слово → номера лемм по близости. */
+  private readonly reranked = new Map<number, number[]>();
   private spell: SpellIndex | null = null;
   private failure: string | null = null;
 
@@ -226,6 +291,7 @@ export class SemanticsService implements OnModuleInit {
       return;
     }
     this.loadKnownLinks();
+    this.loadRerank();
     this.logger.log(
       `Словарь смыслов: ${this.lemmas.length} слов, ${this.index.size} написаний, ` +
         `${this.known.size} со вписанными связями, ${Date.now() - started} мс`,
@@ -402,6 +468,63 @@ export class SemanticsService implements OnModuleInit {
         list.sort((a, b) => a.at - b.at).map((entry) => entry.lemma),
       );
     }
+
+    // Второй круг: соседи соседей. Голубь выписан у Ноя, Ной — у ковчега,
+    // значит голубь и ковчег тоже связаны. Писать это руками пришлось бы
+    // квадратом от числа связей, а вывести — один проход.
+    for (const [lemma, direct] of this.known) {
+      const seen = new Set<number>(direct);
+      seen.add(lemma);
+      const second: number[] = [];
+      for (const neighbour of direct) {
+        for (const far of this.known.get(neighbour) ?? []) {
+          if (!seen.has(far)) {
+            seen.add(far);
+            second.push(far);
+          }
+        }
+      }
+      if (second.length > 0) this.knownSecond.set(lemma, second);
+    }
+  }
+
+  /**
+   * Читает порядок, расставленный моделью, если он собран.
+   *
+   * Его отсутствие — не ошибка: игра работает и без него, просто верх
+   * списка остаётся таким, каким его сделали четыре меры. Поэтому здесь
+   * `log`, а не `error`.
+   */
+  private loadRerank(): void {
+    const path = RERANK_PATHS.find((candidate) => existsSync(candidate));
+    if (!path) {
+      this.logger.log(
+        'Порядок от модели не найден — работаем на четырёх мерах',
+      );
+      return;
+    }
+    try {
+      const raw = JSON.parse(
+        gunzipSync(readFileSync(path)).toString('utf8'),
+      ) as Record<string, string[]>;
+      for (const [word, order] of Object.entries(raw)) {
+        const secret = this.lookup(word);
+        if (secret === null) continue;
+        const lemmas: number[] = [];
+        for (const near of order) {
+          const lemma = this.lookup(near);
+          if (lemma !== null && lemma !== secret) lemmas.push(lemma);
+        }
+        if (lemmas.length > 0) this.reranked.set(secret, lemmas);
+      }
+      this.logger.log(`Порядок от модели: ${this.reranked.size} слов`);
+    } catch (error) {
+      // Испорченный файл не должен ронять игру: без него она просто
+      // возвращается к четырём мерам.
+      this.logger.error(
+        `Порядок от модели не читается: ${(error as Error).message}`,
+      );
+    }
   }
 
   /** Готов ли словарь. Если нет, игру, которая на нём стоит, надо честно
@@ -537,7 +660,7 @@ export class SemanticsService implements OnModuleInit {
    * них знает точно, и смешивать её с оценками, у которых охват полный,
    * значило бы разбавить единственное, ради чего она есть.
    */
-  private stated(lemmaIndex: number): Int32Array | null {
+  private stated(lemmaIndex: number, tuning: FusionTuning): Int32Array | null {
     const links = this.known.get(lemmaIndex);
     if (!links) return null;
     const places = new Int32Array(this.lemmas.length);
@@ -547,6 +670,26 @@ export class SemanticsService implements OnModuleInit {
     places[lemmaIndex] = 1;
     links.forEach((lemma, at) => {
       places[lemma] = at + 2;
+    });
+    if (tuning.secondOrderWeight > 0) {
+      // Связи через одну идут следом за прямыми и потому весят меньше —
+      // отдельного коэффициента им не нужно, место само всё скажет.
+      const after = links.length + 2;
+      (this.knownSecond.get(lemmaIndex) ?? []).forEach((lemma, at) => {
+        if (places[lemma] === 0) places[lemma] = after + at;
+      });
+    }
+    return places;
+  }
+
+  /** Места из порядка модели, или `null`, если для слова его нет. */
+  private modelOrder(lemmaIndex: number): Int32Array | null {
+    const order = this.reranked.get(lemmaIndex);
+    if (!order) return null;
+    const places = new Int32Array(this.lemmas.length);
+    places[lemmaIndex] = 1;
+    order.forEach((lemma, at) => {
+      if (places[lemma] === 0) places[lemma] = at + 2;
     });
     return places;
   }
@@ -572,7 +715,10 @@ export class SemanticsService implements OnModuleInit {
    * Считается один раз на загаданное слово; дальше каждая догадка стоит
    * одного обращения к массиву.
    */
-  rank(lemmaIndex: number): SemanticRanking {
+  rank(
+    lemmaIndex: number,
+    tuning: FusionTuning = DEFAULT_FUSION,
+  ): SemanticRanking {
     const count = this.lemmas.length;
     const sense = this.closeness(this.meaning, this.meaningNorms, lemmaIndex);
     const byMeaning = placesOf(sense);
@@ -580,7 +726,8 @@ export class SemanticsService implements OnModuleInit {
     const bySpeech = placesOf(spoken);
     const story = this.association(lemmaIndex);
     const byStory = placesOf(story);
-    const stated = this.stated(lemmaIndex);
+    const stated = this.stated(lemmaIndex, tuning);
+    const byModel = this.modelOrder(lemmaIndex);
 
     const fused = new Float64Array(count);
     for (let j = 0; j < count; j += 1) {
@@ -593,7 +740,15 @@ export class SemanticsService implements OnModuleInit {
       // Вписанная связь весит как очень высокое место у обычной меры: это
       // не догадка статистики, а знание, и оно должно перевешивать
       // случайное «слов рядом не встречалось».
-      if (stated && stated[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + stated[j]);
+      if (stated && stated[j] > 0) {
+        fused[j] += tuning.statedWeight / (tuning.statedSmoothing + stated[j]);
+      }
+      // Модель расставляла только верх списка, поэтому её голос слышен
+      // ровно там же, а ниже она молчит — как и всякая мера, которая про
+      // слово ничего не знает.
+      if (byModel && byModel[j] > 0) {
+        fused[j] += tuning.rerankWeight / (tuning.statedSmoothing + byModel[j]);
+      }
     }
 
     const places = placesOf(fused);
