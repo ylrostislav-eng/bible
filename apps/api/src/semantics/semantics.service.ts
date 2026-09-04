@@ -34,7 +34,17 @@ import {
  * оказываться на втором месте только потому, что оно похоже.
  */
 
-const MAGIC = 'BSEM1';
+const MAGIC = 'BSEM2';
+
+/**
+ * Смягчение при слиянии мест.
+ *
+ * Без него первое место весило бы вдвое больше второго, и любая случайная
+ * перестановка наверху одного списка перекраивала бы весь итог. Шестьдесят
+ * — обычное значение для такого слияния: разница между первым и вторым
+ * местом остаётся заметной, но перестаёт быть решающей.
+ */
+const RANK_SMOOTHING = 60;
 
 /** Где искать словарь. Второй путь — для собранного `dist`, из которого
  * до корня репозитория на уровень дальше. */
@@ -91,6 +101,14 @@ export class SemanticsService implements OnModuleInit {
   private lemmas: string[] = [];
   private vectors: Int8Array = new Int8Array(0);
   private norms: Float64Array = new Float64Array(0);
+  /** Слова каждого эпизода подряд; границы — в `episodeStart`. */
+  private episodeWords: Int32Array = new Int32Array(0);
+  private episodeStart: Int32Array = new Int32Array(1);
+  /** То же наизнанку: эпизоды каждого слова, границы — в `wordStart`. */
+  private wordEpisodes: Int32Array = new Int32Array(0);
+  private wordStart: Int32Array = new Int32Array(1);
+  /** В скольких эпизодах встречается слово. */
+  private episodeCount: Int32Array = new Int32Array(0);
   /** Любое написание — слово или его форма — к номеру леммы. */
   private readonly index = new Map<string, number>();
   private spell: SpellIndex | null = null;
@@ -127,7 +145,8 @@ export class SemanticsService implements OnModuleInit {
     this.dims = buffer.readUInt32LE(5);
     const lemmaCount = buffer.readUInt32LE(9);
     const formCount = buffer.readUInt32LE(13);
-    let offset = 17;
+    const episodeCount = buffer.readUInt32LE(17);
+    let offset = 21;
 
     this.lemmas = new Array<string>(lemmaCount);
     for (let i = 0; i < lemmaCount; i += 1) {
@@ -147,10 +166,6 @@ export class SemanticsService implements OnModuleInit {
       offset += 4;
     }
 
-    const expected = offset + lemmaCount * this.dims;
-    if (buffer.length !== expected) {
-      throw new Error(`ожидалось ${expected} байт, а в файле ${buffer.length}`);
-    }
     // Копия, а не вид на буфер: `readFileSync` возвращает Buffer из общего
     // пула, и держать на него ссылку означает удерживать чужую память.
     this.vectors = new Int8Array(lemmaCount * this.dims);
@@ -161,6 +176,12 @@ export class SemanticsService implements OnModuleInit {
         lemmaCount * this.dims,
       ),
     );
+    offset += lemmaCount * this.dims;
+
+    offset = this.loadEpisodes(buffer, offset, lemmaCount, episodeCount);
+    if (buffer.length !== offset) {
+      throw new Error(`ожидалось ${offset} байт, а в файле ${buffer.length}`);
+    }
 
     this.norms = new Float64Array(lemmaCount);
     for (let i = 0; i < lemmaCount; i += 1) {
@@ -174,6 +195,64 @@ export class SemanticsService implements OnModuleInit {
     // «ковчегами» вместо «ковчега» незачем, а лемм вчетверо меньше, значит
     // и индекс вчетверо легче.
     this.spell = new SpellIndex(this.lemmas);
+  }
+
+  /**
+   * Читает эпизоды Писания и сразу же выворачивает их наизнанку.
+   *
+   * В файле лежит «какие слова в этом эпизоде» — так его дешевле собрать.
+   * Игре нужно и обратное, «в каких эпизодах это слово», причём быстро.
+   * Обе таблицы плоские, со списком границ вместо массива массивов:
+   * полтора миллиона вхождений в виде отдельных массивов стоили бы на
+   * порядок больше памяти и заметного времени на сборку мусора.
+   */
+  private loadEpisodes(
+    buffer: Buffer,
+    start: number,
+    lemmaCount: number,
+    episodeCount: number,
+  ): number {
+    let offset = start;
+    this.episodeStart = new Int32Array(episodeCount + 1);
+    let total = 0;
+    for (let e = 0; e < episodeCount; e += 1) {
+      const size = buffer.readUInt32LE(offset);
+      offset += 4 + size * 4;
+      total += size;
+      this.episodeStart[e + 1] = total;
+    }
+
+    this.episodeWords = new Int32Array(total);
+    this.episodeCount = new Int32Array(lemmaCount);
+    offset = start;
+    let written = 0;
+    for (let e = 0; e < episodeCount; e += 1) {
+      const size = buffer.readUInt32LE(offset);
+      offset += 4;
+      for (let k = 0; k < size; k += 1) {
+        const lemma = buffer.readUInt32LE(offset);
+        offset += 4;
+        this.episodeWords[written] = lemma;
+        written += 1;
+        this.episodeCount[lemma] += 1;
+      }
+    }
+
+    this.wordStart = new Int32Array(lemmaCount + 1);
+    for (let i = 0; i < lemmaCount; i += 1) {
+      this.wordStart[i + 1] = this.wordStart[i] + this.episodeCount[i];
+    }
+    this.wordEpisodes = new Int32Array(total);
+    const cursor = Int32Array.from(this.wordStart.subarray(0, lemmaCount));
+    for (let e = 0; e < episodeCount; e += 1) {
+      for (let k = this.episodeStart[e]; k < this.episodeStart[e + 1]; k += 1) {
+        const lemma = this.episodeWords[k];
+        this.wordEpisodes[cursor[lemma]] = e;
+        cursor[lemma] += 1;
+      }
+    }
+
+    return offset;
   }
 
   /** Готов ли словарь. Если нет, игру, которая на нём стоит, надо честно
@@ -215,13 +294,8 @@ export class SemanticsService implements OnModuleInit {
     return { ...resolved, lemma };
   }
 
-  /**
-   * Ранжирует весь словарь относительно загаданного слова.
-   *
-   * Считается один раз на слово (около ста миллисекунд на сорок тысяч
-   * слов) — дальше каждая догадка стоит одного обращения к массиву.
-   */
-  rank(lemmaIndex: number): SemanticRanking {
+  /** Похожесть по векторам: можно ли одно слово подставить вместо другого. */
+  private similarity(lemmaIndex: number): Float64Array {
     const count = this.lemmas.length;
     const scores = new Float64Array(count);
     const base = lemmaIndex * this.dims;
@@ -232,18 +306,97 @@ export class SemanticsService implements OnModuleInit {
         dot += this.vectors[base + d] * this.vectors[other + d];
       scores[j] = dot / (this.norms[lemmaIndex] * this.norms[j]);
     }
+    return scores;
+  }
 
-    const order = new Int32Array(count);
-    for (let j = 0; j < count; j += 1) order[j] = j;
-    // Сортируем индексы, а не пары: при сорока тысячах слов это заметно
-    // дешевле, чем создавать столько же объектов.
-    const sorted = Array.from(order).sort((a, b) => scores[b] - scores[a]);
-    const places = new Int32Array(count);
-    for (let position = 0; position < count; position += 1) {
-      order[position] = sorted[position];
-      places[sorted[position]] = position + 1;
+  /**
+   * Связанность по Писанию: как часто слова стоят в одних эпизодах.
+   *
+   * Считается косинус между двоичными векторами присутствия — то есть
+   * «сколько эпизодов общих» с поправкой на то, что частому слову общие
+   * эпизоды достаются даром. Ноль означает не «далеко», а «в Писании эти
+   * слова не встречались вместе ни разу», и слияние обязано различать эти
+   * два случая.
+   */
+  private association(lemmaIndex: number): Float64Array {
+    const count = this.lemmas.length;
+    const scores = new Float64Array(count);
+    const mine = this.episodesOf(lemmaIndex);
+    if (mine.length === 0) return scores;
+
+    // Считаем общие эпизоды одним проходом по эпизодам загаданного слова:
+    // перебирать пары слов было бы в тысячи раз дороже.
+    for (const episode of mine) {
+      const start = this.episodeStart[episode];
+      const end = this.episodeStart[episode + 1];
+      for (let k = start; k < end; k += 1) scores[this.episodeWords[k]] += 1;
     }
+
+    const mineRoot = Math.sqrt(mine.length);
+    for (let j = 0; j < count; j += 1) {
+      if (scores[j] === 0) continue;
+      scores[j] /= mineRoot * Math.sqrt(this.episodeCount[j]);
+    }
+    return scores;
+  }
+
+  /** Номера эпизодов, в которых встречается слово. */
+  private episodesOf(lemmaIndex: number): Int32Array {
+    const start = this.wordStart[lemmaIndex];
+    return this.wordEpisodes.subarray(start, this.wordStart[lemmaIndex + 1]);
+  }
+
+  /**
+   * Ранжирует весь словарь относительно загаданного слова.
+   *
+   * Два сигнала сливаются по местам, а не по числам. У похожести и
+   * связанности разные шкалы: 0.2 у одной и 0.2 у другой значат разное, и
+   * складывать их напрямую — значит незаметно отдать всё одной из них.
+   * Место в списке — величина, одинаковая для обеих.
+   *
+   * Формула — обратный ранг: слово получает тем больше, чем выше оно
+   * стоит хотя бы в одном списке. Поэтому «потоп», далёкий по похожести,
+   * но первый по связанности, оказывается рядом с ковчегом — а «стул»,
+   * далёкий по обоим, остаётся в конце.
+   *
+   * Считается один раз на загаданное слово; дальше каждая догадка стоит
+   * одного обращения к массиву.
+   */
+  rank(lemmaIndex: number): SemanticRanking {
+    const count = this.lemmas.length;
+    const byMeaning = placesOf(this.similarity(lemmaIndex));
+    const related = this.association(lemmaIndex);
+    const byStory = placesOf(related);
+
+    const fused = new Float64Array(count);
+    for (let j = 0; j < count; j += 1) {
+      fused[j] = 1 / (RANK_SMOOTHING + byMeaning[j]);
+      // Слово, ни разу не встретившееся рядом с загаданным, второго
+      // слагаемого не получает вовсе: иначе половина словаря делила бы
+      // один и тот же хвост и «стул» подтягивался бы к «ковчегу» просто
+      // за компанию.
+      if (related[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + byStory[j]);
+    }
+
+    const places = placesOf(fused);
+    const order = new Int32Array(count);
+    for (let j = 0; j < count; j += 1) order[places[j] - 1] = j;
 
     return new SemanticRanking(this, lemmaIndex, places, order);
   }
+}
+
+/** Места слов по убыванию оценки: первое место — единица. */
+function placesOf(scores: Float64Array): Int32Array {
+  const count = scores.length;
+  // Сортируем индексы, а не пары: при сорока тысячах слов это заметно
+  // дешевле, чем создавать столько же объектов.
+  const sorted = Array.from({ length: count }, (_, i) => i).sort(
+    (a, b) => scores[b] - scores[a],
+  );
+  const places = new Int32Array(count);
+  for (let position = 0; position < count; position += 1) {
+    places[sorted[position]] = position + 1;
+  }
+  return places;
 }
