@@ -18,3 +18,4 @@ export * from './achievements';
 export * from './accessibility';
 export * from './alias';
 export * from './daily-word';
+export * from './typo';
