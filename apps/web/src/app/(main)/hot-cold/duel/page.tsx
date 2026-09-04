@@ -2,6 +2,8 @@
 
 import {
   HOT_COLD_BAND_LABELS,
+  HOT_COLD_DUEL_MAX_GUESSES,
+  HOT_COLD_DUEL_SECONDS_PER_GUESS,
   hotColdAttemptsLabel,
   hotColdBand,
   hotColdDuelOutcomeLabel,
@@ -13,6 +15,7 @@ import {
 import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DuelCountdown } from '@/components/duel-countdown';
 import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -171,7 +174,8 @@ export default function HotColdDuelPage() {
           <p className="text-xs uppercase tracking-wide text-text-muted">Дуэль</p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Слово одно на двоих. Кто найдёт первым.
+            Одно слово на двоих, по {HOT_COLD_DUEL_MAX_GUESSES} попыток и{' '}
+            {HOT_COLD_DUEL_SECONDS_PER_GUESS} секунд на каждую.
           </p>
         </div>
       </header>
@@ -192,6 +196,15 @@ export default function HotColdDuelPage() {
           ) : (
             <>
               <div className="flex flex-col gap-2">
+                {/* Часы над полем, а не под ним: смотреть надо туда же,
+                    куда печатаешь. */}
+                {state.deadlineAt && (
+                  <DuelCountdown
+                    deadlineAt={state.deadlineAt}
+                    serverNow={state.serverNow}
+                    seconds={HOT_COLD_DUEL_SECONDS_PER_GUESS}
+                  />
+                )}
                 <input
                   ref={inputRef}
                   value={guess}
@@ -207,7 +220,18 @@ export default function HotColdDuelPage() {
                   aria-label="Слово"
                   className="h-12 rounded-xl border border-border bg-surface px-4 text-base outline-none transition focus:border-primary"
                 />
-                {duel.verdict && <Verdict verdict={duel.verdict} />}
+                {/* Показывается всегда только последнее, что случилось со
+                    мной: ответ на моё слово или сгоревшее слово. Ключ по
+                    `seq` — чтобы сообщение появлялось заново на каждое
+                    событие, даже когда текст тот же. */}
+                {duel.notice?.kind === 'burnt' && (
+                  <p key={duel.notice.seq} className="text-sm text-danger" aria-live="polite">
+                    Не успели — слово сгорело.
+                  </p>
+                )}
+                {duel.notice?.kind === 'verdict' && (
+                  <Verdict key={duel.notice.seq} verdict={duel.notice} />
+                )}
                 {duel.error && <p className="text-sm text-danger">{duel.error}</p>}
                 <Button onClick={send} disabled={guess.trim().length === 0}>
                   Проверить

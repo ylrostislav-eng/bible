@@ -14,6 +14,7 @@ import {
 } from '@nestjs/websockets';
 import {
   HOT_COLD_DUEL_AWAY_MS,
+  HOT_COLD_DUEL_SECONDS_PER_GUESS,
   HOT_COLD_DUEL_WS_EVENTS,
   HOT_COLD_DUEL_WS_NAMESPACE,
   HOT_COLD_DUEL_WS_SERVER_EVENTS,
@@ -68,6 +69,14 @@ export class HotColdDuelGateway
    * Ключ: `${duelId}:${userId}`.
    */
   private readonly awayTimers = new Map<string, NodeJS.Timeout>();
+  /**
+   * Часы на слово: у каждого игрока свои. Ключ: `${duelId}:${userId}`.
+   *
+   * Живут здесь, а не в сервисе, потому что это таймеры, а не правила:
+   * сервис знает, что слово сгорает, шлюз — когда именно и кому об этом
+   * сказать.
+   */
+  private readonly guessTimers = new Map<string, NodeJS.Timeout>();
   private sweepTimer?: NodeJS.Timeout;
 
   constructor(
@@ -84,6 +93,8 @@ export class HotColdDuelGateway
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     for (const timer of this.awayTimers.values()) clearTimeout(timer);
     this.awayTimers.clear();
+    for (const timer of this.guessTimers.values()) clearTimeout(timer);
+    this.guessTimers.clear();
   }
 
   private async sweep(): Promise<void> {
@@ -144,6 +155,19 @@ export class HotColdDuelGateway
       this.duelSockets.set(dto.duelId, set);
       this.duels.setOnline(dto.duelId, socket.data.userId, true);
       this.cancelAwayNotice(dto.duelId, socket.data.userId);
+      // Часы пускаем обоим, а не только вошедшему: соперник может сидеть
+      // с открытым экраном и молчать, и его слова должны гореть так же.
+      const live = await this.duels.getState(dto.duelId, socket.data.userId);
+      if (live.status === 'IN_PROGRESS') {
+        // ВАЖНО: именно `ensure`, а не «пустить заново». Вход в дуэль
+        // случается не только в начале — он повторяется при каждом
+        // переподключении сокета: переключил вкладку, свернул приложение,
+        // моргнула сеть. Перезапуск часов здесь означал бы, что время
+        // обнуляется по желанию, да ещё и у соперника заодно. Ровно этот
+        // баг уже был у таймера в «Изучении».
+        this.ensureClock(dto.duelId, socket.data.userId);
+        if (live.opponent) this.ensureClock(dto.duelId, live.opponent.userId);
+      }
       await this.broadcast(dto.duelId);
     });
   }
@@ -168,6 +192,16 @@ export class HotColdDuelGateway
         understood: result.understood,
         repeat: result.repeat,
       });
+      // Слово написано — отсчёт с начала. Только если партия ещё идёт и
+      // слова ещё есть: иначе часы шли бы у того, кому уже нечем ходить.
+      if (
+        result.state.status === 'IN_PROGRESS' &&
+        result.state.guessesLeft > 0
+      ) {
+        this.startClock(dto.duelId, socket.data.userId);
+      } else {
+        this.stopClock(dto.duelId, socket.data.userId);
+      }
       await this.broadcast(dto.duelId, socket);
       // Сопернику — короткий сигнал «он сходил», чтобы подсветить число, а
       // не перерисовывать экран целиком.
@@ -204,6 +238,67 @@ export class HotColdDuelGateway
       await this.duels.surrender(dto.duelId, socket.data.userId);
       await this.broadcast(dto.duelId);
     });
+  }
+
+  /**
+   * Пустить игроку отсчёт на слово.
+   *
+   * Часы живут на сервере: браузерным доверять нельзя — достаточно
+   * перевести системное время или закрыть вкладку, чтобы они встали.
+   * Клиенту уезжает лишь момент, когда слово сгорит, и он рисует по нему
+   * обратный отсчёт.
+   */
+  private startClock(duelId: string, userId: string): void {
+    const key = `${duelId}:${userId}`;
+    const existing = this.guessTimers.get(key);
+    if (existing) clearTimeout(existing);
+    this.duels.armDeadline(duelId, userId);
+    const timer = setTimeout(
+      () => void this.onDeadline(duelId, userId),
+      HOT_COLD_DUEL_SECONDS_PER_GUESS * 1000,
+    );
+    this.guessTimers.set(key, timer);
+  }
+
+  /**
+   * Пустить часы, только если они ещё не идут.
+   *
+   * Отличие от `startClock` в одном слове — «ещё», — и в этом слове весь
+   * смысл: событие входа повторяется при каждом переподключении, а время
+   * на слово должно течь от того момента, когда слово стало нужным, а не
+   * от последнего чиха сети.
+   */
+  private ensureClock(duelId: string, userId: string): void {
+    if (this.guessTimers.has(`${duelId}:${userId}`)) return;
+    this.startClock(duelId, userId);
+  }
+
+  private stopClock(duelId: string, userId: string): void {
+    const key = `${duelId}:${userId}`;
+    const timer = this.guessTimers.get(key);
+    if (timer) clearTimeout(timer);
+    this.guessTimers.delete(key);
+    this.duels.clearDeadline(duelId, userId);
+  }
+
+  /** Время вышло: слово сгорает, и отсчёт идёт заново. */
+  private async onDeadline(duelId: string, userId: string): Promise<void> {
+    this.guessTimers.delete(`${duelId}:${userId}`);
+    try {
+      const { burnt, finished } = await this.duels.burnGuess(duelId, userId);
+      if (burnt) {
+        for (const socket of this.duelSockets.get(duelId) ?? []) {
+          if (socket.data.userId === userId) {
+            socket.emit(HOT_COLD_DUEL_WS_SERVER_EVENTS.burnt, {});
+          }
+        }
+      }
+      if (finished) this.stopClock(duelId, userId);
+      else this.startClock(duelId, userId);
+      await this.broadcast(duelId);
+    } catch (err) {
+      this.logger.warn(`часы дуэли сбились: ${err}`);
+    }
   }
 
   /** Разбудить экран соперника ровно тогда, когда ждать уже нечего. */

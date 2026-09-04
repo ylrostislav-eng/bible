@@ -2,7 +2,10 @@ import {
   HOT_COLD_DUEL_HINTS,
   HOT_COLD_DUEL_LOSER_SHARE,
   HOT_COLD_DUEL_LOSS_RATING,
+  HOT_COLD_DUEL_MAX_GUESSES,
+  HOT_COLD_DUEL_POINTS_SHARE,
   HOT_COLD_DUEL_WIN_RATING,
+  hotColdDuelFullPoints,
   hotColdDuelOutcomeLabel,
   type HotColdDuelState,
   HOT_COLD_FREE_REWARD_SHARE,
@@ -103,6 +106,9 @@ describe('правила дуэли', () => {
     vocabulary: 50_000,
     guesses: [],
     bestRank: null,
+    guessesLeft: HOT_COLD_DUEL_MAX_GUESSES,
+    deadlineAt: null,
+    serverNow: new Date().toISOString(),
     solved: false,
     surrendered: false,
     opponent: null,
@@ -140,6 +146,7 @@ describe('правила дуэли', () => {
     ranks: [],
     bestRank: null,
     guessCount: 0,
+    guessesLeft: HOT_COLD_DUEL_MAX_GUESSES,
     solved: false,
     surrendered: false,
     online: true,
@@ -176,13 +183,35 @@ describe('правила дуэли', () => {
     ).toBe('Вы сдались');
   });
 
+  it('слово не нашлось — победа по очкам, вдвое дешевле', () => {
+    // Одно правило на три случая: кончились слова, соперник сдался,
+    // соперник ушёл. Во всех трёх слово осталось неразгаданным.
+    expect(HOT_COLD_DUEL_POINTS_SHARE).toBe(0.5);
+    const me = 'u1';
+    expect(hotColdDuelFullPoints(duel({ solved: true }))).toBe(true);
+    expect(
+      hotColdDuelFullPoints(duel({ opponent: rival({ solved: true }) })),
+    ).toBe(true);
+    expect(hotColdDuelFullPoints(duel({ winnerId: me }))).toBe(false);
+  });
+
+  it('кончившиеся слова названы своим исходом', () => {
+    const me = 'u1';
+    expect(
+      hotColdDuelOutcomeLabel(duel({ winnerId: me, guessesLeft: 0 }), me),
+    ).toBe('Слов не осталось — вы были ближе');
+    expect(
+      hotColdDuelOutcomeLabel(duel({ winnerId: 'u2', guessesLeft: 0 }), me),
+    ).toBe('Слов не осталось — соперник был ближе');
+  });
+
   it('ничья — это законченная партия без победителя', () => {
     const me = 'u1';
     // Так кончается брошенная обоими партия, где никто не подошёл ближе.
     // Отличать её от идущей надо по статусу, а не по пустому winnerId.
     expect(
       hotColdDuelOutcomeLabel(duel({ status: 'FINISHED', winnerId: null }), me),
-    ).toBe('Ничья: никто не нашёл слово');
+    ).toBe('Ничья: подошли одинаково близко');
     expect(
       hotColdDuelOutcomeLabel(
         duel({ status: 'IN_PROGRESS', winnerId: null }),

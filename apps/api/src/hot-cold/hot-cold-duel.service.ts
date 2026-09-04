@@ -10,6 +10,9 @@ import {
   HOT_COLD_DUEL_IDLE_MS,
   HOT_COLD_DUEL_LOSER_SHARE,
   HOT_COLD_DUEL_LOSS_RATING,
+  HOT_COLD_DUEL_MAX_GUESSES,
+  HOT_COLD_DUEL_POINTS_SHARE,
+  HOT_COLD_DUEL_SECONDS_PER_GUESS,
   HOT_COLD_DUEL_WAIT_MS,
   HOT_COLD_DUEL_WIN_RATING,
   HOT_COLD_SECRET_COMMON_LIMIT,
@@ -84,6 +87,69 @@ export class HotColdDuelService {
    * точки зрения нового процесса никто никуда ещё не уходил.
    */
   private readonly awaySince = new Map<string, number>();
+  /**
+   * Когда у игрока сгорит текущее слово. Ключ: `${duelId}:${userId}`.
+   *
+   * Тоже в памяти: часы идут, пока живёт процесс, а после перезапуска
+   * отсчёт начинается заново — это лучше, чем сжечь человеку слова за
+   * время, которого он не видел.
+   */
+  private readonly deadlines = new Map<string, number>();
+
+  // ---- часы ----
+
+  /** Пустить отсчёт на слово заново. */
+  armDeadline(duelId: string, userId: string): number {
+    const at = Date.now() + HOT_COLD_DUEL_SECONDS_PER_GUESS * 1000;
+    this.deadlines.set(`${duelId}:${userId}`, at);
+    return at;
+  }
+
+  clearDeadline(duelId: string, userId: string): void {
+    this.deadlines.delete(`${duelId}:${userId}`);
+  }
+
+  /**
+   * Слово сгорело: не успели за отведённые секунды.
+   *
+   * Возвращает, случилось ли списание, и закончилась ли на этом партия —
+   * шлюзу нужно и то и другое: первое чтобы сказать игроку, второе чтобы
+   * остановить часы.
+   */
+  async burnGuess(
+    duelId: string,
+    userId: string,
+  ): Promise<{ burnt: boolean; finished: boolean }> {
+    const duel = await this.load(duelId);
+    if (duel.status !== 'IN_PROGRESS') return { burnt: false, finished: true };
+    const me = duel.players.find((player) => player.userId === userId);
+    if (!me || me.guessCount >= HOT_COLD_DUEL_MAX_GUESSES) {
+      return { burnt: false, finished: false };
+    }
+
+    await this.prisma.hotColdDuelPlayer.update({
+      where: { id: me.id },
+      data: { guessCount: { increment: 1 } },
+    });
+
+    // Сгоревшее слово — такой же расход, как написанное: если у обоих
+    // слова кончились, партия должна закончиться и здесь, а не ждать,
+    // пока кто-нибудь что-нибудь наберёт.
+    const other = duel.players.find((player) => player.userId !== userId);
+    const mineLeft = HOT_COLD_DUEL_MAX_GUESSES - (me.guessCount + 1);
+    const hisLeft = HOT_COLD_DUEL_MAX_GUESSES - (other?.guessCount ?? 0);
+    if (mineLeft <= 0 && hisLeft <= 0) {
+      await this.finish(
+        duelId,
+        closerOf([
+          { userId, bestRank: me.bestRank },
+          { userId: other?.userId ?? '', bestRank: other?.bestRank ?? null },
+        ]),
+      );
+      return { burnt: true, finished: true };
+    }
+    return { burnt: true, finished: mineLeft <= 0 };
+  }
 
   // ---- присутствие ----
 
@@ -295,6 +361,16 @@ export class HotColdDuelService {
 
       guesses: [...myGuesses].sort((a, b) => a.rank - b.rank),
       bestRank: me.bestRank,
+      guessesLeft: Math.max(0, HOT_COLD_DUEL_MAX_GUESSES - me.guessCount),
+      serverNow: new Date().toISOString(),
+      deadlineAt:
+        duel.status === 'IN_PROGRESS' &&
+        me.guessCount < HOT_COLD_DUEL_MAX_GUESSES
+          ? (() => {
+              const at = this.deadlines.get(`${duel.id}:${userId}`);
+              return at === undefined ? null : new Date(at).toISOString();
+            })()
+          : null,
       solved: me.solvedAt !== null,
       surrendered: me.surrenderedAt !== null,
 
@@ -314,6 +390,10 @@ export class HotColdDuelService {
             ranks: readGuesses(other.guesses).map((entry) => entry.rank),
             bestRank: other.bestRank,
             guessCount: other.guessCount,
+            guessesLeft: Math.max(
+              0,
+              HOT_COLD_DUEL_MAX_GUESSES - other.guessCount,
+            ),
             solved: other.solvedAt !== null,
             surrendered: other.surrenderedAt !== null,
             online: this.online.has(`${duel.id}:${other.userId}`),
@@ -377,6 +457,12 @@ export class HotColdDuelService {
       );
     }
 
+    if (me.guessCount >= HOT_COLD_DUEL_MAX_GUESSES) {
+      throw new BadRequestException(
+        'Слова кончились — ждём, чем ответит соперник',
+      );
+    }
+
     const resolved = this.semantics.resolve(trimmed);
     if (!resolved) {
       // Неизвестное слово не стоит хода: наказывать за пробелы словаря
@@ -416,7 +502,28 @@ export class HotColdDuelService {
       },
     });
 
-    if (solved) await this.finish(duel.id, userId);
+    if (solved) {
+      await this.finish(duel.id, userId);
+    } else {
+      // Слова кончились у обоих — партию пора кончать. Считаем по свежим
+      // числам, а не по тем, что лежали в `duel`: свой счётчик мы только
+      // что увеличили.
+      const other = duel.players.find((player) => player.userId !== userId);
+      const mineLeft = HOT_COLD_DUEL_MAX_GUESSES - (me.guessCount + 1);
+      const hisLeft = HOT_COLD_DUEL_MAX_GUESSES - (other?.guessCount ?? 0);
+      if (mineLeft <= 0 && hisLeft <= 0) {
+        await this.finish(
+          duel.id,
+          closerOf([
+            { userId, bestRank: best },
+            {
+              userId: other?.userId ?? '',
+              bestRank: other?.bestRank ?? null,
+            },
+          ]),
+        );
+      }
+    }
 
     return {
       state: await this.getState(duel.id, userId),
@@ -488,9 +595,20 @@ export class HotColdDuelService {
       data: { status: 'FINISHED', winnerId, finishedAt: new Date() },
     });
     if (claimed.count === 0) return;
+    // Часы больше не нужны: без этого сгоревшее слово могло бы списаться
+    // уже после конца партии.
+    for (const key of [...this.deadlines.keys()]) {
+      if (key.startsWith(`${duelId}:`)) this.deadlines.delete(key);
+    }
 
     const duel = await this.load(duelId);
     const best = hotColdReward(1, 0);
+    // Слово нашлось — победа в чистую, полные очки. Победа без
+    // разгаданного слова — половина, и под это одно правило подходят все
+    // случаи сразу: у обоих кончились слова, соперник сдался, соперник
+    // ушёл. Во всех трёх слово осталось неразгаданным.
+    const knockout = duel.players.some((player) => player.solvedAt !== null);
+    const share = knockout ? 1 : HOT_COLD_DUEL_POINTS_SHARE;
     for (const player of duel.players) {
       const drew = winnerId === null;
       const won = !drew && player.userId === winnerId;
@@ -509,13 +627,23 @@ export class HotColdDuelService {
       const closeness =
         player.bestRank === null ? 0 : hotColdHeat(player.bestRank);
       const xp = won
-        ? hotColdReward(Math.max(1, player.guessCount), 0).xp
+        ? Math.max(
+            1,
+            Math.round(
+              hotColdReward(Math.max(1, player.guessCount), 0).xp * share,
+            ),
+          )
         : Math.max(
             1,
             Math.round(best.xp * HOT_COLD_DUEL_LOSER_SHARE * closeness),
           );
       const coins = won
-        ? hotColdReward(Math.max(1, player.guessCount), 0).coins
+        ? Math.max(
+            1,
+            Math.round(
+              hotColdReward(Math.max(1, player.guessCount), 0).coins * share,
+            ),
+          )
         : Math.max(
             1,
             Math.round(best.coins * HOT_COLD_DUEL_LOSER_SHARE * closeness),
@@ -524,10 +652,13 @@ export class HotColdDuelService {
       // не наказывается: человек мог зайти ровно в тот момент, когда
       // соперник дописывал слово, и отнимать за это очки не за что.
       const ratingDelta = won
-        ? HOT_COLD_DUEL_WIN_RATING
+        ? Math.max(1, Math.round(HOT_COLD_DUEL_WIN_RATING * share))
         : drew || player.guessCount === 0
           ? 0
-          : HOT_COLD_DUEL_LOSS_RATING;
+          : // Знак сохраняем руками: `Math.round(-2.5)` даёт −2, и
+            // полагаться на округление отрицательных чисел здесь значит
+            // однажды удивиться.
+            -Math.max(1, Math.round(-HOT_COLD_DUEL_LOSS_RATING * share));
 
       const applied = await this.usersService.applyGameRewards(player.userId, {
         xpEarned: xp,

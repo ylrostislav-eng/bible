@@ -12,12 +12,26 @@ import { getAccessToken } from './api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
-/** Что игра ответила на последнее моё слово. */
-export interface DuelVerdict {
-  rank: number | null;
-  understood: string | null;
-  repeat: boolean;
-}
+/**
+ * Что случилось последним лично со мной.
+ *
+ * Одно поле на два события — ответ на моё слово и сгоревшее слово, —
+ * потому что показывается всегда только последнее. Два независимых поля
+ * пришлось бы гасить друг об друга вручную, и однажды одно из них
+ * осталось бы висеть поверх другого.
+ *
+ * `seq` растёт с каждым событием: по нему React перерисовывает сообщение
+ * заново, даже если текст тот же самый.
+ */
+export type DuelNotice =
+  | {
+      kind: 'verdict';
+      seq: number;
+      rank: number | null;
+      understood: string | null;
+      repeat: boolean;
+    }
+  | { kind: 'burnt'; seq: number };
 
 /**
  * Живая связь одной дуэли «горячо-холодно».
@@ -29,7 +43,7 @@ export interface DuelVerdict {
  */
 export function useHotColdDuel(duelId: string | null) {
   const [state, setState] = useState<HotColdDuelState | null>(null);
-  const [verdict, setVerdict] = useState<DuelVerdict | null>(null);
+  const [notice, setNotice] = useState<DuelNotice | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Растёт на каждый ход соперника — по нему экран моргает числом. */
   const [opponentMoves, setOpponentMoves] = useState(0);
@@ -40,7 +54,7 @@ export function useHotColdDuel(duelId: string | null) {
     // ошибка или чужое состояние остались бы висеть на экране новой.
     function resetForNewDuel() {
       setState(null);
-      setVerdict(null);
+      setNotice(null);
       setError(null);
       setOpponentMoves(0);
     }
@@ -72,12 +86,14 @@ export function useHotColdDuel(duelId: string | null) {
     }) {
       setState(payload.state);
       // Разбор ввода приходит только в ответ на собственный ход; при общей
-      // рассылке этих полей нет, и старый вердикт надо убрать, иначе он
-      // висел бы под чужим ходом.
-      setVerdict(
+      // рассылке этих полей нет, и старое сообщение надо убрать, иначе оно
+      // висело бы под чужим ходом.
+      setNotice((prev) =>
         payload.rank !== undefined
           ? {
-              rank: payload.rank,
+              kind: 'verdict',
+              seq: (prev?.seq ?? 0) + 1,
+              rank: payload.rank ?? null,
               understood: payload.understood ?? null,
               repeat: payload.repeat ?? false,
             }
@@ -87,6 +103,9 @@ export function useHotColdDuel(duelId: string | null) {
     function handleOpponentMoved() {
       setOpponentMoves((count) => count + 1);
     }
+    function handleBurnt() {
+      setNotice((prev) => ({ kind: 'burnt', seq: (prev?.seq ?? 0) + 1 }));
+    }
     function handleError(payload: { message: string }) {
       setError(payload.message);
     }
@@ -94,12 +113,14 @@ export function useHotColdDuel(duelId: string | null) {
     socket.on('connect', handleConnect);
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, handleState);
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.opponentMoved, handleOpponentMoved);
+    socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.burnt, handleBurnt);
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.error, handleError);
 
     return () => {
       socket.off('connect', handleConnect);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, handleState);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.opponentMoved, handleOpponentMoved);
+      socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.burnt, handleBurnt);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.error, handleError);
       socket.disconnect();
       socketRef.current = null;
@@ -128,5 +149,5 @@ export function useHotColdDuel(duelId: string | null) {
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.claim, { duelId });
   }, [duelId]);
 
-  return { state, verdict, error, opponentMoves, guess, surrender, claimWin };
+  return { state, notice, error, opponentMoves, guess, surrender, claimWin };
 }
