@@ -410,9 +410,8 @@ export class SemanticsService implements OnModuleInit {
    */
   rank(lemmaIndex: number): SemanticRanking {
     const count = this.lemmas.length;
-    const byMeaning = placesOf(
-      this.closeness(this.meaning, this.meaningNorms, lemmaIndex),
-    );
+    const sense = this.closeness(this.meaning, this.meaningNorms, lemmaIndex);
+    const byMeaning = placesOf(sense);
     const spoken = this.closeness(this.usage, this.usageNorms, lemmaIndex);
     const bySpeech = placesOf(spoken);
     const story = this.association(lemmaIndex);
@@ -420,10 +419,10 @@ export class SemanticsService implements OnModuleInit {
 
     const fused = new Float64Array(count);
     for (let j = 0; j < count; j += 1) {
-      fused[j] = 1 / (RANK_SMOOTHING + byMeaning[j]);
       // Мера, которая про это слово ничего не знает, молчит, а не голосует
       // за «далеко». Иначе половина словаря делила бы один и тот же хвост,
       // и «стул» подтягивался бы к «ковчегу» просто за компанию.
+      if (sense[j] >= 0) fused[j] += 1 / (RANK_SMOOTHING + byMeaning[j]);
       if (spoken[j] >= 0) fused[j] += 1 / (RANK_SMOOTHING + bySpeech[j]);
       if (story[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + byStory[j]);
     }

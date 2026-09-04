@@ -328,7 +328,11 @@ def main() -> int:
         if require_pos and parsed.tag.POS not in KEEP_POS:
             return
         lemma = normalize(parsed.normal_form)
-        if lemma not in vectors:
+        # Достаточно быть известным хотя бы одному источнику. Требовать
+        # обоих — значит выбрасывать слова вроде «актёра» и «скрижали»,
+        # которых нет в графе знаний, но которые прекрасно есть в живой
+        # речи; замер поймал ровно это.
+        if lemma not in vectors and navec.get(lemma) is None:
             return
         forms[surface] = lemma
         if lemma not in lemmas:
@@ -386,9 +390,10 @@ def main() -> int:
             out.write(bytes([len(encoded)]))
             out.write(encoded)
             out.write(struct.pack('<I', position[lemma]))
-        for word in order:
-            out.write(quantize(vectors[word]))
         blank = bytes(DIMENSIONS)
+        for word in order:
+            meaning = vectors.get(word)
+            out.write(blank if meaning is None else quantize(meaning))
         for word in order:
             # Нулевой вектор — «этого слова нет в корпусе». Слов, которых
             # Navec не знает, около шести процентов, и почти все они —
