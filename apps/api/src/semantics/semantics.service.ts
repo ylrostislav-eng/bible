@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
@@ -25,10 +26,10 @@ import {
  *    за библейскую связь, которой нет ни в одном общем корпусе, и молчит
  *    обо всём, чего в Писании нет.
  *
- * Словарь лежит в `apps/api/data/semantics-ru.bin` и собирается скриптом
- * `scripts/build-semantics.py`. Он в репозитории: тридцать мегабайт —
- * небольшая плата за то, что игра работает сразу после `git clone`, без
- * выкачивания моделей.
+ * Словарь лежит в `apps/api/data/semantics-ru.bin.gz` и собирается
+ * скриптом `scripts/build-semantics.py`. Он в репозитории: двадцать два
+ * мегабайта — небольшая плата за то, что игра работает сразу после
+ * `git clone`, без выкачивания моделей.
  *
  * Формат файла:
  *
@@ -60,10 +61,10 @@ const RANK_SMOOTHING = 60;
 /** Где искать словарь. Второй путь — для собранного `dist`, из которого
  * до корня репозитория на уровень дальше. */
 const CANDIDATE_PATHS = [
-  join(process.cwd(), 'data/semantics-ru.bin'),
-  join(process.cwd(), 'apps/api/data/semantics-ru.bin'),
-  join(__dirname, '../../data/semantics-ru.bin'),
-  join(__dirname, '../../../data/semantics-ru.bin'),
+  join(process.cwd(), 'data/semantics-ru.bin.gz'),
+  join(process.cwd(), 'apps/api/data/semantics-ru.bin.gz'),
+  join(__dirname, '../../data/semantics-ru.bin.gz'),
+  join(__dirname, '../../../data/semantics-ru.bin.gz'),
 ];
 
 export interface SemanticNeighbour {
@@ -94,11 +95,76 @@ export class SemanticRanking {
     return this.places.length;
   }
 
+  /**
+   * Однокоренное ли слово загаданному.
+   *
+   * «Свиток» и «свитка» — по словарю разные слова, а по виду одно, и
+   * показывать их рядом с ответом нельзя: подсказка становится ответом, а
+   * разбор после игры выглядит глупо. Сравниваем начало: у форм одного
+   * слова совпадает корень, у «листа» и «рулона» — ничего.
+   */
+  private sameRoot(word: string): boolean {
+    const secret = this.service.lemmaAt(this.secret);
+    const needed = Math.min(4, secret.length - 2);
+    if (needed <= 0) return word === secret;
+    let shared = 0;
+    while (
+      shared < word.length &&
+      shared < secret.length &&
+      word[shared] === secret[shared]
+    ) {
+      shared += 1;
+    }
+    return shared >= needed;
+  }
+
+  /**
+   * Слово, стоящее примерно на этом месте, — для подсказки.
+   *
+   * «Примерно» здесь по делу: точное место может быть уже названо игроком
+   * или оказаться однокоренным ответу, и тогда подсказка либо не
+   * подскажет ничего, либо выдаст всё. Ищем от заданного места в обе
+   * стороны, ближе к загаданному — в первую очередь.
+   */
+  wordAt(
+    rank: number,
+    exclude: ReadonlySet<string>,
+    suitable?: (lemmaIndex: number) => boolean,
+  ): SemanticNeighbour | null {
+    // В `order` первым лежит само загаданное слово, поэтому место `rank`
+    // — это позиция `rank - 1`; ниже первой позиции не опускаемся, иначе
+    // подсказкой окажется сам ответ.
+    const start = Math.min(Math.max(rank - 1, 1), this.order.length - 1);
+    // Сначала ищем среди подходящих, и только если таких рядом нет вовсе —
+    // среди любых. Иначе редкое слово в нужном месте выигрывало бы у
+    // обычного через одну позицию, а подсказка тем и полезна, что называет
+    // то, о чём человек мог подумать сам.
+    for (const filtered of [true, false]) {
+      if (filtered && !suitable) continue;
+      for (let step = 0; step < this.order.length; step += 1) {
+        for (const at of [start - step, start + step]) {
+          if (at < 1 || at >= this.order.length) continue;
+          const lemma = this.order[at];
+          if (filtered && suitable && !suitable(lemma)) continue;
+          const word = this.service.lemmaAt(lemma);
+          if (!exclude.has(word) && !this.sameRoot(word)) {
+            return { word, rank: at + 1 };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   /** Ближайшие слова — подсказки и «а вот что было рядом» после игры. */
   closest(count: number): SemanticNeighbour[] {
     const result: SemanticNeighbour[] = [];
-    for (let i = 1; i <= count && i < this.order.length; i += 1) {
-      result.push({ word: this.service.lemmaAt(this.order[i]), rank: i + 1 });
+    for (let i = 1; i < this.order.length && result.length < count; i += 1) {
+      const word = this.service.lemmaAt(this.order[i]);
+      // Однокоренные пропускаем: «свитка» рядом со «свитком» — не разбор,
+      // а описка, и выглядит так, будто игра не понимает, что показывает.
+      if (this.sameRoot(word)) continue;
+      result.push({ word, rank: i + 1 });
     }
     return result;
   }
@@ -142,7 +208,8 @@ export class SemanticsService implements OnModuleInit {
 
     const started = Date.now();
     try {
-      this.load(readFileSync(path));
+      // Файл лежит сжатым — см. `scripts/build-semantics.py`.
+      this.load(gunzipSync(readFileSync(path)));
     } catch (error) {
       this.failure = `Словарь смыслов не читается: ${(error as Error).message}`;
       this.logger.error(this.failure);
@@ -291,6 +358,22 @@ export class SemanticsService implements OnModuleInit {
 
   lemmaAt(index: number): string {
     return this.lemmas[index];
+  }
+
+  /** Сколько слов участвует в ранжировании — знаменатель для «места». */
+  get size(): number {
+    return this.lemmas.length;
+  }
+
+  /**
+   * В скольких эпизодах Писания встречается слово.
+   *
+   * Мера того, насколько слово в Писании «своё»: у «Пилата» эпизодов
+   * десятки, у «зилота» — единицы, хотя по общерусской частотности они
+   * одинаково редки.
+   */
+  episodesFor(lemmaIndex: number): number {
+    return this.episodeCount[lemmaIndex] ?? 0;
   }
 
   /** Номер леммы по любому написанию, включая падежные формы. */

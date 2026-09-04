@@ -11,6 +11,7 @@ import { validateEnv } from './config/env.validation';
 import { FriendsModule } from './friends/friends.module';
 import { GameModule } from './game/game.module';
 import { HealthModule } from './health/health.module';
+import { HotColdModule } from './hot-cold/hot-cold.module';
 import { LearnModule } from './learn/learn.module';
 import { AchievementsModule } from './achievements/achievements.module';
 import { AliasModule } from './alias/alias.module';
@@ -53,6 +54,7 @@ import { UsersModule } from './users/users.module';
     AchievementsModule,
     AliasModule,
     DailyWordModule,
+    HotColdModule,
     TelemetryModule,
   ],
   controllers: [AppController],

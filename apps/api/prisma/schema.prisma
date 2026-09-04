@@ -135,6 +135,7 @@ model User {
   achievements UserAchievement[]
   aliasMatches AliasMatch[]
   dailyWords   DailyWordAttempt[]
+  hotColdDays  HotColdAttempt[]
 
   abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
   abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
@@ -807,6 +808,7 @@ model AliasWord {
   createdAt DateTime @default(now())
 
   dailyAttempts DailyWordAttempt[]
+  hotColdAttempts HotColdAttempt[]
 
   @@index([difficulty])
   @@index([category])
@@ -874,4 +876,42 @@ model DailyWordAttempt {
   @@unique([userId, date])
   @@index([date])
   @@map("daily_word_attempts")
+}
+
+/// Партия «Горячо-холодно» за один день.
+///
+/// Догадки лежат одним полем JSON, а не отдельной таблицей: их бывает
+/// сотня за игру, читаются они всегда целиком и только своим владельцем, и
+/// заводить ради этого строку на каждое слово значило бы платить за
+/// возможность, которая никому не нужна.
+model HotColdAttempt {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date   DateTime @db.Date
+  wordId String
+  word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  /// Массив `{ word, rank, revealed? }` по порядку появления.
+  guesses Json @default("[]")
+
+  guessCount Int     @default(0)
+  hintsUsed  Int     @default(0)
+  solved     Boolean @default(false)
+  /// Проставляется, когда слово угадано. Пока `null`, день можно доиграть:
+  /// попытки здесь не ограничены, и «проиграть» эту игру нельзя — можно
+  /// только не доиграть.
+  finishedAt DateTime?
+
+  xpEarned    Int @default(0)
+  coinsEarned Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("hot_cold_attempts")
 }

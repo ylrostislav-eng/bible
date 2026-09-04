@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { DailyGoalCard } from '@/components/daily-goal-card';
 import { DailyWordCard } from '@/components/daily-word-card';
+import { HotColdCard } from '@/components/hot-cold-card';
 import { LearnIcon, PlayIcon, SettingsIcon, TournamentIcon } from '@/components/icons/nav-icons';
 
 const QUICK_LINKS = [
@@ -38,6 +39,10 @@ export default function HomePage() {
       {/* Сразу под целью дня: обе карточки про сегодня, и слово дня — самый
           короткий способ эту цель начать. */}
       <DailyWordCard />
+
+      {/* Вторая игра дня, с другим заходом: не пять попыток по описанию, а
+          сколько угодно слов по расстоянию. */}
+      <HotColdCard />
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="flex-col items-center text-center">

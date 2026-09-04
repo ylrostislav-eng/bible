@@ -61,7 +61,7 @@
     pip install wordfreq pymorphy3 pymorphy3-dicts-ru navec
     python3 scripts/build-semantics.py
 
-Результат кладётся в apps/api/data/semantics-ru.bin и коммитится в
+Результат кладётся в apps/api/data/semantics-ru.bin.gz и коммитится в
 репозиторий: он маленький, а собирать его на каждой машине незачем.
 """
 from __future__ import annotations
@@ -75,7 +75,7 @@ from array import array
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT_FILE = ROOT / 'apps/api/data/semantics-ru.bin'
+OUT_FILE = ROOT / 'apps/api/data/semantics-ru.bin.gz'
 CACHE_WORDS = ROOT / '.cache/numberbatch-ru.words'
 CACHE_VECTORS = ROOT / '.cache/numberbatch-ru.f32'
 CACHE_NAVEC = ROOT / '.cache/navec-hudlit.tar'
@@ -364,6 +364,27 @@ def main() -> int:
     order = sorted(lemmas, key=lambda w: (-lemmas[w], w))
     position = {word: i for i, word in enumerate(order)}
 
+    # Все падежи и числа каждого слова, а не только встреченные в текстах.
+    #
+    # Без этого игра не узнаёт ответ, написанный в другом падеже. Живая
+    # проверка поймала это на «Самсоном»: формы не было в таблице, разбор
+    # опечаток притянул её к постороннему «самсонов», и человек, назвавший
+    # верное слово, получил сто восемьдесят пятое место вместо победы.
+    #
+    # Обходим по убыванию частоты и не перезаписываем уже занятое: если
+    # форма годится двум словам, она достаётся тому, которое чаще, а
+    # написания, взятые из настоящих текстов, остаются как есть.
+    print('Раскрываю словоформы…')
+    for lemma in order:
+        for parsed in morph.parse(lemma):
+            if normalize(parsed.normal_form) != lemma:
+                continue
+            for shape in parsed.lexeme:
+                surface = normalize(shape.word)
+                if surface not in forms and CYRILLIC.match(surface):
+                    forms[surface] = lemma
+    print(f'  форм стало: {len(forms)}')
+
     print('Считаю связанность по эпизодам…')
     episodes = association(contexts, forms, position)
     postings = sum(len(e) for e in episodes)
@@ -374,7 +395,11 @@ def main() -> int:
 
     extra_forms = [(f, l) for f, l in sorted(forms.items()) if f not in position]
 
-    with OUT_FILE.open('wb') as out:
+    # Пишем сжатым: без этого файл весит под шестьдесят мегабайт, а с
+    # ним — двадцать два. Словоформы и сами слова жмутся втрое, и
+    # полсекунды на распаковку при старте дешевле, чем сорок лишних
+    # мегабайт в каждом клоне репозитория.
+    with gzip.open(OUT_FILE, 'wb', compresslevel=6) as out:
         out.write(MAGIC)
         out.write(
             struct.pack(

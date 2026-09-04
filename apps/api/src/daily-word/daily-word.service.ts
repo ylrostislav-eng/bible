@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import {
   ALIAS_CATEGORY_LABELS,
   DAILY_WORD_HINT_COUNT,
@@ -19,6 +18,12 @@ import {
   type DailyWordHint,
   type DailyWordState,
 } from '@bible-arena/shared';
+import {
+  dateLabel,
+  dayIndex,
+  localDate,
+  shuffledByKey,
+} from '../common/local-day';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 
@@ -106,31 +111,6 @@ export class DailyWordService {
   // ---- какое слово сегодня ----
 
   /**
-   * Локальная дата игрока в виде полуночи по UTC — тот же приём, что у
-   * серии дней, и по той же причине: слово должно меняться в его полночь, а
-   * не в чьей-то чужой.
-   *
-   * Следствие, которое стоит понимать: у двух друзей из разных часовых
-   * поясов слово в один и тот же момент может отличаться. Это честнее
-   * обратного варианта — общего для всех дня по UTC, при котором у половины
-   * аудитории «сегодняшнее» слово менялось бы посреди дня.
-   */
-  private localDate(timezoneOffsetMinutes: number): Date {
-    const shifted = new Date(Date.now() - timezoneOffsetMinutes * 60_000);
-    return new Date(
-      Date.UTC(
-        shifted.getUTCFullYear(),
-        shifted.getUTCMonth(),
-        shifted.getUTCDate(),
-      ),
-    );
-  }
-
-  private dateLabel(date: Date): string {
-    return date.toISOString().slice(0, 10);
-  }
-
-  /**
    * Выбирает слово дня.
    *
    * Порядок слов — стабильная псевдослучайная перестановка: сортируем по
@@ -163,10 +143,8 @@ export class DailyWordService {
       );
     }
 
-    const ordered = [...words].sort((a, b) =>
-      hashOf(a.id).localeCompare(hashOf(b.id)),
-    );
-    return ordered[dailyWordIndex(date, ordered.length)];
+    const ordered = shuffledByKey(words, (word) => word.id);
+    return ordered[dayIndex(date, ordered.length)];
   }
 
   // ---- состояние дня ----
@@ -175,7 +153,7 @@ export class DailyWordService {
     userId: string,
     timezoneOffsetMinutes: number,
   ) {
-    const date = this.localDate(timezoneOffsetMinutes);
+    const date = localDate(timezoneOffsetMinutes);
     const existing = await this.prisma.dailyWordAttempt.findUnique({
       where: { userId_date: { userId, date } },
       include: { word: true },
@@ -211,7 +189,7 @@ export class DailyWordService {
     const reference = toReference(attempt.word);
 
     return {
-      date: this.dateLabel(date),
+      date: dateLabel(date),
       gloss: attempt.word.gloss,
       attemptsUsed: attempt.attemptsUsed,
       attemptsLeft: Math.max(0, DAILY_WORD_MAX_ATTEMPTS - attempt.attemptsUsed),
@@ -364,7 +342,7 @@ export class DailyWordService {
     userId: string,
     timezoneOffsetMinutes: number,
   ): Promise<DailyWordFriendsResponse> {
-    const date = this.localDate(timezoneOffsetMinutes);
+    const date = localDate(timezoneOffsetMinutes);
 
     const friendships = await this.prisma.friendship.findMany({
       where: { userId },
@@ -412,7 +390,7 @@ export class DailyWordService {
       .sort(sortByResult);
 
     return {
-      date: this.dateLabel(date),
+      date: dateLabel(date),
       me: toResult(userId, attemptByUser.get(userId)),
       friends,
     };
@@ -429,22 +407,6 @@ function sortByResult(
   const hints = (a.hintsUsed ?? 99) - (b.hintsUsed ?? 99);
   if (hints !== 0) return hints;
   return (a.attemptsUsed ?? 99) - (b.attemptsUsed ?? 99);
-}
-
-/**
- * Позиция дня в банке. Вынесена отдельной чистой функцией не ради красоты:
- * обещание «520 слов — 520 дней без повтора» иначе никак не проверить, а
- * необещанное поведение выбора слова заметят только через год.
- */
-export function dailyWordIndex(date: Date, bankSize: number): number {
-  const dayNumber = Math.floor(date.getTime() / 86_400_000);
-  // Остаток может быть отрицательным для дат до 1970 — на практике нет, но
-  // привести к неотрицательному дешевле, чем потом это ловить.
-  return ((dayNumber % bankSize) + bankSize) % bankSize;
-}
-
-function hashOf(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
 }
 
 function toReference(word: WordRow): AliasReference | null {
