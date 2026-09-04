@@ -6,7 +6,22 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useActiveGame } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
+import type { ActiveGameType } from '@/lib/active-game-context';
 import { HomeIcon, PlayIcon, RatingIcon, FriendsIcon, ProfileIcon } from '../icons/nav-icons';
+
+/**
+ * Куда ведёт «Играть», пока идёт партия.
+ *
+ * Таблицей, а не подстановкой типа в `/play/${type}`: «горячо-холодно»
+ * живёт по своему адресу, и склейка отправила бы игрока на
+ * несуществующую страницу. Один режим уже сломал бы это молча.
+ */
+const RESUME_HREF: Record<ActiveGameType, string> = {
+  duel: '/play/duel',
+  room: '/play/room',
+  alias: '/play/alias',
+  'hot-cold-duel': '/hot-cold/duel',
+};
 
 const TABS = [
   { href: '/', label: 'Главная', icon: HomeIcon },
@@ -33,7 +48,7 @@ export function BottomNav() {
           // in the background (see ActiveGameProvider) no matter which tab
           // you're on, so this is how you find your way back to it.
           const isPlayTab = href === '/play';
-          const targetHref = isPlayTab && activeGame ? `/play/${activeGame.type}` : href;
+          const targetHref = isPlayTab && activeGame ? RESUME_HREF[activeGame.type] : href;
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <li key={href} className="flex-1">

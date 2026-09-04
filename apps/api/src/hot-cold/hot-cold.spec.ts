@@ -1,4 +1,10 @@
 import {
+  HOT_COLD_DUEL_HINTS,
+  HOT_COLD_DUEL_LOSER_SHARE,
+  HOT_COLD_DUEL_LOSS_RATING,
+  HOT_COLD_DUEL_WIN_RATING,
+  hotColdDuelOutcomeLabel,
+  type HotColdDuelState,
   HOT_COLD_FREE_REWARD_SHARE,
   HOT_COLD_FREE_XP_PER_DAY,
   HOT_COLD_HINT_FLOOR,
@@ -85,6 +91,58 @@ describe('свободные партии', () => {
       hotColdReward(1, 0).xp * HOT_COLD_FREE_REWARD_SHARE,
     );
     expect(HOT_COLD_FREE_XP_PER_DAY / perGame).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('правила дуэли', () => {
+  /** Заготовка состояния: в тестах меняется только то, что проверяется. */
+  const duel = (patch: Partial<HotColdDuelState>): HotColdDuelState => ({
+    id: 'd1',
+    status: 'FINISHED',
+    inviteCode: 'ABC123',
+    vocabulary: 50_000,
+    guesses: [],
+    bestRank: null,
+    solved: false,
+    surrendered: false,
+    opponent: null,
+    winnerId: null,
+    word: null,
+    gloss: null,
+    reward: null,
+    ...patch,
+  });
+
+  it('победа стоит дороже поражения, и поражение не бесплатно', () => {
+    expect(HOT_COLD_DUEL_WIN_RATING).toBeGreaterThan(0);
+    expect(HOT_COLD_DUEL_LOSS_RATING).toBeLessThan(0);
+    // Проигравший играл и думал — совсем ни с чем он не уходит.
+    expect(HOT_COLD_DUEL_LOSER_SHARE).toBeGreaterThan(0);
+    // Но если платить поровну, исход перестаёт что-либо значить.
+    expect(HOT_COLD_DUEL_LOSER_SHARE).toBeLessThan(0.5);
+  });
+
+  it('подсказок в дуэли нет', () => {
+    // Не забывчивость: в гонке подсказка приближает к ответу быстрее
+    // любого хода, а платит за неё проигравший. Брать её было бы
+    // обязательно, то есть это не выбор, а лишнее нажатие.
+    expect(HOT_COLD_DUEL_HINTS).toBe(0);
+  });
+
+  it('исход называется с точки зрения смотрящего', () => {
+    const me = 'u1';
+    expect(hotColdDuelOutcomeLabel(duel({ winnerId: me }), me)).toBe(
+      'Вы нашли первым',
+    );
+    expect(hotColdDuelOutcomeLabel(duel({ winnerId: 'u2' }), me)).toBe(
+      'Соперник нашёл первым',
+    );
+    expect(
+      hotColdDuelOutcomeLabel(duel({ winnerId: 'u2', surrendered: true }), me),
+    ).toBe('Вы сдались');
+    expect(hotColdDuelOutcomeLabel(duel({ status: 'ABANDONED' }), me)).toBe(
+      'Дуэль не состоялась',
+    );
   });
 });
 

@@ -6,7 +6,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
  * переподключения (партия целиком на устройстве и никуда не девается), а
  * ради двух побочных эффектов: вкладка «Играть» возвращает в неё, а входящие
  * вызовы и приглашения не всплывают посреди раунда. */
-export type ActiveGameType = 'duel' | 'room' | 'alias';
+export type ActiveGameType = 'duel' | 'room' | 'alias' | 'hot-cold-duel';
 
 export interface ActiveGame {
   type: ActiveGameType;
@@ -40,7 +40,10 @@ function readStored(): ActiveGame | null {
       typeof parsed === 'object' &&
       'type' in parsed &&
       'sessionId' in parsed &&
-      (parsed.type === 'duel' || parsed.type === 'room' || parsed.type === 'alias') &&
+      (parsed.type === 'duel' ||
+        parsed.type === 'room' ||
+        parsed.type === 'alias' ||
+        parsed.type === 'hot-cold-duel') &&
       typeof parsed.sessionId === 'string'
     ) {
       const status =

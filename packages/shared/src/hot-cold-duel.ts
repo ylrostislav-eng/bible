@@ -1,0 +1,164 @@
+/**
+ * Дуэль «горячо-холодно»: двое ищут одно слово наперегонки.
+ *
+ * Соло-режим силён обратной связью, но у него нет второго человека, и
+ * через неделю он превращается в кроссворд: интересно, но не тянет
+ * вернуться. Здесь то же самое поле, но напротив сидит живой соперник.
+ *
+ * ## Главное правило: числа видно, слова — нет
+ *
+ * Каждый видит, на каком месте стоят слова противника, но не сами слова.
+ * Это не половинчатость, а суть режима. Показать слова — значит отдать
+ * игру: соперник просто перепишет чужой список и обгонит на один ход.
+ * Не показывать ничего — значит играть в одиночку рядом с кем-то.
+ *
+ * А голое число давит именно так, как надо. Ты стоишь на 400, у него
+ * вдруг 12 — ты знаешь, что он почти нашёл, знаешь, что времени нет, и не
+ * знаешь, куда он смотрит. Отыграться можно только собственной головой.
+ */
+
+/** Что сейчас с дуэлью. */
+export type HotColdDuelStatus = 'WAITING' | 'IN_PROGRESS' | 'FINISHED' | 'ABANDONED';
+
+/** Адрес WebSocket-комнаты дуэли. */
+export const HOT_COLD_DUEL_WS_NAMESPACE = '/hot-cold-duel';
+
+/** Что шлёт клиент. */
+export const HOT_COLD_DUEL_WS_EVENTS = {
+  join: 'duel:join',
+  guess: 'duel:guess',
+  surrender: 'duel:surrender',
+} as const;
+
+/** Что шлёт сервер. */
+export const HOT_COLD_DUEL_WS_SERVER_EVENTS = {
+  state: 'duel:state',
+  /** Ход противника — чтобы подсветить число, а не перерисовать весь экран. */
+  opponentMoved: 'duel:opponent-moved',
+  error: 'duel:error',
+} as const;
+
+/**
+ * Сколько дуэль ждёт второго игрока, прежде чем считаться брошенной.
+ *
+ * Достаточно, чтобы позвать друга в мессенджере и дождаться, пока он
+ * откроет приложение; недостаточно, чтобы вчерашние приглашения копились
+ * в списке.
+ */
+export const HOT_COLD_DUEL_WAIT_MS = 10 * 60_000;
+
+/**
+ * Сколько дуэль живёт без единого хода с обеих сторон, прежде чем её
+ * закрывают.
+ *
+ * Не таймер партии: игра сама по себе может идти долго, и торопить в ней
+ * нечего. Это про случай, когда оба закрыли вкладку и не вернутся, — иначе
+ * такие дуэли висели бы у обоих в «активных» вечно.
+ */
+export const HOT_COLD_DUEL_IDLE_MS = 30 * 60_000;
+
+/**
+ * Подсказок в дуэли нет — намеренно.
+ *
+ * В одиночной игре подсказка стоит четверти награды, и это честный обмен.
+ * В гонке цена другая: подсказка приближает к ответу быстрее, чем любой
+ * ход, а расплата — в очках, которые всё равно достаются победителю. То
+ * есть брать её было бы обязательно, а «обязательная кнопка» — это не
+ * выбор, а лишнее нажатие.
+ */
+export const HOT_COLD_DUEL_HINTS = 0;
+
+/** Рейтинг за исход. Те же числа, что в дуэли по вопросам. */
+export const HOT_COLD_DUEL_WIN_RATING = 10;
+export const HOT_COLD_DUEL_LOSS_RATING = -5;
+
+/**
+ * Какую долю обычной награды получает проигравший.
+ *
+ * Не ноль: он играл, думал и часто подошёл близко. Но и не поровну —
+ * иначе исход перестаёт что-либо значить.
+ */
+export const HOT_COLD_DUEL_LOSER_SHARE = 0.3;
+
+/** Свои догадки: со словами. */
+export interface HotColdDuelGuess {
+  word: string;
+  rank: number;
+}
+
+/**
+ * Противник — только то, что можно показать.
+ *
+ * Здесь нет и не должно появиться поля со словами. Если оно однажды
+ * понадобится (например, в разборе после игры), его надо заполнять
+ * отдельно и только когда дуэль закончена.
+ */
+export interface HotColdDuelOpponent {
+  userId: string;
+  /** Пусто, пока человек не прошёл онбординг, — как и везде в приложении. */
+  nickname: string | null;
+  avatarUrl: string | null;
+  /** Места его слов по порядку ходов. Сами слова — никогда. */
+  ranks: number[];
+  /** Лучшее место, оно же «насколько он близко». */
+  bestRank: number | null;
+  guessCount: number;
+  solved: boolean;
+  surrendered: boolean;
+  /** На связи ли он прямо сейчас. */
+  online: boolean;
+}
+
+export interface HotColdDuelReward {
+  xp: number;
+  coins: number;
+  ratingDelta: number;
+  ratingCapped: boolean;
+}
+
+export interface HotColdDuelState {
+  id: string;
+  status: HotColdDuelStatus;
+  /** Код, которым зовут второго. Показывается, пока ждём. */
+  inviteCode: string;
+  /** Сколько слов участвует в ранжировании: знаменатель для «места». */
+  vocabulary: number;
+
+  /** Свои догадки — со словами, ближайшая сверху. */
+  guesses: HotColdDuelGuess[];
+  bestRank: number | null;
+  solved: boolean;
+  surrendered: boolean;
+
+  opponent: HotColdDuelOpponent | null;
+
+  /** Кто победил. Пусто, пока идёт игра. */
+  winnerId: string | null;
+  /** Загаданное слово — только после конца. */
+  word: string | null;
+  gloss: string | null;
+  /** Что начислено лично вам. Появляется в конце. */
+  reward: HotColdDuelReward | null;
+}
+
+/** Что сказать про исход. */
+export function hotColdDuelOutcomeLabel(state: HotColdDuelState, myUserId: string): string {
+  if (state.status === 'ABANDONED') return 'Дуэль не состоялась';
+  if (state.status !== 'FINISHED') return '';
+  if (state.winnerId === null) return 'Ничья: оба сдались';
+  if (state.winnerId === myUserId) {
+    return state.opponent?.surrendered ? 'Соперник сдался' : 'Вы нашли первым';
+  }
+  return state.surrendered ? 'Вы сдались' : 'Соперник нашёл первым';
+}
+
+/** Строка, которой хвастаются друзьям. Слово в ней не называется. */
+export function hotColdDuelShareText(input: {
+  won: boolean;
+  guessCount: number;
+  opponentGuessCount: number;
+}): string {
+  return input.won
+    ? `Горячо-холодно, дуэль: нашёл за ${input.guessCount} против ${input.opponentGuessCount}`
+    : `Горячо-холодно, дуэль: не успел — ${input.guessCount} попыток`;
+}

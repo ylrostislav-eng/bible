@@ -154,3 +154,32 @@ a {
     animation: none;
   }
 }
+
+/* Ход соперника в дуэли «горячо-холодно» (hot-cold/duel/page.tsx).
+ * Перезапускается сменой React-ключа на счётчике ходов — тем же приёмом,
+ * что отсчёт перед дуэлью, и по той же причине: эффект с таймером ради
+ * одного мигания это лишняя перерисовка на каждый чужой ход.
+ *
+ * Главное событие партии — «он подобрался» — иначе прошло бы незаметно
+ * для того, кто в этот момент печатает своё слово. */
+@keyframes hot-cold-rival-flash {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2px var(--color-primary);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.hot-cold-rival-flash {
+  animation: hot-cold-rival-flash 0.7s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hot-cold-rival-flash {
+    animation: none;
+  }
+}

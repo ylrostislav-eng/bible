@@ -23,7 +23,7 @@ model User {
   /// Self-declared age band, asked once during onboarding. Null only for
   /// accounts created before this existed — they keep full access, and the
   /// app asks the next time the profile screen is opened.
-  ageBand AgeBand?
+  ageBand             AgeBand?
   /// Set when the guardian screen shown for the CHILD band was accepted.
   /// Kept as a timestamp rather than a flag so it stays meaningful if the
   /// wording later changes.
@@ -31,7 +31,7 @@ model User {
   /// scrypt hash of the optional guardian PIN (see `users.service.ts`).
   /// While set, leaving the CHILD band requires the PIN — the point is to
   /// stop a child flipping the setting themselves, not to secure anything.
-  guardianPinHash String?
+  guardianPinHash     String?
 
   level      Int @default(1)
   experience Int @default(0)
@@ -137,6 +137,7 @@ model User {
   dailyWords   DailyWordAttempt[]
   hotColdDays  HotColdAttempt[]
   hotColdNotes HotColdFeedback[]
+  hotColdDuels HotColdDuelPlayer[]
 
   abuseReportsFiled   AbuseReport[] @relation("AbuseReportsFiled")
   abuseReportsAgainst AbuseReport[] @relation("AbuseReportsAgainst")
@@ -479,13 +480,13 @@ model GameSession {
   maxParticipants Int?
 
   /// Index (0-based) of the question currently being answered.
-  currentOrder Int @default(0)
+  currentOrder             Int       @default(0)
   /// Server timestamp when the current question was presented — the only
   /// source of truth for speed-based scoring; client-reported timings are
   /// never trusted.
   currentQuestionStartedAt DateTime?
   /// Seconds allowed per question in a duel/room; unused for SOLO.
-  timeLimitSeconds Int @default(15)
+  timeLimitSeconds         Int       @default(15)
 
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
@@ -514,10 +515,10 @@ model GameParticipant {
   correctCount Int @default(0)
   score        Int @default(0)
   /// Current streak of consecutive correct answers, reset to 0 on a miss.
-  streak Int @default(0)
+  streak       Int @default(0)
 
-  xpEarned    Int @default(0)
-  coinsEarned Int @default(0)
+  xpEarned     Int     @default(0)
+  coinsEarned  Int     @default(0)
   /// Rating actually applied for this game (duels/rooms only; solo never
   /// touches rating). Zero if `ratingCapped` — the daily cap clipped it.
   ratingDelta  Int     @default(0)
@@ -598,7 +599,7 @@ model GameAnswer {
   timeTakenMs   Int?
   /// Points this answer contributed to the participant's score (duels only;
   /// solo scoring is flat and doesn't need a per-question breakdown).
-  scoreDelta Int?
+  scoreDelta    Int?
 
   /// This question's 4 options, shuffled independently per participant when
   /// the round is set up (so the answer position can't be memorized or
@@ -719,8 +720,8 @@ enum AbuseReportStatus {
 model AbuseReport {
   id String @id @default(cuid())
 
-  kind   AbuseReportKind
-  reason AbuseReportReason
+  kind    AbuseReportKind
+  reason  AbuseReportReason
   /// Optional free-text detail from the reporter.
   comment String?
 
@@ -785,7 +786,7 @@ model UserAchievement {
 model AliasWord {
   id String @id @default(cuid())
 
-  word       String         @unique
+  word       String          @unique
   difficulty AliasDifficulty
   category   AliasCategory
   testament  AliasTestament
@@ -808,9 +809,10 @@ model AliasWord {
 
   createdAt DateTime @default(now())
 
-  dailyAttempts DailyWordAttempt[]
+  dailyAttempts   DailyWordAttempt[]
   hotColdAttempts HotColdAttempt[]
   hotColdNotes    HotColdFeedback[]
+  hotColdDuels    HotColdDuel[]
 
   @@index([difficulty])
   @@index([category])
@@ -858,13 +860,13 @@ model DailyWordAttempt {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  date   DateTime @db.Date
+  date   DateTime  @db.Date
   wordId String
   word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
-  attemptsUsed Int     @default(0)
-  hintsUsed    Int     @default(0)
-  solved       Boolean @default(false)
+  attemptsUsed Int       @default(0)
+  hintsUsed    Int       @default(0)
+  solved       Boolean   @default(false)
   /// Проставляется, когда игра за день закончена — угадал или потратил все
   /// попытки. Пока `null`, день ещё можно доиграть.
   finishedAt   DateTime?
@@ -892,20 +894,20 @@ model HotColdAttempt {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  date   DateTime @db.Date
+  date   DateTime  @db.Date
   /// Номер партии за день. Ноль — слово дня, общее для всех; дальше идут
   /// свободные, которые игрок берёт сам, сколько захочет. Без этого поля
   /// партия была одна на день, и «ещё одну» сказать было некому.
-  round  Int      @default(0)
+  round  Int       @default(0)
   wordId String
   word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
   /// Массив `{ word, rank, revealed? }` по порядку появления.
   guesses Json @default("[]")
 
-  guessCount Int     @default(0)
-  hintsUsed  Int     @default(0)
-  solved     Boolean @default(false)
+  guessCount Int       @default(0)
+  hintsUsed  Int       @default(0)
+  solved     Boolean   @default(false)
   /// Проставляется, когда слово угадано. Пока `null`, день можно доиграть:
   /// попытки здесь не ограничены, и «проиграть» эту игру нельзя — можно
   /// только не доиграть.
@@ -954,4 +956,91 @@ model HotColdFeedback {
   @@unique([userId, date, wordId, guess])
   @@index([wordId, guess])
   @@map("hot_cold_feedback")
+}
+
+enum HotColdDuelStatus {
+  /// Создана, второй игрок ещё не зашёл.
+  WAITING
+  IN_PROGRESS
+  FINISHED
+  /// Никто не пришёл, или оба ушли, не доиграв.
+  ABANDONED
+}
+
+/// Дуэль «горячо-холодно»: двое ищут одно и то же слово наперегонки.
+///
+/// Отдельная модель, а не `GameSession`: та построена вокруг вопросов —
+/// `questionCount`, `currentOrder`, таймер на вопрос, таблица ответов.
+/// Здесь нет ни вопросов, ни ходов по очереди, ни таймера; общего между
+/// режимами — только «двое играют вместе», и ради этого одного тащить
+/// модель, у которой половина полей стала бы `null`, невыгодно.
+///
+/// Слово выбирается не из тех, что игроки уже сыграли сегодня в одиночку:
+/// иначе один из двоих начинал бы, зная ответ.
+model HotColdDuel {
+  id String @id @default(cuid())
+
+  status HotColdDuelStatus @default(WAITING)
+
+  /// Код для присоединения. Есть всегда — даже у прямого вызова другу, где
+  /// он служит запасным способом позвать, если уведомление не дошло.
+  inviteCode String @unique
+
+  /// Заполнено, если это вызов конкретному другу: тогда по коду зайдёт
+  /// только он. Пусто — зайдёт любой, кому код дали.
+  targetUserId String?
+
+  wordId String
+  word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  /// Кто угадал первым. Пусто, если дуэль ещё идёт или оба сдались.
+  winnerId String?
+
+  createdAt  DateTime  @default(now())
+  /// Когда зашёл второй игрок и пошла игра.
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  players HotColdDuelPlayer[]
+
+  @@index([targetUserId, status])
+  @@index([status, createdAt])
+  @@map("hot_cold_duels")
+}
+
+/// Один игрок в дуэли. Свои догадки лежат здесь же.
+///
+/// Отдельная строка на игрока, а не общий список ходов, ровно затем, чтобы
+/// двое писали в разные строки: гонка здесь буквальная, и два
+/// одновременных хода не должны спорить за одну запись.
+model HotColdDuelPlayer {
+  id String @id @default(cuid())
+
+  duelId String
+  duel   HotColdDuel @relation(fields: [duelId], references: [id], onDelete: Cascade)
+  userId String
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Массив `{ word, rank }`. Противнику из него уезжают ТОЛЬКО числа:
+  /// увидеть чужие слова значит списать их, и вся игра кончится.
+  guesses Json @default("[]")
+
+  guessCount Int  @default(0)
+  /// Лучшее (наименьшее) место — им меряется, кто ближе.
+  bestRank   Int?
+
+  solvedAt      DateTime?
+  /// Сдался: противник побеждает, но это не то же самое, что уйти молча.
+  surrenderedAt DateTime?
+
+  xpEarned     Int     @default(0)
+  coinsEarned  Int     @default(0)
+  ratingDelta  Int     @default(0)
+  ratingCapped Boolean @default(false)
+
+  joinedAt DateTime @default(now())
+
+  @@unique([duelId, userId])
+  @@index([userId, duelId])
+  @@map("hot_cold_duel_players")
 }

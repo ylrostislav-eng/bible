@@ -34,6 +34,25 @@ export default function PlayModePage() {
         </Card>
       </Link>
 
+      {/* Вторая дуэль, с другой механикой: не вопросы с вариантами, а
+          гонка за одним словом. Стоит рядом с первой, потому что выбор
+          между ними — это выбор настроения, а не режима. */}
+      <Link href="/hot-cold/duel">
+        <Card className="flex-row items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-hover">
+            <span className="text-xl" aria-hidden>
+              🔥
+            </span>
+          </div>
+          <div>
+            <p className="font-semibold">Горячо-холодно, дуэль</p>
+            <p className="text-sm text-text-secondary">
+              Одно слово на двоих. Видно, насколько близко соперник, но не его слова
+            </p>
+          </div>
+        </Card>
+      </Link>
+
       {/* Единственный режим, где играют не через сеть, а вокруг одного
           телефона — поэтому он и стоит отдельно от дуэлей и комнат. */}
       <Link href="/play/alias">
