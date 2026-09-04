@@ -106,6 +106,7 @@ describe('правила дуэли', () => {
     solved: false,
     surrendered: false,
     opponent: null,
+    canClaimWin: false,
     winnerId: null,
     word: null,
     gloss: null,
@@ -129,17 +130,65 @@ describe('правила дуэли', () => {
     expect(HOT_COLD_DUEL_HINTS).toBe(0);
   });
 
-  it('исход называется с точки зрения смотрящего', () => {
+  /** Соперник в состоянии — с полями, которые различают исходы. */
+  const rival = (
+    patch: Partial<NonNullable<HotColdDuelState['opponent']>>,
+  ) => ({
+    userId: 'u2',
+    nickname: 'соперник',
+    avatarUrl: null,
+    ranks: [],
+    bestRank: null,
+    guessCount: 0,
+    solved: false,
+    surrendered: false,
+    online: true,
+    ...patch,
+  });
+
+  it('каждый из пяти исходов называется своим именем', () => {
     const me = 'u1';
-    expect(hotColdDuelOutcomeLabel(duel({ winnerId: me }), me)).toBe(
-      'Вы нашли первым',
-    );
-    expect(hotColdDuelOutcomeLabel(duel({ winnerId: 'u2' }), me)).toBe(
-      'Соперник нашёл первым',
-    );
+    // Партию можно закончить пятью разными способами, и человек должен
+    // понимать, который случился с ним: «вы проиграли» после того, как
+    // соперник просто ушёл, — неправда, за которую обидно.
+    expect(
+      hotColdDuelOutcomeLabel(duel({ winnerId: me, solved: true }), me),
+    ).toBe('Вы нашли первым');
+    expect(
+      hotColdDuelOutcomeLabel(
+        duel({ winnerId: me, opponent: rival({ surrendered: true }) }),
+        me,
+      ),
+    ).toBe('Соперник сдался');
+    // Победа есть, но слово нашёл не я и соперник не сдавался — значит,
+    // он ушёл и не вернулся.
+    expect(
+      hotColdDuelOutcomeLabel(duel({ winnerId: me, opponent: rival({}) }), me),
+    ).toBe('Соперник не вернулся — победа ваша');
+    expect(
+      hotColdDuelOutcomeLabel(
+        duel({ winnerId: 'u2', opponent: rival({ solved: true }) }),
+        me,
+      ),
+    ).toBe('Соперник нашёл первым');
     expect(
       hotColdDuelOutcomeLabel(duel({ winnerId: 'u2', surrendered: true }), me),
     ).toBe('Вы сдались');
+  });
+
+  it('ничья — это законченная партия без победителя', () => {
+    const me = 'u1';
+    // Так кончается брошенная обоими партия, где никто не подошёл ближе.
+    // Отличать её от идущей надо по статусу, а не по пустому winnerId.
+    expect(
+      hotColdDuelOutcomeLabel(duel({ status: 'FINISHED', winnerId: null }), me),
+    ).toBe('Ничья: никто не нашёл слово');
+    expect(
+      hotColdDuelOutcomeLabel(
+        duel({ status: 'IN_PROGRESS', winnerId: null }),
+        me,
+      ),
+    ).toBe('');
     expect(hotColdDuelOutcomeLabel(duel({ status: 'ABANDONED' }), me)).toBe(
       'Дуэль не состоялась',
     );

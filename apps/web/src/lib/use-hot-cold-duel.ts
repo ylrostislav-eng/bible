@@ -122,5 +122,11 @@ export function useHotColdDuel(duelId: string | null) {
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.surrender, { duelId });
   }, [duelId]);
 
-  return { state, verdict, error, opponentMoves, guess, surrender };
+  /** Забрать победу, когда соперник ушёл. Право на это проверяет сервер. */
+  const claimWin = useCallback(() => {
+    setError(null);
+    socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.claim, { duelId });
+  }, [duelId]);
+
+  return { state, verdict, error, opponentMoves, guess, surrender, claimWin };
 }

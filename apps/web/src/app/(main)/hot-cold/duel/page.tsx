@@ -213,6 +213,15 @@ export default function HotColdDuelPage() {
                   Проверить
                 </Button>
               </div>
+              {/* Соперник ушёл — партию надо чем-то закончить, иначе
+                  человек сидит и ждёт неизвестно чего. Право забрать
+                  победу проверяет сервер, кнопка лишь предлагает. */}
+              {state.canClaimWin && (
+                <div className="flex flex-col gap-2 rounded-2xl border border-warning/40 bg-warning/10 p-3 text-center">
+                  <p className="text-sm">Соперник не на связи уже пару минут.</p>
+                  <Button onClick={duel.claimWin}>Забрать победу</Button>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={duel.surrender}

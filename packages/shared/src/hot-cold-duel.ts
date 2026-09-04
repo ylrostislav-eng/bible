@@ -28,6 +28,8 @@ export const HOT_COLD_DUEL_WS_EVENTS = {
   join: 'duel:join',
   guess: 'duel:guess',
   surrender: 'duel:surrender',
+  /** Забрать победу, когда соперник ушёл и не вернулся. */
+  claim: 'duel:claim',
 } as const;
 
 /** Что шлёт сервер. */
@@ -56,6 +58,21 @@ export const HOT_COLD_DUEL_WAIT_MS = 10 * 60_000;
  * такие дуэли висели бы у обоих в «активных» вечно.
  */
 export const HOT_COLD_DUEL_IDLE_MS = 30 * 60_000;
+
+/**
+ * Сколько соперника нет на связи, прежде чем победу можно забрать.
+ *
+ * Без этого у партии оставался тупик: человек закрыл вкладку, а второй
+ * сидит и ждёт — сдаваться не за что, доиграть не с кем, а уборка закроет
+ * партию только через полчаса. Двух минут хватает, чтобы отличить
+ * ушедшего от того, у кого моргнула связь или кто на секунду переключился
+ * в другое приложение.
+ *
+ * Победа именно **забирается кнопкой**, а не начисляется сама: сервер не
+ * знает, ушёл человек навсегда или сейчас вернётся, а оставшийся игрок
+ * знает и решает сам.
+ */
+export const HOT_COLD_DUEL_AWAY_MS = 2 * 60_000;
 
 /**
  * Подсказок в дуэли нет — намеренно.
@@ -131,8 +148,13 @@ export interface HotColdDuelState {
   surrendered: boolean;
 
   opponent: HotColdDuelOpponent | null;
+  /** Соперника нет так долго, что победу можно забрать. */
+  canClaimWin: boolean;
 
-  /** Кто победил. Пусто, пока идёт игра. */
+  /**
+   * Кто победил. Пусто, пока идёт игра, — и пусто же при ничьей, когда
+   * партия уже закончена. Различать эти два случая надо по `status`.
+   */
   winnerId: string | null;
   /** Загаданное слово — только после конца. */
   word: string | null;
@@ -141,15 +163,29 @@ export interface HotColdDuelState {
   reward: HotColdDuelReward | null;
 }
 
-/** Что сказать про исход. */
+/**
+ * Что сказать про исход.
+ *
+ * Способов закончить партию пять, и человек должен понимать, который из
+ * них случился именно с ним: «вы проиграли» после того, как соперник
+ * просто ушёл, — это неправда, за которую обидно.
+ */
 export function hotColdDuelOutcomeLabel(state: HotColdDuelState, myUserId: string): string {
   if (state.status === 'ABANDONED') return 'Дуэль не состоялась';
   if (state.status !== 'FINISHED') return '';
-  if (state.winnerId === null) return 'Ничья: оба сдались';
+
+  // Ничья: партия закончена, а победителя нет. Так кончается брошенная
+  // обоими партия, в которой никто не подошёл ближе другого.
+  if (state.winnerId === null) return 'Ничья: никто не нашёл слово';
+
   if (state.winnerId === myUserId) {
-    return state.opponent?.surrendered ? 'Соперник сдался' : 'Вы нашли первым';
+    if (state.solved) return 'Вы нашли первым';
+    if (state.opponent?.surrendered) return 'Соперник сдался';
+    return 'Соперник не вернулся — победа ваша';
   }
-  return state.surrendered ? 'Вы сдались' : 'Соперник нашёл первым';
+  if (state.surrendered) return 'Вы сдались';
+  if (state.opponent?.solved) return 'Соперник нашёл первым';
+  return 'Вы не вернулись к партии вовремя';
 }
 
 /** Строка, которой хвастаются друзьям. Слово в ней не называется. */

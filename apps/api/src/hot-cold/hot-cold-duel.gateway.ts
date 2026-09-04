@@ -13,6 +13,7 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import {
+  HOT_COLD_DUEL_AWAY_MS,
   HOT_COLD_DUEL_WS_EVENTS,
   HOT_COLD_DUEL_WS_NAMESPACE,
   HOT_COLD_DUEL_WS_SERVER_EVENTS,
@@ -59,6 +60,14 @@ export class HotColdDuelGateway
   private readonly logger = new Logger(HotColdDuelGateway.name);
   /** Кто сидит в какой дуэли: id дуэли → сокеты. */
   private readonly duelSockets = new Map<string, Set<AuthedSocket>>();
+  /**
+   * Отложенная рассылка на момент, когда ушедший считается ушедшим.
+   *
+   * Без неё кнопка «забрать победу» не появилась бы никогда: состояние
+   * рассылается по событию, а «прошло две минуты» — это не событие.
+   * Ключ: `${duelId}:${userId}`.
+   */
+  private readonly awayTimers = new Map<string, NodeJS.Timeout>();
   private sweepTimer?: NodeJS.Timeout;
 
   constructor(
@@ -73,6 +82,8 @@ export class HotColdDuelGateway
 
   onModuleDestroy(): void {
     if (this.sweepTimer) clearInterval(this.sweepTimer);
+    for (const timer of this.awayTimers.values()) clearTimeout(timer);
+    this.awayTimers.clear();
   }
 
   private async sweep(): Promise<void> {
@@ -113,6 +124,7 @@ export class HotColdDuelGateway
       // этом минуту хуже, чем показать «отошёл» и через секунду вернуть.
       this.duels.setOnline(duelId, socket.data.userId, false);
       void this.broadcast(duelId);
+      this.scheduleAwayNotice(duelId, socket.data.userId);
     }
   }
 
@@ -131,6 +143,7 @@ export class HotColdDuelGateway
       set.add(socket);
       this.duelSockets.set(dto.duelId, set);
       this.duels.setOnline(dto.duelId, socket.data.userId, true);
+      this.cancelAwayNotice(dto.duelId, socket.data.userId);
       await this.broadcast(dto.duelId);
     });
   }
@@ -169,6 +182,18 @@ export class HotColdDuelGateway
     });
   }
 
+  @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.claim)
+  async onClaim(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    await this.guarded(socket, async () => {
+      const dto = await this.parse(HotColdDuelIdDto, body);
+      await this.duels.claimWin(dto.duelId, socket.data.userId);
+      await this.broadcast(dto.duelId);
+    });
+  }
+
   @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.surrender)
   async onSurrender(
     @ConnectedSocket() socket: AuthedSocket,
@@ -179,6 +204,27 @@ export class HotColdDuelGateway
       await this.duels.surrender(dto.duelId, socket.data.userId);
       await this.broadcast(dto.duelId);
     });
+  }
+
+  /** Разбудить экран соперника ровно тогда, когда ждать уже нечего. */
+  private scheduleAwayNotice(duelId: string, userId: string): void {
+    const key = `${duelId}:${userId}`;
+    const existing = this.awayTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.awayTimers.delete(key);
+      void this.broadcast(duelId);
+    }, HOT_COLD_DUEL_AWAY_MS);
+    this.awayTimers.set(key, timer);
+  }
+
+  private cancelAwayNotice(duelId: string, userId: string): void {
+    const key = `${duelId}:${userId}`;
+    const timer = this.awayTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.awayTimers.delete(key);
+    }
   }
 
   /**

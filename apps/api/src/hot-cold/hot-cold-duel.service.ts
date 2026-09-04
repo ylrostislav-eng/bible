@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
+  HOT_COLD_DUEL_AWAY_MS,
   HOT_COLD_DUEL_IDLE_MS,
   HOT_COLD_DUEL_LOSER_SHARE,
   HOT_COLD_DUEL_LOSS_RATING,
@@ -13,6 +14,7 @@ import {
   HOT_COLD_DUEL_WIN_RATING,
   HOT_COLD_SECRET_COMMON_LIMIT,
   HOT_COLD_SECRET_MIN_EPISODES,
+  hotColdHeat,
   hotColdReward,
   type HotColdDuelGuess,
   type HotColdDuelState,
@@ -74,13 +76,34 @@ export class HotColdDuelService {
   private readonly rankings = new Map<string, SemanticRanking>();
   /** Кто прямо сейчас на связи: заполняет шлюз, читает `toState`. */
   private readonly online = new Set<string>();
+  /**
+   * Когда игрок пропал со связи. Живёт в памяти, а не в базе, намеренно:
+   * это сведение о текущем соединении, оно теряет смысл при перезапуске
+   * сервера, и хранить его дольше самого соединения незачем. Цена
+   * перезапуска — отсчёт «соперник ушёл» начнётся заново, что честно: с
+   * точки зрения нового процесса никто никуда ещё не уходил.
+   */
+  private readonly awaySince = new Map<string, number>();
 
   // ---- присутствие ----
 
   setOnline(duelId: string, userId: string, present: boolean): void {
     const key = `${duelId}:${userId}`;
-    if (present) this.online.add(key);
-    else this.online.delete(key);
+    if (present) {
+      this.online.add(key);
+      this.awaySince.delete(key);
+    } else {
+      this.online.delete(key);
+      // Отсчёт начинаем один раз: повторный обрыв уже отсутствующего
+      // соединения не должен обнулять ожидание.
+      if (!this.awaySince.has(key)) this.awaySince.set(key, Date.now());
+    }
+  }
+
+  /** Достаточно ли долго нет соперника, чтобы забрать победу. */
+  private isAway(duelId: string, userId: string): boolean {
+    const since = this.awaySince.get(`${duelId}:${userId}`);
+    return since !== undefined && Date.now() - since >= HOT_COLD_DUEL_AWAY_MS;
   }
 
   // ---- создание и вход ----
@@ -275,6 +298,13 @@ export class HotColdDuelService {
       solved: me.solvedAt !== null,
       surrendered: me.surrenderedAt !== null,
 
+      // Забрать победу можно только в идущей партии и только когда
+      // соперник действительно есть и действительно пропал.
+      canClaimWin:
+        duel.status === 'IN_PROGRESS' &&
+        other !== undefined &&
+        this.isAway(duel.id, other.userId),
+
       opponent: other
         ? {
             userId: other.userId,
@@ -336,7 +366,15 @@ export class HotColdDuelService {
       throw new BadRequestException('Соперник ещё не пришёл');
     }
     if (duel.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('Дуэль уже закончена');
+      // Ход в законченную дуэль — не ошибка игрока, а гонка: он дожал
+      // Enter в ту секунду, когда соперник нашёл слово. Сказать надо, что
+      // случилось, а не «нельзя».
+      const rival = duel.players.find((player) => player.userId !== userId);
+      throw new BadRequestException(
+        rival?.solvedAt
+          ? 'Соперник нашёл слово первым — дуэль закончена'
+          : 'Дуэль уже закончена',
+      );
     }
 
     const resolved = this.semantics.resolve(trimmed);
@@ -413,11 +451,36 @@ export class HotColdDuelService {
   }
 
   /**
+   * Забрать победу, когда соперник ушёл и не вернулся.
+   *
+   * Проверка «его нет достаточно долго» стоит на сервере, а не на кнопке:
+   * кнопку можно нажать откуда угодно и когда угодно, и без этой проверки
+   * победа доставалась бы тому, кто быстрее сообразил её потребовать.
+   */
+  async claimWin(duelId: string, userId: string): Promise<HotColdDuelState> {
+    const duel = await this.load(duelId);
+    const me = duel.players.find((player) => player.userId === userId);
+    if (!me) throw new ForbiddenException('Вы не участник этой дуэли');
+    if (duel.status !== 'IN_PROGRESS') return this.toState(duel, userId);
+
+    const other = duel.players.find((player) => player.userId !== userId);
+    if (!other || !this.isAway(duelId, other.userId)) {
+      throw new BadRequestException('Соперник на связи — доигрывайте партию');
+    }
+    await this.finish(duelId, userId);
+    return this.getState(duelId, userId);
+  }
+
+  /**
    * Закрыть дуэль и раздать награды.
    *
-   * `updateMany` с условием «ещё идёт» — та самая защита от двойного
-   * начисления: два верных слова в одну миллисекунду дадут одну победу и
-   * один расчёт, а не два.
+   * `winnerId === null` здесь означает **ничью**, а не «никто»: у дуэли
+   * всегда есть исход, и «никакого исхода» — это как раз то, чем можно
+   * злоупотребить, просто закрыв вкладку.
+   *
+   * `updateMany` с условием «ещё идёт» — защита от двойного начисления:
+   * два верных слова в одну миллисекунду дадут одну победу и один расчёт,
+   * а не два.
    */
   private async finish(duelId: string, winnerId: string | null): Promise<void> {
     const claimed = await this.prisma.hotColdDuel.updateMany({
@@ -427,23 +490,49 @@ export class HotColdDuelService {
     if (claimed.count === 0) return;
 
     const duel = await this.load(duelId);
+    const best = hotColdReward(1, 0);
     for (const player of duel.players) {
-      const won = player.userId === winnerId;
-      const base = hotColdReward(Math.max(1, player.guessCount), 0);
+      const drew = winnerId === null;
+      const won = !drew && player.userId === winnerId;
+      // Победителю — как в обычной партии: он доиграл, и число его попыток
+      // честно говорит, насколько хорошо.
+      //
+      // Проигравшему — по тому, насколько близко он подошёл, а не по числу
+      // попыток. Причина в самом устройстве гонки: его оборвали на
+      // произвольном ходе, и счётчик попыток к качеству его игры уже не
+      // относится. Хуже того, считать по нему значило бы платить тем
+      // меньше, чем дольше человек думал.
+      //
+      // Близость берётся той же логарифмической мерой, что и полоска
+      // тепла: у неё уже есть обоснование, и второй шкалы для того же
+      // самого заводить незачем.
+      const closeness =
+        player.bestRank === null ? 0 : hotColdHeat(player.bestRank);
       const xp = won
-        ? base.xp
-        : Math.max(1, Math.round(base.xp * HOT_COLD_DUEL_LOSER_SHARE));
+        ? hotColdReward(Math.max(1, player.guessCount), 0).xp
+        : Math.max(
+            1,
+            Math.round(best.xp * HOT_COLD_DUEL_LOSER_SHARE * closeness),
+          );
       const coins = won
-        ? base.coins
-        : Math.max(1, Math.round(base.coins * HOT_COLD_DUEL_LOSER_SHARE));
+        ? hotColdReward(Math.max(1, player.guessCount), 0).coins
+        : Math.max(
+            1,
+            Math.round(best.coins * HOT_COLD_DUEL_LOSER_SHARE * closeness),
+          );
+      // За ничью рейтинг не двигается вовсе, а поражение без единого хода
+      // не наказывается: человек мог зайти ровно в тот момент, когда
+      // соперник дописывал слово, и отнимать за это очки не за что.
       const ratingDelta = won
         ? HOT_COLD_DUEL_WIN_RATING
-        : HOT_COLD_DUEL_LOSS_RATING;
+        : drew || player.guessCount === 0
+          ? 0
+          : HOT_COLD_DUEL_LOSS_RATING;
 
       const applied = await this.usersService.applyGameRewards(player.userId, {
         xpEarned: xp,
         coinsEarned: coins,
-        outcome: won ? 'win' : 'loss',
+        outcome: won ? 'win' : drew ? 'draw' : 'loss',
         ratingDelta,
         // Дневной потолок побед — общий с дуэлью по вопросам: иначе двое
         // договорившихся накрутили бы рейтинг за вечер.
@@ -473,23 +562,55 @@ export class HotColdDuelService {
    */
   async sweepStale(): Promise<number> {
     const now = Date.now();
-    const abandoned = await this.prisma.hotColdDuel.updateMany({
+
+    // Никто не пришёл на вызов — это не партия, и исхода у неё нет.
+    const never = await this.prisma.hotColdDuel.updateMany({
       where: {
-        OR: [
-          {
-            status: 'WAITING',
-            createdAt: { lt: new Date(now - HOT_COLD_DUEL_WAIT_MS) },
-          },
-          {
-            status: 'IN_PROGRESS',
-            startedAt: { lt: new Date(now - HOT_COLD_DUEL_IDLE_MS) },
-          },
-        ],
+        status: 'WAITING',
+        createdAt: { lt: new Date(now - HOT_COLD_DUEL_WAIT_MS) },
       },
       data: { status: 'ABANDONED', finishedAt: new Date() },
     });
-    return abandoned.count;
+
+    // А вот начатую партию нельзя просто закрыть «вничью по умолчанию»:
+    // это открытая дверь для проигрывающего — закрыл вкладку, подождал
+    // полчаса, и минус рейтинга нет, а честный соперник не получил свой
+    // плюс. Поэтому брошенная партия решается по существу: побеждает тот,
+    // кто подошёл ближе, а при равенстве это настоящая ничья.
+    const stalled = await this.prisma.hotColdDuel.findMany({
+      where: {
+        status: 'IN_PROGRESS',
+        startedAt: { lt: new Date(now - HOT_COLD_DUEL_IDLE_MS) },
+      },
+      select: {
+        id: true,
+        players: { select: { userId: true, bestRank: true } },
+      },
+    });
+    for (const duel of stalled) {
+      await this.finish(duel.id, closerOf(duel.players));
+    }
+
+    return never.count + stalled.length;
   }
+}
+
+/**
+ * Кто из двоих подошёл ближе. `null` — поровну, то есть ничья.
+ *
+ * Ни одного хода ни у кого — тоже ничья: сравнивать нечего, и назначать
+ * победителя монеткой хуже, чем честно сказать «ничья».
+ */
+function closerOf(
+  players: { userId: string; bestRank: number | null }[],
+): string | null {
+  const ranked = players.filter((player) => player.bestRank !== null);
+  if (ranked.length === 0) return null;
+  if (ranked.length === 1) return ranked[0].userId;
+  const [first, second] = [...ranked].sort(
+    (a, b) => (a.bestRank as number) - (b.bestRank as number),
+  );
+  return first.bestRank === second.bestRank ? null : first.userId;
 }
 
 /**
