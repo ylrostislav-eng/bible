@@ -20,6 +20,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PresenceModule } from './presence/presence.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { SemanticsModule } from './semantics/semantics.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { UsersModule } from './users/users.module';
 
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     RedisModule,
+    SemanticsModule,
     HealthModule,
     AuthModule,
     UsersModule,

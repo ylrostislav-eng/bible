@@ -32,5 +32,7 @@ coverage/
 # Local Redis dump (created if redis-server is ever run outside Docker)
 dump.rdb
 
-# Словарь векторов: 60 МБ, собирается скриптом build-word-vectors.mjs
-apps/api/data/
+# Промежуточные файлы сборки словаря смыслов: полгигабайта сырых векторов
+# ConceptNet, из которых собирается apps/api/data/semantics-ru.bin. Сам
+# словарь лежит в репозитории — собирать его на каждой машине незачем.
+.cache/
