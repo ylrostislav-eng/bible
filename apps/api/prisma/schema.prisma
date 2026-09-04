@@ -468,6 +468,14 @@ model GameSession {
   /// code anyone can join with.
   targetUserId String?
 
+  /// Открыта для подбора: сюда посадят незнакомца, нажавшего «найти
+  /// соперника». Отдельный флаг, а не «пустой targetUserId», потому что
+  /// это разные намерения: создавший дуэль, чтобы отправить код другу,
+  /// ждёт именно друга, и подсадить к нему постороннего было бы подменой
+  /// его решения. Очередь подбора — это и есть множество таких дуэлей;
+  /// отдельной таблицы под неё не нужно.
+  openToMatchmaking Boolean @default(false)
+
   /// ROOM-only fields below — null/unused for SOLO and DUEL.
   roomName        String?
   visibility      RoomVisibility?
@@ -497,6 +505,7 @@ model GameSession {
 
   @@index([targetUserId, status])
   @@index([mode, status, visibility])
+  @@index([mode, status, openToMatchmaking])
   @@map("game_sessions")
 }
 
@@ -990,6 +999,11 @@ model HotColdDuel {
   /// только он. Пусто — зайдёт любой, кому код дали.
   targetUserId String?
 
+  /// Открыта для подбора: сюда посадят незнакомца, нажавшего «найти
+  /// соперника». См. то же поле у `GameSession` — намерения «жду друга по
+  /// коду» и «жду кого угодно» разные, и путать их нельзя.
+  openToMatchmaking Boolean @default(false)
+
   wordId String
   word   AliasWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
@@ -1005,6 +1019,7 @@ model HotColdDuel {
 
   @@index([targetUserId, status])
   @@index([status, createdAt])
+  @@index([status, openToMatchmaking])
   @@map("hot_cold_duels")
 }
 

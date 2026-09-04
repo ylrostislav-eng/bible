@@ -186,6 +186,20 @@ export default function HotColdDuelPage() {
         <>
           <Scoreboard state={state} moves={duel.opponentMoves} />
 
+          {/* Правила до первого хода — как в одиночной игре. В дуэли их
+              надо даже больше: помимо «слово загадано» нужно объяснить,
+              почему у соперника видно числа и не видно слов. */}
+          {!duelOver && state.guesses.length === 0 && (
+            <section className="rounded-2xl border border-border bg-surface p-4">
+              <p className="text-sm font-semibold">Слово загадано — кто найдёт первым</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
+                Пишите русские слова: на каждое игра ответит, какое место оно занимает по близости к
+                загаданному из {state.vocabulary.toLocaleString('ru')}. У соперника видно те же
+                числа, но не сами слова — подсмотреть не выйдет.
+              </p>
+            </section>
+          )}
+
           {duelOver ? (
             <FinishedCard
               state={state}

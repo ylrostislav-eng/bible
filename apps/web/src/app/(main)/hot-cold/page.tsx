@@ -181,9 +181,7 @@ export default function HotColdPage() {
           </p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            {state.free
-              ? 'Слово только ваше — играйте сколько хотите.'
-              : 'Слово дня, одно на всех. Пишите любые слова.'}
+            {state.free ? 'Своё слово — играйте сколько хотите.' : 'Слово дня, одно на всех.'}
           </p>
         </div>
       </header>
@@ -192,6 +190,15 @@ export default function HotColdPage() {
         <FinishedCard state={state} onNext={() => void nextWord()} busy={busy} />
       ) : (
         <>
+          {/* Правила — до первого хода и только до него.
+              Экран без них выглядел так: пустое поле «Любое слово» и
+              кнопка «Проверить». Проверить что? Человек, открывший игру
+              впервые, не знает даже, что слово загадано, — а это и есть
+              вся задача. Тем, кто уже сходил, объяснение не нужно: они
+              поняли правила из первого же ответа, и карточка ушла бы в
+              шум. */}
+          {state.guesses.length === 0 && <HowItWorks state={state} />}
+
           <div className="flex flex-col gap-2">
             <input
               ref={inputRef}
@@ -262,6 +269,28 @@ export default function HotColdPage() {
         disputesLeft={state.disputesLeft}
       />
     </div>
+  );
+}
+
+/**
+ * Правила в трёх строках: что загадано слово, что его ищут словами и что
+ * число — это близость.
+ *
+ * Знаменатель назван вслух («из 51 767»), потому что без него «место 2371»
+ * читается как «плохо», а на самом деле это уже верхние пять процентов. С
+ * ним видно масштаб, и первое же число перестаёт пугать.
+ */
+function HowItWorks({ state }: { state: HotColdState }) {
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-4">
+      <p className="text-sm font-semibold">Слово загадано — его надо найти</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
+        Пишите любые русские слова. На каждое игра ответит, какое место оно занимает по близости к
+        загаданному — из {state.vocabulary.toLocaleString('ru')}. Чем меньше число, тем горячее.
+        Первое место и есть ответ.
+      </p>
+      <p className="mt-2 text-xs text-text-muted">Попытки не ограничены, проиграть нельзя.</p>
+    </section>
   );
 }
 
