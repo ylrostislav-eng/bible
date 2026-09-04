@@ -115,6 +115,20 @@ export class HotColdController {
     );
   }
 
+  /** «Сдаюсь, покажите слово» — честный выход из тупика. */
+  @Post('give-up')
+  async giveUp(
+    @CurrentUser() currentUser: JwtPayload,
+    @Body() dto: HotColdHintDto,
+    @Headers('x-timezone-offset') offset?: string,
+  ) {
+    return this.hotColdService.giveUp(
+      currentUser.sub,
+      readOffset(offset),
+      dto.round,
+    );
+  }
+
   @Post('hint')
   async hint(
     @CurrentUser() currentUser: JwtPayload,

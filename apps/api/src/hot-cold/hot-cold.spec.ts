@@ -14,6 +14,7 @@ import {
   hotColdAttemptsLabel,
   hotColdBand,
   hotColdHeat,
+  hotColdHintKind,
   hotColdReward,
   hotColdShareText,
 } from '@bible-arena/shared';
@@ -46,8 +47,24 @@ describe('правила «Горячо-холодно»', () => {
     expect(hotColdReward(5, 0).xp).toBeGreaterThan(hotColdReward(30, 0).xp);
     expect(hotColdReward(30, 0).xp).toBeGreaterThan(hotColdReward(300, 0).xp);
     expect(hotColdReward(5, 1).xp).toBeLessThan(hotColdReward(5, 0).xp);
-    // Совсем без награды не остаётся никто: доиграл — получил.
+    // Совсем без награды не остаётся никто: доиграл — получил. Это важно
+    // именно теперь, когда подсказки не кончаются: доля уходит в ноль после
+    // шестой, а выдача — нет.
     expect(hotColdReward(1000, 3).xp).toBeGreaterThanOrEqual(1);
+    expect(hotColdReward(1000, 20).xp).toBeGreaterThanOrEqual(1);
+    expect(hotColdReward(1000, 20).coins).toBeGreaterThanOrEqual(1);
+  });
+
+  it('лестница подсказок кончается, а подсказки — нет', () => {
+    expect(hotColdHintKind(0)).toBe('WORD');
+    expect(hotColdHintKind(2)).toBe('WORD');
+    expect(hotColdHintKind(3)).toBe('SHAPE');
+    expect(hotColdHintKind(4)).toBe('GLOSS');
+    // Длина и описание выдаются по одному разу — после них снова слова,
+    // и так сколько угодно: иначе игрок упирается в тупик, из которого
+    // выход только «закрыть игру».
+    expect(hotColdHintKind(5)).toBe('WORD');
+    expect(hotColdHintKind(50)).toBe('WORD');
   });
 
   it('склоняет попытки по-русски', () => {

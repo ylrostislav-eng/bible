@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
-  HOT_COLD_HINT_COUNT,
   HOT_COLD_HINT_DIVISOR,
   HOT_COLD_FEEDBACK_LIMIT,
   HOT_COLD_HINT_COMMON_LIMIT,
@@ -10,6 +9,9 @@ import {
   HOT_COLD_SECRET_COMMON_LIMIT,
   HOT_COLD_SECRET_MIN_EPISODES,
   HOT_COLD_DAILY_ROUND,
+  HOT_COLD_HINT_PROMISE,
+  hotColdHintKind,
+  type HotColdHintKind,
   HOT_COLD_FREE_REWARD_SHARE,
   HOT_COLD_FREE_XP_PER_DAY,
   hotColdReward,
@@ -61,6 +63,8 @@ interface AttemptRow {
   id: string;
   round: number;
   guesses: unknown;
+  hints: unknown;
+  gaveUp: boolean;
   guessCount: number;
   hintsUsed: number;
   solved: boolean;
@@ -314,7 +318,15 @@ export class HotColdService {
       // а не как история ходов, и порядок появления здесь ничего не значит.
       guesses: [...guesses].sort((a, b) => a.rank - b.rank),
       vocabulary: this.semantics.size,
-      hintsLeft: Math.max(0, HOT_COLD_HINT_COUNT - attempt.hintsUsed),
+      hintsUsed: attempt.hintsUsed,
+      nextHint: finished
+        ? null
+        : (() => {
+            const kind = hotColdHintKind(attempt.hintsUsed);
+            return { kind, promise: HOT_COLD_HINT_PROMISE[kind] };
+          })(),
+      hints: readHints(attempt.hints),
+      gaveUp: attempt.gaveUp,
       disputesLeft: Math.max(
         0,
         HOT_COLD_FEEDBACK_LIMIT -
@@ -518,6 +530,48 @@ export class HotColdService {
   }
 
   /**
+   * Сдаться: показать слово и закончить партию.
+   *
+   * Без этого игра умела загонять в тупик: полсотни слов, ни одной
+   * зацепки, подсказки кончились — и выйти некуда. Хуже того, незакрытая
+   * партия дня не даёт взять свободную, то есть застрявший оставался без
+   * игры вовсе.
+   *
+   * Награды нет, и это честно: слово не найдено. Но разбор показывается
+   * полностью — ради него сюда и приходят, а ушедший ни с чем не узнает
+   * даже, что было рядом.
+   */
+  async giveUp(
+    userId: string,
+    timezoneOffsetMinutes: number,
+    round?: number,
+  ): Promise<HotColdState> {
+    const { attempt, date } = await this.loadOrCreateAttempt(
+      userId,
+      timezoneOffsetMinutes,
+      round,
+    );
+    if (attempt.finishedAt) {
+      return this.toState(attempt, date, await this.freeXpSpent(userId, date));
+    }
+    // Тем же атомарным захватом, что и победа: сдаться и угадать в одну
+    // миллисекунду нельзя, и решает то, что применилось первым.
+    await this.prisma.hotColdAttempt.updateMany({
+      where: { id: attempt.id, finishedAt: null },
+      data: { gaveUp: true, finishedAt: new Date() },
+    });
+    const fresh = await this.prisma.hotColdAttempt.findUnique({
+      where: { id: attempt.id },
+      include: { word: true },
+    });
+    return this.toState(
+      fresh as AttemptRow,
+      date,
+      await this.freeXpSpent(userId, date),
+    );
+  }
+
+  /**
    * Подсказка открывает слово вдвое ближе лучшего найденного.
    *
    * Приём из оригинальной игры, и он честнее фиксированного места: пока
@@ -538,8 +592,22 @@ export class HotColdService {
     if (attempt.finishedAt) {
       throw new BadRequestException('Это слово уже угадано');
     }
-    if (attempt.hintsUsed >= HOT_COLD_HINT_COUNT) {
-      throw new BadRequestException('Подсказки на сегодня кончились');
+    const kind = hotColdHintKind(attempt.hintsUsed);
+    if (kind !== 'WORD') {
+      // Подсказки-факты не имеют места в рейтинге, поэтому ложатся в свой
+      // список, а не в догадки: положить их туда значило бы приписать им
+      // расстояние, которого у них нет.
+      const text =
+        kind === 'SHAPE' ? shapeHint(attempt.word.word) : attempt.word.gloss;
+      const updated = await this.prisma.hotColdAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          hintsUsed: { increment: 1 },
+          hints: writeHints([...readHints(attempt.hints), { kind, text }]),
+        },
+        include: { word: true },
+      });
+      return this.toState(updated, date, await this.freeXpSpent(userId, date));
     }
 
     const guesses = readGuesses(attempt.guesses);
@@ -559,7 +627,12 @@ export class HotColdService {
       (lemma) => lemma < HOT_COLD_HINT_COMMON_LIMIT,
     );
     if (!hint) {
-      throw new BadRequestException('Ближе подсказывать уже нечего');
+      // Практически недостижимо: слово ищется по всему словарю, и не найтись
+      // ему нечему, кроме как если открыто уже всё вокруг. Сообщение всё
+      // равно должно говорить, что делать дальше, а не просто «нельзя».
+      throw new BadRequestException(
+        'Открыто уже всё, кроме самого слова, — дальше только «сдаюсь»',
+      );
     }
 
     const updated = await this.prisma.hotColdAttempt.update({
@@ -628,6 +701,48 @@ function writeGuesses(guesses: HotColdGuess[]): Prisma.InputJsonValue {
     ...(entry.revealed ? { revealed: true } : {}),
     ...(entry.disputed ? { disputed: true } : {}),
   }));
+}
+
+/** Подсказки-факты в JSON и обратно. */
+function writeHints(
+  hints: { kind: HotColdHintKind; text: string }[],
+): Prisma.InputJsonValue {
+  return hints.map((hint) => ({ kind: hint.kind, text: hint.text }));
+}
+
+function readHints(value: unknown): { kind: HotColdHintKind; text: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is { kind: HotColdHintKind; text: string } =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as { text?: unknown }).text === 'string' &&
+      ['WORD', 'SHAPE', 'GLOSS'].includes(
+        (entry as { kind?: unknown }).kind as string,
+      ),
+  );
+}
+
+/**
+ * «Слово из семи букв, начинается на „К"».
+ *
+ * Длина и первая буква вместе сужают поиск куда сильнее, чем каждая по
+ * отдельности, и при этом не называют ответ — в отличие от описания,
+ * которое идёт следующей ступенью.
+ */
+function shapeHint(word: string): string {
+  const clean = word.trim();
+  const letters = clean.length;
+  const first = clean[0]?.toUpperCase() ?? '';
+  const noun =
+    letters % 10 === 1 && letters % 100 !== 11
+      ? 'буквы'
+      : letters % 10 >= 2 &&
+          letters % 10 <= 4 &&
+          (letters % 100 < 10 || letters % 100 >= 20)
+        ? 'букв'
+        : 'букв';
+  return `Слово из ${letters} ${noun}, начинается на «${first}»`;
 }
 
 function readGuesses(value: unknown): HotColdGuess[] {

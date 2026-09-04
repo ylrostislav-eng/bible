@@ -139,6 +139,24 @@ export default function HotColdPage() {
     }
   }, [busy]);
 
+  /**
+   * «Сдаюсь». Отдельно от подсказок: подсказка — это помощь в игре, а это
+   * выход из неё, и путать их кнопками нельзя.
+   */
+  const giveUp = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setState(await apiClient.post<HotColdState>('/hot-cold/give-up', { round }));
+      setLast(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось сдаться');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, round]);
+
   const takeHint = useCallback(async () => {
     if (busy) return;
     setBusy(true);
@@ -224,27 +242,64 @@ export default function HotColdPage() {
 
           <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-3">
             <div className="min-w-0">
+              {/* Не «осталось N»: подсказки не кончаются, а счётчик остатка
+                  говорил бы обратное — и человек берёг бы последнюю вместо
+                  того, чтобы играть. Показываем взятые: это цена, которая
+                  уже уплачена, и её видеть полезно. */}
               <p className="text-sm font-semibold">
-                {state.hintsLeft > 0 ? 'Подсказка' : 'Подсказок больше нет'}
+                {state.hintsUsed > 0 ? `Подсказка · взято ${state.hintsUsed}` : 'Подсказка'}
               </p>
               {/* Цена названа заранее: узнавать о потере очков после нажатия —
                   всё равно что узнавать о ней от кассира. */}
+              {/* Что даст именно следующая подсказка. Раньше здесь стояло
+                  одно и то же обещание про соседнее слово — а подсказки
+                  теперь разные, и не сказать об этом значит скрыть от
+                  человека, что дальше будет описание. */}
               <p className="text-xs text-text-muted">
-                {state.hintsLeft > 0
-                  ? 'Откроет слово вдвое ближе вашего лучшего'
+                {state.nextHint
+                  ? `${state.nextHint.promise} · сейчас за ответ ${state.rewardIfSolvedNow.xp} XP`
                   : `Сейчас за ответ ${state.rewardIfSolvedNow.xp} XP`}
               </p>
             </div>
             <button
               type="button"
               onClick={() => void takeHint()}
-              disabled={busy || state.hintsLeft === 0}
+              disabled={busy}
               className="shrink-0 rounded-xl bg-surface-hover px-4 py-2 text-sm font-semibold transition hover:bg-border disabled:opacity-40"
             >
               Открыть
             </button>
           </div>
         </>
+      )}
+
+      {/* Открытые подсказки-факты: у них нет места в рейтинге, поэтому и
+          показываются они отдельно от списка слов. */}
+      {state.hints.length > 0 && !state.finished && (
+        <ul className="flex flex-col gap-1.5">
+          {state.hints.map((hint, index) => (
+            <li
+              key={index}
+              className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-sm"
+            >
+              {hint.text}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Выход из тупика. Игра умела загонять в него намертво: полсотни
+          слов, ни одной зацепки, подсказки кончились — и уйти некуда, а
+          незакрытая партия дня не даёт взять свободную. */}
+      {!state.finished && state.guesses.length > 0 && (
+        <button
+          type="button"
+          onClick={() => void giveUp()}
+          disabled={busy}
+          className="self-center text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline disabled:opacity-40"
+        >
+          Сдаюсь, покажите слово
+        </button>
       )}
 
       {best && !state.finished && (
@@ -289,7 +344,11 @@ function HowItWorks({ state }: { state: HotColdState }) {
         загаданному — из {state.vocabulary.toLocaleString('ru')}. Чем меньше число, тем горячее.
         Первое место и есть ответ.
       </p>
-      <p className="mt-2 text-xs text-text-muted">Попытки не ограничены, проиграть нельзя.</p>
+      {/* «Подсказок сколько угодно» стоит сказать сразу: человек, который
+          думает, что их три, экономит их всю партию и застревает молча. */}
+      <p className="mt-2 text-xs text-text-muted">
+        Попытки и подсказки не ограничены, проиграть нельзя. Каждая подсказка уменьшает награду.
+      </p>
     </section>
   );
 }
@@ -444,11 +503,24 @@ function FinishedCard({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-2xl border border-success/40 bg-success/10 p-4 text-center">
-        <p className="text-sm text-text-secondary">Загадано было</p>
+      {/* Сдавшемуся — своя рамка и своя первая строка: зелёная карточка
+          «вы угадали» над словом, которое он не угадал, читалась бы как
+          насмешка. */}
+      <section
+        className={clsx(
+          'rounded-2xl border p-4 text-center',
+          state.gaveUp ? 'border-border bg-surface' : 'border-success/40 bg-success/10',
+        )}
+      >
+        <p className="text-sm text-text-secondary">
+          {state.gaveUp ? 'Слово было такое' : 'Загадано было'}
+        </p>
         <p className="mt-1 text-3xl font-bold">{state.word}</p>
         {state.gloss && <p className="mt-2 text-sm text-text-secondary">{state.gloss}</p>}
-        <p className="mt-3 text-sm font-semibold">{hotColdAttemptsLabel(guessCount)}</p>
+        <p className="mt-3 text-sm font-semibold">
+          {hotColdAttemptsLabel(guessCount)}
+          {state.gaveUp && ' — и не поддалось'}
+        </p>
         {state.earned && (
           <p className="mt-1 text-sm font-semibold text-success">
             +{state.earned.xp} XP · +{state.earned.coins} {pluralCoins(state.earned.coins)}
