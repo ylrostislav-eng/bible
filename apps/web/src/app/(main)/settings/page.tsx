@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { AgeSafetySection } from '@/components/settings/age-safety-section';
 import { ReadingComfortSection } from '@/components/settings/reading-comfort-section';
 import { RemindersSection } from '@/components/settings/reminders-section';
+import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
@@ -58,7 +59,10 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
-      <h1 className="text-xl font-bold">Настройки</h1>
+      <header className="flex items-center gap-3">
+        <BackLink href="/profile" label="Назад в профиль" />
+        <h1 className="text-xl font-bold">Настройки</h1>
+      </header>
 
       <form
         onSubmit={handleSubmit}

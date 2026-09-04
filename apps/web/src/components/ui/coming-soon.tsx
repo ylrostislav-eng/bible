@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ComponentType } from 'react';
 
 interface ComingSoonProps {
@@ -17,6 +18,15 @@ export function ComingSoon({ icon: Icon, title, description }: ComingSoonProps) 
       <span className="mt-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-text-muted">
         В разработке
       </span>
+      {/* Экран, на котором нечего делать, обязан хотя бы выпускать. Здесь
+          этого не было: человек заходил в «Турниры», видел «в разработке»
+          и оставался с ним наедине. */}
+      <Link
+        href="/"
+        className="mt-2 rounded-xl bg-surface-hover px-4 py-2 text-sm font-semibold transition hover:bg-border"
+      >
+        На главную
+      </Link>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
 import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
@@ -109,10 +110,15 @@ export default function DailyWordPage() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
-      <header>
-        <p className="text-xs uppercase tracking-wide text-text-muted">{formatDate(state.date)}</p>
-        <h1 className="text-2xl font-bold">Слово дня</h1>
-        <p className="mt-1 text-sm text-text-secondary">Одно на всех. Угадайте по описанию.</p>
+      <header className="flex items-start gap-3">
+        <BackLink href="/" label="Назад на главную" />
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-text-muted">
+            {formatDate(state.date)}
+          </p>
+          <h1 className="text-2xl font-bold">Слово дня</h1>
+          <p className="mt-1 text-sm text-text-secondary">Одно на всех. Угадайте по описанию.</p>
+        </div>
       </header>
 
       <section className="rounded-2xl border border-border bg-surface p-4">
@@ -302,7 +308,27 @@ function FinishedCard({
         </section>
       )}
 
-      <p className="text-center text-xs text-text-muted">Новое слово — завтра</p>
+      {/* Тот же тупик, что был в «Горячо-холодно»: день закрыт, а куда
+          идти — не сказано. */}
+      <section className="flex flex-col gap-2 border-t border-border pt-4">
+        <p className="text-center text-xs text-text-muted">
+          Слово одно на всех и меняется в полночь — переиграть его нельзя.
+        </p>
+        <div className="flex gap-2">
+          <Link
+            href="/hot-cold"
+            className="flex-1 rounded-xl bg-surface-hover px-3 py-2.5 text-center text-sm font-semibold transition hover:bg-border"
+          >
+            Горячо-холодно
+          </Link>
+          <Link
+            href="/play"
+            className="flex-1 rounded-xl bg-surface-hover px-3 py-2.5 text-center text-sm font-semibold transition hover:bg-border"
+          >
+            Другие игры
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
