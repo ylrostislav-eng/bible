@@ -541,8 +541,12 @@ export class SemanticsService implements OnModuleInit {
     const links = this.known.get(lemmaIndex);
     if (!links) return null;
     const places = new Int32Array(this.lemmas.length);
+    // Первое место — само загаданное слово, и это не формальность: у
+    // остальных мер оно первое по построению, а здесь его в списке нет, и
+    // без этой строки выписанная связь обгоняла бы сам ответ.
+    places[lemmaIndex] = 1;
     links.forEach((lemma, at) => {
-      places[lemma] = at + 1;
+      places[lemma] = at + 2;
     });
     return places;
   }
