@@ -76,6 +76,30 @@ describe('SemanticsService', () => {
     expect(place('иуда', 'предатель')).toBeLessThan(1000);
   });
 
+  /**
+   * Игра не про Библию одна: игрок пишет что угодно, и расстояние должно
+   * быть внятным и там. Проверяем на словах, которых в Писании нет вовсе.
+   */
+  it('так же уверенно меряет обычные слова', () => {
+    expect(place('врач', 'пациент')).toBeLessThan(100);
+    expect(place('врач', 'больница')).toBeLessThan(100);
+    expect(place('врач', 'футбол')).toBeGreaterThan(5000);
+
+    expect(place('хлеб', 'масло')).toBeLessThan(100);
+    // Нож с хлебом не схож ничем — только тем, что им хлеб режут.
+    expect(place('хлеб', 'нож')).toBeLessThan(1000);
+
+    expect(place('собака', 'кошка')).toBeLessThan(100);
+    expect(place('собака', 'поводок')).toBeLessThan(100);
+    expect(place('собака', 'кость')).toBeLessThan(1000);
+
+    expect(place('дождь', 'туча')).toBeLessThan(100);
+    expect(place('дождь', 'зонт')).toBeLessThan(100);
+
+    expect(place('школа', 'ученик')).toBeLessThan(100);
+    expect(place('кофе', 'чашка')).toBeLessThan(100);
+  });
+
   it('не подтягивает постороннее за компанию', () => {
     // «Стул» не встречается в Писании вовсе и не должен получать место
     // ближе, чем ему полагается по смыслу.

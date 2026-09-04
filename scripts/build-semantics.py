@@ -13,17 +13,28 @@
 знает, что Иерусалим — город, а овца — животное, и «Израиль» оказывается
 рядом с «Иерусалимом» не потому, что слова часто стоят в одном абзаце.
 
-Почему одних векторов мало. Они меряют **похожесть** — можно ли одно
-слово подставить вместо другого. Но «ковчег» и «потоп» непохожи: предмет и
-событие, разные части речи, разные роли в предложении. По похожести потоп
-оказывается на восемьсот двадцать первом месте, хотя для человека это одна
-и та же история. Игре нужна не похожесть, а **связанность**.
+Почему одного источника мало. Векторы Numberbatch меряют **похожесть** —
+можно ли одно слово подставить вместо другого. Но «ковчег» и «потоп»
+непохожи: предмет и событие, разные части речи, разные роли в
+предложении. По похожести потоп оказывается на восемьсот двадцать первом
+месте, хотя для человека это одна и та же история.
 
-Второй сигнал берём из самого Писания: слова, стоящие в одних и тех же
-главах и эпизодах, связаны — независимо от того, похожи ли они. Потоп и
-ковчег встречаются вместе почти всюду, стул с ковчегом — нигде. Два
-сигнала сливаются по местам, а не по числам: у них разные шкалы, и
-складывать их напрямую нельзя.
+Поэтому мер три, и каждая видит своё:
+
+  1. **Смысл** — ConceptNet Numberbatch. Знает, что Иерусалим город, а
+     овца животное: векторы построены на графе знаний, а не только на
+     текстах. Отвечает за «это вообще из другой оперы».
+  2. **Речь** — Navec (проект Natasha, лицензия MIT), обученный на ста
+     сорока пяти гигабайтах русской прозы. Знает, что рядом с хлебом
+     бывает нож, а рядом с собакой кость, — то есть сочетаемость, которой
+     в графе знаний нет.
+  3. **Сюжет** — сам текст Писания. Слова из одних глав и сцен связаны
+     независимо от того, похожи ли они: потоп и ковчег стоят вместе почти
+     всюду, стул с ковчегом — нигде.
+
+Три меры сливаются по местам, а не по числам: у них разные шкалы, и
+складывать их напрямую — значит незаметно отдать ответ той, у которой
+разброс шире.
 
 Из чего состоит словарь:
 
@@ -31,12 +42,13 @@
     списке и есть «расстояние», которое видит игрок.
   * **Формы** — всё, что человек может напечатать: «ковчега», «ковчегами».
     Каждая ведёт к своей лемме, поэтому падеж и число не мешают игре.
-  * **Векторы** — по одному на лемму, в int8. Единичной длины, умноженные
-    на 127: для сравнения направлений этой точности достаточно, а файл
-    выходит вчетверо меньше, чем во float32.
-  * **Связанность** — для каждого слова Писания список эпизодов, где оно
-    встречается. Сами меры близости считает сервер: хранить их для всех
-    пар слов было бы на порядки дороже, чем посчитать при запросе.
+  * **Два набора векторов** — смысл и речь, по одному на лемму, в int8.
+    Единичной длины, умноженные на 127: для сравнения направлений этой
+    точности достаточно, а файл выходит вчетверо меньше, чем во float32.
+    Нулевой вектор означает, что этого слова во втором источнике нет.
+  * **Эпизоды** — для каждого слова Писания список сцен, где оно
+    встречается. Саму близость считает сервер: хранить её для всех пар
+    слов было бы на порядки дороже, чем посчитать при запросе.
 
 Три источника слов, и каждый нужен:
 
@@ -46,6 +58,7 @@
 
 Запуск (нужен интернет и Python 3.11+):
 
+    pip install wordfreq pymorphy3 pymorphy3-dicts-ru navec
     python3 scripts/build-semantics.py
 
 Результат кладётся в apps/api/data/semantics-ru.bin и коммитится в
@@ -65,6 +78,12 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_FILE = ROOT / 'apps/api/data/semantics-ru.bin'
 CACHE_WORDS = ROOT / '.cache/numberbatch-ru.words'
 CACHE_VECTORS = ROOT / '.cache/numberbatch-ru.f32'
+CACHE_NAVEC = ROOT / '.cache/navec-hudlit.tar'
+
+#: Navec лежит на PyPI целиком, вместе с весами, — отдельного скачивания
+#: моделей не нужно.
+NAVEC_PACKAGE = 'https://pypi.org/pypi/navec/json'
+NAVEC_MODEL = 'navec_hudlit_v1_12B_500K_300d_100q.tar'
 
 SOURCE = (
     'https://conceptnet.s3.amazonaws.com/downloads/2019/numberbatch/'
@@ -88,7 +107,7 @@ ASSOCIATION_MAX_SHARE = 0.35
 
 CYRILLIC = re.compile(r'^[а-яё]{2,24}$')
 
-MAGIC = b'BSEM2'
+MAGIC = b'BSEM3'
 
 
 def normalize(word: str) -> str:
@@ -159,6 +178,35 @@ def fetch_russian_vectors() -> dict[str, list[float]]:
     return vectors
 
 
+def fetch_navec():
+    """Векторы Navec: как слова стоят рядом в живой русской речи.
+
+    Модель приложена к пакету на PyPI, поэтому качаем оттуда — никаких
+    отдельных хранилищ моделей, которые имеют обыкновение закрываться.
+    """
+    from navec import Navec
+
+    if not CACHE_NAVEC.exists():
+        import json
+        import tarfile
+        import urllib.request
+
+        print('Качаю Navec (векторы русской речи)…')
+        with urllib.request.urlopen(NAVEC_PACKAGE) as response:
+            releases = json.load(response)['urls']
+        source = next(u['url'] for u in releases if u['filename'].endswith('.tar.gz'))
+        CACHE_NAVEC.parent.mkdir(parents=True, exist_ok=True)
+        archive = CACHE_NAVEC.with_suffix('.tar.gz')
+        urllib.request.urlretrieve(source, archive)
+        with tarfile.open(archive) as tar:
+            member = next(m for m in tar.getmembers() if m.name.endswith(NAVEC_MODEL))
+            with tar.extractfile(member) as src, CACHE_NAVEC.open('wb') as dst:
+                dst.write(src.read())
+        archive.unlink()
+
+    return Navec.load(str(CACHE_NAVEC))
+
+
 def bank_words() -> set[str]:
     """Слова из банка Alias — те, что игра может загадать.
 
@@ -213,6 +261,18 @@ def scripture_contexts() -> list[set[str]]:
     return contexts
 
 
+def quantize(vector) -> bytes:
+    """Вектор в int8: единичной длины, умноженный на 127.
+
+    Направление сохраняется, а места вектор занимает вчетверо меньше. Для
+    сравнения направлений большего и не нужно.
+    """
+    length = sum(float(x) * float(x) for x in vector) ** 0.5 or 1.0
+    return bytes(
+        (max(-127, min(127, round(float(x) / length * 127))) & 0xFF) for x in vector
+    )
+
+
 def association(
     contexts: list[set[str]],
     forms: dict[str, str],
@@ -253,6 +313,7 @@ def main() -> int:
         return 1
 
     vectors = fetch_russian_vectors()
+    navec = fetch_navec()
     morph = pymorphy3.MorphAnalyzer()
 
     # Слово → его лемма. Заодно собираем сами леммы: ключ словаря игры.
@@ -326,22 +387,23 @@ def main() -> int:
             out.write(encoded)
             out.write(struct.pack('<I', position[lemma]))
         for word in order:
-            vector = vectors[word]
-            length = sum(x * x for x in vector) ** 0.5 or 1.0
-            out.write(
-                bytes(
-                    (max(-127, min(127, round(x / length * 127))) & 0xFF)
-                    for x in vector
-                )
-            )
+            out.write(quantize(vectors[word]))
+        blank = bytes(DIMENSIONS)
+        for word in order:
+            # Нулевой вектор — «этого слова нет в корпусе». Слов, которых
+            # Navec не знает, около шести процентов, и почти все они —
+            # свежие имена собственные вроде «Роскомнадзора».
+            usage = navec.get(word)
+            out.write(blank if usage is None else quantize(usage))
         for episode in episodes:
             out.write(struct.pack('<I', len(episode)))
             array('I', episode).tofile(out)
 
     size = OUT_FILE.stat().st_size
+    known = sum(1 for w in order if navec.get(w) is not None)
     print(
         f'Готово: {size / 1e6:.1f} МБ, лемм {len(order)}, форм {len(extra_forms)}, '
-        f'эпизодов {len(episodes)}.'
+        f'эпизодов {len(episodes)}, в корпусе речи {known}.'
     )
     return 0
 

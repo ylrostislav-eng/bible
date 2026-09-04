@@ -9,32 +9,43 @@ import {
 } from '@bible-arena/shared';
 
 /**
- * Смысловая близость слов — то, чем игра меряет «горячо/холодно».
+ * Смысловое расстояние между словами — то, чем игра меряет «горячо/холодно».
  *
- * За каждым словом стоит вектор из 300 чисел; близкие по смыслу слова
- * смотрят в одну сторону, и «далеко» считается арифметикой, а не списком
- * заранее прописанных синонимов. Поэтому игра понимает любое слово, а не
- * только предусмотренные нами.
+ * Игрок вправе написать любое русское слово и получить внятное число.
+ * Одной мерой это не даётся: у каждой свой слепой угол, и они разные.
+ *
+ *  * **Смысл** (ConceptNet Numberbatch, CC BY-SA 4.0) — векторы, построенные
+ *    на графе знаний. Знают, что Иерусалим город, а овца животное. Но
+ *    меряют взаимозаменяемость, поэтому «потоп» от «ковчега» у них далеко:
+ *    предмет и событие непохожи, хотя это одна история.
+ *  * **Речь** (Navec, MIT, обучен на 145 ГБ русской прозы) — что с чем
+ *    стоит рядом в живом языке. Знает про хлеб и нож, про собаку и кость.
+ *    Но путается там, где слово многозначно.
+ *  * **Сюжет** (сам синодальный текст) — слова одних глав и сцен. Отвечает
+ *    за библейскую связь, которой нет ни в одном общем корпусе, и молчит
+ *    обо всём, чего в Писании нет.
  *
  * Словарь лежит в `apps/api/data/semantics-ru.bin` и собирается скриптом
- * `scripts/build-semantics.py` из ConceptNet Numberbatch (CC BY-SA 4.0).
- * Он в репозитории: пятнадцать мегабайт — небольшая плата за то, что игра
- * работает сразу после `git clone`, без выкачивания моделей.
+ * `scripts/build-semantics.py`. Он в репозитории: тридцать мегабайт —
+ * небольшая плата за то, что игра работает сразу после `git clone`, без
+ * выкачивания моделей.
  *
  * Формат файла:
  *
- *     "BSEM1"                        подпись
- *     uint32 dims, lemmas, forms     заголовок
+ *     "BSEM3"                                  подпись
+ *     uint32 dims, lemmas, forms, episodes     заголовок
  *     леммы     — uint8 длина + utf8, по убыванию частоты
  *     формы     — uint8 длина + utf8 + uint32 номер леммы
- *     векторы   — lemmas × dims, int8 (единичный вектор × 127)
+ *     смысл     — lemmas × dims, int8 (единичный вектор × 127)
+ *     речь      — то же; нулевой вектор значит «нет в корпусе»
+ *     эпизоды   — uint32 сколько слов, затем сами номера лемм
  *
  * Леммы отсортированы по частоте не для красоты: номер в этом списке и
  * есть «расстояние», которое видит игрок, и редкое слово не должно
  * оказываться на втором месте только потому, что оно похоже.
  */
 
-const MAGIC = 'BSEM2';
+const MAGIC = 'BSEM3';
 
 /**
  * Смягчение при слиянии мест.
@@ -99,8 +110,12 @@ export class SemanticsService implements OnModuleInit {
 
   private dims = 0;
   private lemmas: string[] = [];
-  private vectors: Int8Array = new Int8Array(0);
-  private norms: Float64Array = new Float64Array(0);
+  /** Смысл: похожесть по графу знаний. */
+  private meaning: Int8Array = new Int8Array(0);
+  private meaningNorms: Float64Array = new Float64Array(0);
+  /** Речь: сочетаемость по корпусу. Нулевая длина — слова нет в корпусе. */
+  private usage: Int8Array = new Int8Array(0);
+  private usageNorms: Float64Array = new Float64Array(0);
   /** Слова каждого эпизода подряд; границы — в `episodeStart`. */
   private episodeWords: Int32Array = new Int32Array(0);
   private episodeStart: Int32Array = new Int32Array(1);
@@ -168,28 +183,36 @@ export class SemanticsService implements OnModuleInit {
 
     // Копия, а не вид на буфер: `readFileSync` возвращает Buffer из общего
     // пула, и держать на него ссылку означает удерживать чужую память.
-    this.vectors = new Int8Array(lemmaCount * this.dims);
-    this.vectors.set(
-      new Int8Array(
-        buffer.buffer,
-        buffer.byteOffset + offset,
-        lemmaCount * this.dims,
-      ),
-    );
-    offset += lemmaCount * this.dims;
+    const readVectors = (): Int8Array => {
+      const size = lemmaCount * this.dims;
+      const copy = new Int8Array(size);
+      copy.set(new Int8Array(buffer.buffer, buffer.byteOffset + offset, size));
+      offset += size;
+      return copy;
+    };
+    this.meaning = readVectors();
+    this.usage = readVectors();
 
     offset = this.loadEpisodes(buffer, offset, lemmaCount, episodeCount);
     if (buffer.length !== offset) {
       throw new Error(`ожидалось ${offset} байт, а в файле ${buffer.length}`);
     }
 
-    this.norms = new Float64Array(lemmaCount);
-    for (let i = 0; i < lemmaCount; i += 1) {
-      let sum = 0;
-      const base = i * this.dims;
-      for (let d = 0; d < this.dims; d += 1) sum += this.vectors[base + d] ** 2;
-      this.norms[i] = Math.sqrt(sum) || 1;
-    }
+    // Длины считаем один раз: дальше косинус — это только скалярное
+    // произведение. Нулевая длина у второго набора означает, что слова нет
+    // в корпусе речи, и эта мера про него просто молчит.
+    const lengths = (vectors: Int8Array): Float64Array => {
+      const norms = new Float64Array(lemmaCount);
+      for (let i = 0; i < lemmaCount; i += 1) {
+        let sum = 0;
+        const base = i * this.dims;
+        for (let d = 0; d < this.dims; d += 1) sum += vectors[base + d] ** 2;
+        norms[i] = Math.sqrt(sum);
+      }
+      return norms;
+    };
+    this.meaningNorms = lengths(this.meaning);
+    this.usageNorms = lengths(this.usage);
 
     // Поиск ближайшего написания строим по леммам: подставлять игроку
     // «ковчегами» вместо «ковчега» незачем, а лемм вчетверо меньше, значит
@@ -294,17 +317,35 @@ export class SemanticsService implements OnModuleInit {
     return { ...resolved, lemma };
   }
 
-  /** Похожесть по векторам: можно ли одно слово подставить вместо другого. */
-  private similarity(lemmaIndex: number): Float64Array {
+  /**
+   * Косинус между вектором загаданного слова и всеми остальными.
+   *
+   * Слово с нулевой длиной вектора в этом наборе отсутствует; такому
+   * достаётся −1, чтобы оно ушло в конец списка и не мешалось, а слияние
+   * потом вовсе не станет его учитывать.
+   */
+  private closeness(
+    vectors: Int8Array,
+    norms: Float64Array,
+    lemmaIndex: number,
+  ): Float64Array {
     const count = this.lemmas.length;
     const scores = new Float64Array(count);
+    if (norms[lemmaIndex] === 0) {
+      scores.fill(-1);
+      return scores;
+    }
     const base = lemmaIndex * this.dims;
     for (let j = 0; j < count; j += 1) {
+      if (norms[j] === 0) {
+        scores[j] = -1;
+        continue;
+      }
       let dot = 0;
       const other = j * this.dims;
       for (let d = 0; d < this.dims; d += 1)
-        dot += this.vectors[base + d] * this.vectors[other + d];
-      scores[j] = dot / (this.norms[lemmaIndex] * this.norms[j]);
+        dot += vectors[base + d] * vectors[other + d];
+      scores[j] = dot / (norms[lemmaIndex] * norms[j]);
     }
     return scores;
   }
@@ -349,33 +390,42 @@ export class SemanticsService implements OnModuleInit {
   /**
    * Ранжирует весь словарь относительно загаданного слова.
    *
-   * Два сигнала сливаются по местам, а не по числам. У похожести и
-   * связанности разные шкалы: 0.2 у одной и 0.2 у другой значат разное, и
-   * складывать их напрямую — значит незаметно отдать всё одной из них.
-   * Место в списке — величина, одинаковая для обеих.
+   * Три меры видят разное. **Смысл** знает, что овца — животное, а
+   * Иерусалим — город. **Речь** знает, что рядом с хлебом бывает нож.
+   * **Сюжет** знает, что ковчег и потоп — одна история. Ни одной из них
+   * поодиночке не хватает: по смыслу потоп был на 821 месте, по речи
+   * далеко оказывается вода, а сюжет молчит обо всём, чего нет в Писании.
    *
-   * Формула — обратный ранг: слово получает тем больше, чем выше оно
-   * стоит хотя бы в одном списке. Поэтому «потоп», далёкий по похожести,
-   * но первый по связанности, оказывается рядом с ковчегом — а «стул»,
-   * далёкий по обоим, остаётся в конце.
+   * Сливаются они по местам, а не по числам. У трёх мер разные шкалы:
+   * 0.2 у одной и 0.2 у другой значат совсем разное, и складывать их
+   * напрямую — значит незаметно отдать ответ той, у которой разброс шире.
+   * Место в списке — величина, одинаковая для всех.
+   *
+   * Формула — сумма обратных мест: слово поднимается, если стоит высоко
+   * хотя бы у одной меры. Поэтому «потоп» оказывается рядом с ковчегом, а
+   * «стул», далёкий по всем трём, остаётся в конце.
    *
    * Считается один раз на загаданное слово; дальше каждая догадка стоит
    * одного обращения к массиву.
    */
   rank(lemmaIndex: number): SemanticRanking {
     const count = this.lemmas.length;
-    const byMeaning = placesOf(this.similarity(lemmaIndex));
-    const related = this.association(lemmaIndex);
-    const byStory = placesOf(related);
+    const byMeaning = placesOf(
+      this.closeness(this.meaning, this.meaningNorms, lemmaIndex),
+    );
+    const spoken = this.closeness(this.usage, this.usageNorms, lemmaIndex);
+    const bySpeech = placesOf(spoken);
+    const story = this.association(lemmaIndex);
+    const byStory = placesOf(story);
 
     const fused = new Float64Array(count);
     for (let j = 0; j < count; j += 1) {
       fused[j] = 1 / (RANK_SMOOTHING + byMeaning[j]);
-      // Слово, ни разу не встретившееся рядом с загаданным, второго
-      // слагаемого не получает вовсе: иначе половина словаря делила бы
-      // один и тот же хвост и «стул» подтягивался бы к «ковчегу» просто
-      // за компанию.
-      if (related[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + byStory[j]);
+      // Мера, которая про это слово ничего не знает, молчит, а не голосует
+      // за «далеко». Иначе половина словаря делила бы один и тот же хвост,
+      // и «стул» подтягивался бы к «ковчегу» просто за компанию.
+      if (spoken[j] >= 0) fused[j] += 1 / (RANK_SMOOTHING + bySpeech[j]);
+      if (story[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + byStory[j]);
     }
 
     const places = placesOf(fused);
