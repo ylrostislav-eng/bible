@@ -28,6 +28,7 @@ import { secondTimothy } from './chapter-questions/second-timothy';
 import { thirdJohn } from './chapter-questions/third-john';
 import { titus } from './chapter-questions/titus';
 import type { BookQuestionSeed } from './chapter-questions/types';
+import { reportFailure } from './report-failure';
 
 const prisma = new PrismaClient();
 
@@ -150,8 +151,5 @@ async function main() {
 }
 
 main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
+  .catch(reportFailure)
   .finally(() => prisma.$disconnect());

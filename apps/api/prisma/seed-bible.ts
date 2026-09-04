@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import { reportFailure } from './report-failure';
 
 const prisma = new PrismaClient();
 
@@ -91,8 +92,5 @@ async function main() {
 }
 
 main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
+  .catch(reportFailure)
   .finally(() => prisma.$disconnect());

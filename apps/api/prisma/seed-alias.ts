@@ -39,6 +39,7 @@ import type {
   AliasDifficulty,
   AliasTestament,
 } from '@bible-arena/shared';
+import { reportFailure } from './report-failure';
 
 const prisma = new PrismaClient();
 
@@ -4523,8 +4524,5 @@ async function main(): Promise<void> {
 }
 
 main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
+  .catch(reportFailure)
   .finally(() => void prisma.$disconnect());

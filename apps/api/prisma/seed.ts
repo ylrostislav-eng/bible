@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import type { Difficulty, Testament } from '@prisma/client';
+import { reportFailure } from './report-failure';
 
 const prisma = new PrismaClient();
 
@@ -553,10 +554,7 @@ async function main() {
 }
 
 main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
+  .catch(reportFailure)
   .finally(async () => {
     await prisma.$disconnect();
   });
