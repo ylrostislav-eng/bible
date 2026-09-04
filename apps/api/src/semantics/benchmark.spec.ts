@@ -1,4 +1,5 @@
 import { RELATED, UNRELATED, type Pair } from './benchmark-pairs';
+import { KNOWN_LINKS } from './known-links';
 import { SemanticsService } from './semantics.service';
 
 /**
@@ -8,6 +9,11 @@ import { SemanticsService } from './semantics.service';
  * тем, чтобы хорошо было в целом — и чтобы это нельзя было испортить
  * незаметно. Пороги стоят с запасом от измеренного: они ловят обвал, а не
  * колебание в несколько мест.
+ *
+ * Считаются только пары, связь которых **не** выписана руками в
+ * `known-links.ts`. Иначе проверка обманывает себя: увидев промах, легко
+ * вписать связь и получить зелёное, ничего не улучшив. Выписанные связи —
+ * это заплатки на конкретные слова, и мерить ими качество мер нельзя.
  *
  * Подробный разбор по областям и список худших случаев печатает
  * `pnpm --filter @bible-arena/api semantics:report`.
@@ -34,10 +40,18 @@ describe('расстояния в целом', () => {
       return ranking.rankOf(g);
     });
 
-  const related = () => Object.values(RELATED).flat();
+  /** Пары, о которых меры догадываются сами, без выписанной подсказки. */
+  const related = () =>
+    Object.values(RELATED)
+      .flat()
+      .filter(
+        ({ secret, guess }) =>
+          !(KNOWN_LINKS[secret] ?? []).includes(guess) &&
+          !(KNOWN_LINKS[guess] ?? []).includes(secret),
+      );
 
   it('знает все слова набора', () => {
-    const unknown = [...related(), ...UNRELATED].filter(
+    const unknown = [...Object.values(RELATED).flat(), ...UNRELATED].filter(
       ({ secret, guess }) =>
         service.lookup(secret) === null || service.lookup(guess) === null,
     );
@@ -53,9 +67,9 @@ describe('расстояния в целом', () => {
     const hot = ranks.filter((r) => r <= 300).length / ranks.length;
     const warm = ranks.filter((r) => r <= 2000).length / ranks.length;
 
-    expect(median).toBeLessThanOrEqual(60);
-    expect(hot).toBeGreaterThanOrEqual(0.8);
-    expect(warm).toBeGreaterThanOrEqual(0.98);
+    expect(median).toBeLessThanOrEqual(45);
+    expect(hot).toBeGreaterThanOrEqual(0.9);
+    expect(warm).toBeGreaterThanOrEqual(0.99);
   });
 
   it('оставляет посторонние слова далеко', () => {

@@ -8,6 +8,12 @@
  * больнице довольны все, а игру портят те десять процентов, где число не
  * совпало с человеческим ощущением.
  *
+ * Отдельно считаются пары, связь которых выписана руками в
+ * `known-links.ts`. Иначе замер обманывает: увидев промах, легко вписать
+ * связь и получить зелёные цифры, ничего на самом деле не улучшив. Такие
+ * пары говорят только о том, что список работает; о качестве самих мер
+ * говорят остальные, и смотреть надо на них.
+ *
  * Пороги взяты из того, как число читается игроком:
  *   до 300      — «горячо», сразу видно, что мысль верная;
  *   до 2000     — «тепло», направление угадано;
@@ -15,6 +21,7 @@
  *   дальше      — «ледяное», связи не видно.
  */
 import { RELATED, UNRELATED, type Pair } from './benchmark-pairs';
+import { KNOWN_LINKS } from './known-links';
 import { SemanticsService } from './semantics.service';
 
 const HOT = 300;
@@ -40,6 +47,14 @@ function measure(service: SemanticsService, list: Pair[]): Measured[] {
     }
     return { secret, guess, rank: ranking.rankOf(g) };
   });
+}
+
+/** Выписана ли связь этой пары руками. */
+function isStated({ secret, guess }: Pair): boolean {
+  return (
+    (KNOWN_LINKS[secret] ?? []).includes(guess) ||
+    (KNOWN_LINKS[guess] ?? []).includes(secret)
+  );
 }
 
 function share(values: number[], limit: number): string {
@@ -81,12 +96,27 @@ function main(): void {
     );
   }
 
-  const ranks = all.flatMap((m) => (m.rank === null ? [] : [m.rank]));
-  console.log(
-    `\n${'ВСЕГО'.padEnd(22)}${String(ranks.length).padStart(5)}` +
-      `${String(median(ranks)).padStart(9)}` +
-      `${share(ranks, HOT).padStart(8)}${share(ranks, WARM).padStart(7)}` +
-      `${share(ranks, COLD).padStart(9)}`,
+  const line = (name: string, list: Measured[]): void => {
+    const values = list.flatMap((m) => (m.rank === null ? [] : [m.rank]));
+    if (values.length === 0) return;
+    console.log(
+      `${name.padEnd(22)}${String(values.length).padStart(5)}` +
+        `${String(median(values)).padStart(9)}` +
+        `${share(values, HOT).padStart(8)}${share(values, WARM).padStart(7)}` +
+        `${share(values, COLD).padStart(9)}`,
+    );
+  };
+  console.log();
+  line('ВСЕГО', all);
+  // Главная строка — эта: она про качество мер, а не про длину списка
+  // выписанных связей.
+  line(
+    'без вписанных',
+    all.filter((m) => !isStated(m)),
+  );
+  line(
+    'со вписанными',
+    all.filter((m) => isStated(m)),
   );
 
   console.log('\nХУДШИЕ СЛУЧАИ — здесь игрок решит, что игра его не поняла\n');

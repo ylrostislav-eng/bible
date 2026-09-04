@@ -8,6 +8,7 @@ import {
   resolveInput,
   type ResolvedInput,
 } from '@bible-arena/shared';
+import { KNOWN_LINKS } from './known-links';
 
 /**
  * Смысловое расстояние между словами — то, чем игра меряет «горячо/холодно».
@@ -25,6 +26,10 @@ import {
  *  * **Сюжет** (сам синодальный текст) — слова одних глав и сцен. Отвечает
  *    за библейскую связь, которой нет ни в одном общем корпусе, и молчит
  *    обо всём, чего в Писании нет.
+ *  * **Знание** (`known-links.ts`) — связи, выписанные прямо. У трёх мер
+ *    выше общий слепой угол: связь, очевидная любому, но редко выраженная
+ *    рядом стоящими словами. Вавилон и башня — одна история для всех, а по
+ *    замеру башня стояла на 1219 месте.
  *
  * Словарь лежит в `apps/api/data/semantics-ru.bin.gz` и собирается
  * скриптом `scripts/build-semantics.py`. Он в репозитории: двадцать два
@@ -192,6 +197,11 @@ export class SemanticsService implements OnModuleInit {
   private episodeCount: Int32Array = new Int32Array(0);
   /** Любое написание — слово или его форма — к номеру леммы. */
   private readonly index = new Map<string, number>();
+  /**
+   * Выписанные вручную связи — см. `known-links.ts`. Для каждого слова
+   * список соседей по убыванию близости, уже в обе стороны.
+   */
+  private readonly known = new Map<number, number[]>();
   private spell: SpellIndex | null = null;
   private failure: string | null = null;
 
@@ -215,8 +225,10 @@ export class SemanticsService implements OnModuleInit {
       this.logger.error(this.failure);
       return;
     }
+    this.loadKnownLinks();
     this.logger.log(
-      `Словарь смыслов: ${this.lemmas.length} слов, ${this.index.size} написаний, ${Date.now() - started} мс`,
+      `Словарь смыслов: ${this.lemmas.length} слов, ${this.index.size} написаний, ` +
+        `${this.known.size} со вписанными связями, ${Date.now() - started} мс`,
     );
   }
 
@@ -345,6 +357,53 @@ export class SemanticsService implements OnModuleInit {
     return offset;
   }
 
+  /**
+   * Разворачивает выписанные связи в обе стороны.
+   *
+   * В файле «вавилон → башня» записано один раз; игре нужно и обратное,
+   * иначе загаданная башня не знала бы про Вавилон. Порядок в обратную
+   * сторону берётся по позиции в исходном списке: чем выше слово стояло у
+   * соседа, тем ближе сосед к нему.
+   */
+  private loadKnownLinks(): void {
+    const collected = new Map<number, { at: number; lemma: number }[]>();
+    const add = (from: number, to: number, at: number): void => {
+      if (from === to) return;
+      const list = collected.get(from) ?? [];
+      if (!list.some((entry) => entry.lemma === to))
+        list.push({ at, lemma: to });
+      collected.set(from, list);
+    };
+
+    for (const [word, links] of Object.entries(KNOWN_LINKS)) {
+      const source = this.lookup(word);
+      if (source === null) {
+        // Слово, которого нет в словаре, — это опечатка в списке, и
+        // молчать о ней нельзя: связь просто не заработает.
+        this.logger.warn(`Вписанные связи: нет в словаре слова «${word}»`);
+        continue;
+      }
+      links.forEach((link, at) => {
+        const target = this.lookup(link);
+        if (target === null) {
+          this.logger.warn(
+            `Вписанные связи: нет в словаре слова «${link}» (у «${word}»)`,
+          );
+          return;
+        }
+        add(source, target, at);
+        add(target, source, at);
+      });
+    }
+
+    for (const [lemma, list] of collected) {
+      this.known.set(
+        lemma,
+        list.sort((a, b) => a.at - b.at).map((entry) => entry.lemma),
+      );
+    }
+  }
+
   /** Готов ли словарь. Если нет, игру, которая на нём стоит, надо честно
    * выключить, а не показывать пустой экран. */
   get ready(): boolean {
@@ -471,6 +530,24 @@ export class SemanticsService implements OnModuleInit {
   }
 
   /**
+   * Места по вписанным вручную связям, или `null`, если для этого слова
+   * ничего не выписано.
+   *
+   * Отдельная мера, а не поправка к остальным: она знает мало слов, но про
+   * них знает точно, и смешивать её с оценками, у которых охват полный,
+   * значило бы разбавить единственное, ради чего она есть.
+   */
+  private stated(lemmaIndex: number): Int32Array | null {
+    const links = this.known.get(lemmaIndex);
+    if (!links) return null;
+    const places = new Int32Array(this.lemmas.length);
+    links.forEach((lemma, at) => {
+      places[lemma] = at + 1;
+    });
+    return places;
+  }
+
+  /**
    * Ранжирует весь словарь относительно загаданного слова.
    *
    * Три меры видят разное. **Смысл** знает, что овца — животное, а
@@ -499,6 +576,7 @@ export class SemanticsService implements OnModuleInit {
     const bySpeech = placesOf(spoken);
     const story = this.association(lemmaIndex);
     const byStory = placesOf(story);
+    const stated = this.stated(lemmaIndex);
 
     const fused = new Float64Array(count);
     for (let j = 0; j < count; j += 1) {
@@ -508,6 +586,10 @@ export class SemanticsService implements OnModuleInit {
       if (sense[j] >= 0) fused[j] += 1 / (RANK_SMOOTHING + byMeaning[j]);
       if (spoken[j] >= 0) fused[j] += 1 / (RANK_SMOOTHING + bySpeech[j]);
       if (story[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + byStory[j]);
+      // Вписанная связь весит как очень высокое место у обычной меры: это
+      // не догадка статистики, а знание, и оно должно перевешивать
+      // случайное «слов рядом не встречалось».
+      if (stated && stated[j] > 0) fused[j] += 1 / (RANK_SMOOTHING + stated[j]);
     }
 
     const places = placesOf(fused);
