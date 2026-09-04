@@ -1,34 +1,41 @@
 #!/usr/bin/env node
 /**
- * Переупорядочивает верх списка настоящей языковой моделью.
+ * Переупорядочивает верх списка языковой моделью.
  *
- * Зачем. Четыре меры расстояния дают приличный порядок, но верх списка —
- * это то, что игрок видит и по чему судит об игре, и там статистика всё
- * ещё ошибается: «ворота» при загаданном «футболе» она относит далеко,
- * потому что в русской прозе ворота почти всегда дворовые. Модель этого не
- * путает: ей сказано, какое слово загадано, и многозначность снимается
- * сама.
+ * Основной путь — **модель на своём компьютере**: бесплатно, без лимитов и
+ * без чужих серверов. Ollama поднимает её одной командой и слушает на
+ * localhost:11434; скрипт сам её находит. Платный путь через API оставлен
+ * запасным, на случай если локально не выходит.
+ *
+ * Зачем это. Четыре меры дают приличный порядок, но верх списка — то, что
+ * игрок видит и по чему судит об игре, и там статистика ошибается:
+ * «ворота» при загаданном «футболе» она уносит далеко, потому что в
+ * русской прозе ворота почти всегда дворовые. Модели сказано, какое слово
+ * загадано, и многозначность снимается сама.
  *
  * Почему на сборке, а не в игре. Игре нужен полный порядок по пятидесяти
  * тысячам слов, одинаковый у всех игроков и мгновенный. Спрашивать модель
- * на каждую догадку — это секунда ожидания, плата за запрос и разные числа
- * у двух людей, играющих в одно слово. Поэтому модель зовут один раз на
- * загаданное слово, а игра работает с готовой таблицей: мгновенно,
- * одинаково у всех и без интернета.
+ * на каждую догадку — это ожидание, а у двух людей, играющих одно слово,
+ * получились бы разные числа. Здесь модель зовут один раз на загаданное
+ * слово, а игра работает с готовой таблицей.
  *
- * Что именно она делает. Для каждого из 259 слов, которые игра может
- * загадать, берутся первые CANDIDATES слов текущего порядка, и модель
- * расставляет их так, как расставил бы человек. Результат ложится в
- * `apps/api/data/rerank-ru.json.gz` и коммитится, как и словарь.
+ * Оценки, а не сортировка. Просить «расставь 120 слов по порядку» — верный
+ * способ получить от небольшой модели кашу. Оценка от 0 до 10 маленькими
+ * пачками даётся куда надёжнее, разбирается однозначно, и главное —
+ * портится по-хорошему: неоценённое слово просто остаётся на своём месте.
  *
- * Запуск:
+ * Прогон долгий и его можно прерывать: сделанное сохраняется после каждого
+ * слова, повторный запуск продолжает с того же места.
  *
- *     export ANTHROPIC_API_KEY=sk-ant-...
- *     node scripts/rerank-with-model.mjs            # все слова
- *     node scripts/rerank-with-model.mjs --limit 5  # попробовать на пяти
+ * --- Как запустить (Windows, PowerShell) ---
  *
- * Стоимость: примерно один запрос на слово. На Haiku это центы за весь
- * прогон целиком.
+ *   1. Поставить Ollama:      https://ollama.com/download
+ *   2. Скачать модель:        ollama pull qwen2.5:7b
+ *   3. Проверить на пяти:     node scripts/rerank-with-model.mjs --limit 5
+ *   4. Прогнать всё:          node scripts/rerank-with-model.mjs
+ *
+ * Другая модель:              node scripts/rerank-with-model.mjs --model qwen2.5:14b
+ * Через платный API:          $env:ANTHROPIC_API_KEY="sk-ant-..."  и  --provider anthropic
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -39,35 +46,86 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_FILE = join(ROOT, 'apps/api/data/rerank-ru.json.gz');
 const CANDIDATES_FILE = join(ROOT, '.cache/rerank-candidates.json');
+const PROGRESS_FILE = join(ROOT, '.cache/rerank-progress.json');
 
-/** Сколько слов верха отдавать модели на пересортировку. */
+/** Сколько слов верха отдавать модели. Дальше игрок почти не забирается. */
 const CANDIDATES = 120;
 
-const MODEL = 'claude-haiku-4-5-20251001';
-const API = 'https://api.anthropic.com/v1/messages';
+/** По сколько слов в одной просьбе. Больше — и небольшая модель начинает
+ * терять слова и дописывать пояснения. */
+const BATCH = 20;
+
+const OLLAMA = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
+const DEFAULT_LOCAL_MODEL = 'qwen2.5:7b';
+const DEFAULT_API_MODEL = 'claude-haiku-4-5-20251001';
+
+const flag = (name, fallback = null) => {
+  const at = process.argv.indexOf(`--${name}`);
+  return at >= 0 ? process.argv[at + 1] : fallback;
+};
 
 /**
  * Просьба к модели.
  *
- * Сказано «загаданное слово», а не «первое слово списка», намеренно: весь
- * выигрыш модели в том, что она знает контекст и снимает многозначность.
- * И просим порядок, а не оценки: оценки от 0 до 100 модель раздаёт
- * неровно, а порядок — ровно то, что нужно игре.
+ * Загаданное слово названо прямо — весь выигрыш модели в том, что она
+ * знает контекст и снимает многозначность. Формат ответа задан жёстко и
+ * скучно: чем меньше свободы, тем меньше разбирать.
  */
 function prompt(secret, words) {
-  return `Игра: загадано слово «${secret}». Игрок пишет слова, игра показывает, насколько они близки к загаданному.
+  return `Загадано слово «${secret}».
 
-Ниже ${words.length} слов. Расставь их от самого близкого к загаданному — до самого далёкого. Близость — человеческая: одна история, одна сцена, часть и целое, причина и следствие, предмет и его применение. Не только «похожие слова».
+Оцени, насколько каждое слово ниже связано с загаданным, от 0 до 10:
+10 — то же самое или неотделимо (ковчег и потоп),
+7 — одна история или сцена (ковчег и гора),
+4 — общая тема (ковчег и море),
+1 — почти ничего общего,
+0 — не связано никак (ковчег и стул).
 
-Важно: слово многозначно ровно в том значении, которое подходит к загаданному. Если загадан «футбол», то «ворота» — футбольные, а не дворовые.
+Связь человеческая, а не «похожие слова»: часть и целое, причина и
+следствие, предмет и его применение, герой и его история. Многозначное
+слово понимай в том значении, которое подходит к загаданному.
 
-Ответь ТОЛЬКО списком слов через запятую, в новом порядке, без нумерации и пояснений. Все ${words.length} слов, ни одного не потеряв и не добавив.
+Ответь строками вида «слово: число», по одной на слово, без пояснений.
 
-${words.join(', ')}`;
+${words.join('\n')}`;
 }
 
-async function ask(secret, words, key) {
-  const response = await fetch(API, {
+/** Разбирает ответ в оценки. Чужое и лишнее молча отбрасывается. */
+function readScores(text, words) {
+  const allowed = new Set(words);
+  const scores = new Map();
+  for (const line of text.split('\n')) {
+    const match = line.match(/^\s*[-*\d.\s]*([а-яё]+)\s*[:\-—]\s*(\d+)/i);
+    if (!match) continue;
+    const word = match[1].toLowerCase().replace(/ё/g, 'е');
+    if (allowed.has(word) && !scores.has(word)) {
+      scores.set(word, Math.max(0, Math.min(10, Number(match[2]))));
+    }
+  }
+  return scores;
+}
+
+async function askOllama(model, text) {
+  const response = await fetch(`${OLLAMA}/api/generate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      prompt: text,
+      stream: false,
+      // Нулевая температура: игра должна давать одинаковые числа всем, и
+      // пересборка таблицы не должна её перетряхивать.
+      options: { temperature: 0 },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Ollama ответила ${response.status}: ${await response.text()}`);
+  }
+  return (await response.json()).response ?? '';
+}
+
+async function askAnthropic(model, text, key) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': key,
@@ -75,33 +133,16 @@ async function ask(secret, words, key) {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt(secret, words) }],
+      model,
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [{ role: 'user', content: text }],
     }),
   });
   if (!response.ok) {
-    throw new Error(`модель ответила ${response.status}: ${await response.text()}`);
+    throw new Error(`API ответил ${response.status}: ${await response.text()}`);
   }
-  const body = await response.json();
-  const text = body.content?.[0]?.text ?? '';
-
-  // Доверяй, но проверяй: модель может потерять слово, добавить своё или
-  // сбиться на пояснения. Берём только то, что было в списке, по одному
-  // разу, а потерянное дописываем в прежнем порядке — так порядок не
-  // портится даже при плохом ответе.
-  const allowed = new Set(words);
-  const seen = new Set();
-  const ordered = [];
-  for (const raw of text.split(/[,\n]/)) {
-    const word = raw.trim().toLowerCase().replace(/ё/g, 'е');
-    if (allowed.has(word) && !seen.has(word)) {
-      seen.add(word);
-      ordered.push(word);
-    }
-  }
-  const lost = words.filter((w) => !seen.has(w));
-  return { ordered: [...ordered, ...lost], kept: ordered.length };
+  return (await response.json()).content?.[0]?.text ?? '';
 }
 
 /** Кандидатов готовит сам сервер: у него уже есть все четыре меры. */
@@ -110,7 +151,7 @@ function collectCandidates() {
     console.log(`Беру кандидатов из кэша: ${CANDIDATES_FILE}`);
     return JSON.parse(readFileSync(CANDIDATES_FILE, 'utf8'));
   }
-  console.log('Собираю кандидатов текущим порядком…');
+  console.log('Собираю кандидатов текущим порядком (это займёт минуту)…');
   const script = `
     import { SemanticsService } from './src/semantics/semantics.service';
     import { readFileSync } from 'node:fs';
@@ -137,47 +178,111 @@ function collectCandidates() {
   return candidates;
 }
 
-async function main() {
+async function chooseProvider() {
+  const asked = flag('provider');
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    console.error(
-      'Нужен ключ:\n' +
-        '  export ANTHROPIC_API_KEY=sk-ant-...\n\n' +
-        'Взять его на console.anthropic.com. Весь прогон стоит центы,\n' +
-        'и делается он один раз — игра потом работает без интернета.',
-    );
-    process.exit(1);
-  }
 
-  const candidates = collectCandidates();
-  const words = Object.keys(candidates);
-  const limitAt = process.argv.indexOf('--limit');
-  const limit = limitAt >= 0 ? Number(process.argv[limitAt + 1]) : words.length;
-  const chosen = words.slice(0, limit);
-  console.log(`Слов: ${chosen.length}, кандидатов на слово: ${CANDIDATES}`);
-
-  const result = {};
-  let failed = 0;
-  for (const [index, secret] of chosen.entries()) {
+  if (asked !== 'anthropic') {
     try {
-      const { ordered, kept } = await ask(secret, candidates[secret], key);
-      result[secret] = ordered;
-      process.stdout.write(
-        `\r  ${index + 1}/${chosen.length}  ${secret} (модель вернула ${kept} из ${candidates[secret].length})        `,
-      );
-    } catch (error) {
-      failed += 1;
-      // Одно упавшее слово не должно ронять весь прогон: остальные уже
-      // оплачены и посчитаны.
-      console.log(`\n  ${secret}: ${error.message}`);
+      const tags = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(4000) });
+      if (tags.ok) {
+        const installed = (await tags.json()).models?.map((m) => m.name) ?? [];
+        const model = flag('model', DEFAULT_LOCAL_MODEL);
+        if (
+          installed.length > 0 &&
+          !installed.some((name) => name.startsWith(model.split(':')[0]))
+        ) {
+          console.log(
+            `Ollama работает, но модели «${model}» нет. Установленные: ${installed.join(', ')}`,
+          );
+          console.log(`Скачать:  ollama pull ${model}`);
+          process.exit(1);
+        }
+        console.log(`Модель на этом компьютере: ${model} (Ollama)`);
+        return { ask: (text) => askOllama(model, text), local: true };
+      }
+    } catch {
+      // Ollama не запущена — не беда, ниже объясним по-человечески.
     }
   }
 
-  mkdirSync(dirname(OUT_FILE), { recursive: true });
-  writeFileSync(OUT_FILE, gzipSync(Buffer.from(JSON.stringify(result), 'utf8')));
-  console.log(
-    `\nГотово: ${Object.keys(result).length} слов, ошибок ${failed}.\n` + `Файл: ${OUT_FILE}`,
+  if (key) {
+    const model = flag('model', DEFAULT_API_MODEL);
+    console.log(`Модель через API: ${model} (платно)`);
+    return { ask: (text) => askAnthropic(model, text, key), local: false };
+  }
+
+  console.error(
+    'Модель не найдена. Бесплатный путь, на своём компьютере:\n\n' +
+      '  1. Поставить Ollama — https://ollama.com/download\n' +
+      `  2. ollama pull ${DEFAULT_LOCAL_MODEL}\n` +
+      '  3. запустить этот скрипт снова\n\n' +
+      'Ollama сама поднимает сервер на localhost:11434; ничего настраивать\n' +
+      'не нужно. Если она стоит на другой машине — задайте OLLAMA_HOST.\n\n' +
+      'Платный запасной путь: ANTHROPIC_API_KEY и --provider anthropic',
   );
+  process.exit(1);
+}
+
+async function main() {
+  const provider = await chooseProvider();
+  const candidates = collectCandidates();
+
+  // Сделанное раньше не переделываем: локальный прогон идёт часами, и
+  // прервать его должно быть не страшно.
+  const done = existsSync(PROGRESS_FILE) ? JSON.parse(readFileSync(PROGRESS_FILE, 'utf8')) : {};
+  const limit = Number(flag('limit', Infinity));
+  const todo = Object.keys(candidates)
+    .filter((word) => !(word in done))
+    .slice(0, limit);
+
+  console.log(
+    `Слов всего ${Object.keys(candidates).length}, уже сделано ${Object.keys(done).length}, ` +
+      `сейчас будет ${todo.length}. Пачек на слово: ${Math.ceil(CANDIDATES / BATCH)}.`,
+  );
+  if (provider.local) {
+    console.log('Прервать можно в любой момент — прогресс сохраняется после каждого слова.\n');
+  }
+
+  const started = Date.now();
+  for (const [index, secret] of todo.entries()) {
+    const words = candidates[secret];
+    const scores = new Map();
+    for (let at = 0; at < words.length; at += BATCH) {
+      const batch = words.slice(at, at + BATCH);
+      try {
+        for (const [word, score] of readScores(await provider.ask(prompt(secret, batch)), batch)) {
+          scores.set(word, score);
+        }
+      } catch (error) {
+        // Одна упавшая пачка — не повод терять слово целиком: те, что
+        // модель не оценила, останутся на прежних местах.
+        console.log(`\n  ${secret}: ${error.message}`);
+      }
+    }
+
+    // Устойчивая сортировка: при равной оценке порядок остаётся прежним, а
+    // неоценённые слова уходят вниз, но не перемешиваются между собой.
+    done[secret] = words
+      .map((word, at) => ({ word, at, score: scores.get(word) ?? -1 }))
+      .sort((a, b) => b.score - a.score || a.at - b.at)
+      .map((entry) => entry.word);
+
+    mkdirSync(dirname(PROGRESS_FILE), { recursive: true });
+    writeFileSync(PROGRESS_FILE, JSON.stringify(done), 'utf8');
+
+    const each = (Date.now() - started) / (index + 1);
+    const left = Math.round((each * (todo.length - index - 1)) / 60_000);
+    process.stdout.write(
+      `\r  ${index + 1}/${todo.length}  ${secret} — оценено ${scores.size} из ${words.length}` +
+        `, осталось ~${left} мин          `,
+    );
+  }
+
+  mkdirSync(dirname(OUT_FILE), { recursive: true });
+  writeFileSync(OUT_FILE, gzipSync(Buffer.from(JSON.stringify(done), 'utf8')));
+  console.log(`\n\nГотово: ${Object.keys(done).length} слов.\nФайл: ${OUT_FILE}`);
+  console.log('Теперь перезапустите сервер и сыграйте — числа станут другими.');
 }
 
 main().catch((error) => {
