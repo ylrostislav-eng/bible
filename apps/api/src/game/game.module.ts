@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
+import { AbandonedSweeper } from './abandoned.sweeper';
 import { DuelController } from './duel.controller';
 import { DuelService } from './duel.service';
 import { GameController } from './game.controller';
@@ -19,6 +20,7 @@ import { RoomsService } from './rooms.service';
     QuestionsService,
     RoomsService,
     RoomsGateway,
+    AbandonedSweeper,
   ],
 })
 export class GameModule {}

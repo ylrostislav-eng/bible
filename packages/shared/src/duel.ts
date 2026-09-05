@@ -95,7 +95,16 @@ export interface DuelRoundAnswer {
   scoreDelta: number;
 }
 
-export type DuelStateStatus = 'WAITING_FOR_OPPONENT' | 'IN_PROGRESS' | 'COMPLETED';
+/**
+ * `ABANDONED` — партия не состоялась: соперник не пришёл, или ушли оба и
+ * её закрыла фоновая уборка (`AbandonedSweeper`).
+ *
+ * Раньше этого значения в типе не было, хотя в базе оно существовало и
+ * уезжало на клиент как есть. Экран о нём не знал и не показывал ничего:
+ * ни одна ветка по статусу не совпадала. Тип, который умалчивает об
+ * одном из исходов, — это не упрощение, а спрятанный тупик.
+ */
+export type DuelStateStatus = 'WAITING_FOR_OPPONENT' | 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
 
 /**
  * Polled by the client roughly every second while a duel is active. A single

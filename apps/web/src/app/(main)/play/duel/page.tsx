@@ -82,7 +82,8 @@ export default function DuelPage() {
   // once COMPLETED — see the clear-on-completion effect below for why.
   useEffect(() => {
     function syncActiveGame() {
-      if (!sessionId || duelState?.status === 'COMPLETED') return;
+      if (!sessionId || duelState?.status === 'COMPLETED' || duelState?.status === 'ABANDONED')
+        return;
       if (
         activeGame?.type !== 'duel' ||
         activeGame.sessionId !== sessionId ||
@@ -102,7 +103,10 @@ export default function DuelPage() {
   // forever, since nothing ever cleared it afterwards.
   useEffect(() => {
     function clearOnCompletion() {
-      if (duelState?.status === 'COMPLETED') setActiveGame(null);
+      // Не состоявшаяся партия — тоже не активная: иначе вкладка «Играть»
+      // будет возвращать в неё, как возвращала в завершённую.
+      if (duelState?.status === 'COMPLETED' || duelState?.status === 'ABANDONED')
+        setActiveGame(null);
     }
     clearOnCompletion();
   }, [duelState?.status, setActiveGame]);
@@ -134,6 +138,11 @@ export default function DuelPage() {
         // of staying lit up until the red/green reveal took over.
         if (state.status !== 'IN_PROGRESS') {
           setSelectedIndex(null);
+        }
+        if (state.status === 'ABANDONED') {
+          // Опрашивать больше нечего: у брошенной партии состояние уже не
+          // изменится никогда.
+          clearInterval(interval);
         }
         if (state.status === 'COMPLETED') {
           setRewardsApplied((already) => {
@@ -487,6 +496,22 @@ export default function DuelPage() {
           <button onClick={() => void cancelWaiting()} className="text-sm text-text-secondary">
             Отменить
           </button>
+        </div>
+      );
+    }
+
+    if (duelState.status === 'ABANDONED') {
+      return (
+        <div className="mx-auto flex max-w-md flex-col items-center gap-4 px-4 pt-16 text-center">
+          <h1 className="text-xl font-bold">Дуэль не состоялась</h1>
+          {/* Прямо говорим, что наград нет: иначе человек ищет их в
+              профиле и решает, что они потерялись. */}
+          <p className="text-sm text-text-secondary">
+            Партию закрыли: соперник не пришёл или вы оба вышли. Ни очков, ни рейтинга за неё нет.
+          </p>
+          <Button onClick={reset} className="max-w-xs">
+            Новая дуэль
+          </Button>
         </div>
       );
     }
