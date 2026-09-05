@@ -241,6 +241,20 @@ export default function HotColdDuelPage() {
             />
           ) : (
             <>
+              {/* Загадка видна всё время: это единственное, от чего можно
+                  оттолкнуться, и на сороковом слове она нужнее, чем на
+                  первом. */}
+              <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-center text-sm font-medium">
+                {state.riddle}
+              </p>
+
+              <SharedHints
+                state={state}
+                onAsk={duel.askHint}
+                onDecline={duel.declineHint}
+                opponentName={state.opponent?.nickname ?? 'Соперник'}
+              />
+
               {/* Отсчёт «3-2-1»: пока он идёт, ходы сервер не принимает, и
                   поле ввода показывать нечестно — набранное всё равно
                   отскочит. Момент старта приходит с сервера, отсчёт
@@ -281,6 +295,11 @@ export default function HotColdDuelPage() {
                 {duel.notice?.kind === 'burnt' && (
                   <p key={duel.notice.seq} className="text-sm text-danger" aria-live="polite">
                     Не успели — слово сгорело.
+                  </p>
+                )}
+                {duel.notice?.kind === 'hint-declined' && (
+                  <p key={duel.notice.seq} className="text-sm text-warning" aria-live="polite">
+                    Соперник отказался от подсказки.
                   </p>
                 )}
                 {duel.notice?.kind === 'verdict' && (
@@ -406,6 +425,83 @@ function Lobby({
 }
 
 /**
+ * Общие подсказки: одна на двоих и только по согласию обоих.
+ *
+ * Личная подсказка в гонке была бы форой — отстающий брал бы её каждый
+ * раз, а платил бы тот, кто ведёт. Общая честна: текст одинаковый, ни одна
+ * не опирается на названные слова, и ступени идут от раздела Писания к
+ * форме самого слова, не доходя до ответа.
+ *
+ * Согласие спрашивается прямо на экране, а не сообщением в стороне:
+ * сообщение можно не заметить, а партия в это время идёт.
+ */
+function SharedHints({
+  state,
+  onAsk,
+  onDecline,
+  opponentName,
+}: {
+  state: HotColdDuelState;
+  onAsk: () => void;
+  onDecline: () => void;
+  opponentName: string;
+}) {
+  const request = state.hintRequest;
+  return (
+    <div className="flex flex-col gap-2">
+      {state.hints.map((hint, index) => (
+        <p
+          key={index}
+          className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-sm"
+        >
+          {hint}
+        </p>
+      ))}
+
+      {request && !request.mine && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-warning/40 bg-warning/10 p-3">
+          <p className="text-sm">
+            {opponentName} предлагает взять подсказку — она общая, одна на двоих. Берём?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onAsk}
+              className="h-10 flex-1 rounded-xl bg-primary text-sm font-semibold text-on-primary"
+            >
+              Берём
+            </button>
+            <button
+              type="button"
+              onClick={onDecline}
+              className="h-10 flex-1 rounded-xl bg-surface-hover text-sm font-semibold text-text-secondary"
+            >
+              Не надо
+            </button>
+          </div>
+        </div>
+      )}
+
+      {request?.mine && (
+        <p className="text-center text-xs text-text-muted">
+          Ждём ответа соперника — подсказка берётся только вместе.
+        </p>
+      )}
+
+      {!request && state.hintsLeft > 0 && (
+        <button
+          type="button"
+          onClick={onAsk}
+          className="self-center text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline"
+        >
+          Предложить подсказку · осталось {state.hintsLeft}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * Оба на месте — но игра не начинается, пока каждый не скажет «готов».
  *
  * Партия раньше стартовала в ту же секунду, когда заходил соперник, и
@@ -436,6 +532,10 @@ function ReadyCard({
           слово. Не успели — слово сгорает.
         </p>
       </section>
+
+      <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-center text-sm font-medium">
+        {state.riddle}
+      </p>
 
       <section className="flex flex-col gap-2 rounded-2xl border border-border bg-surface p-4">
         <ReadyRow name="Вы" ready={state.youReady} />
@@ -590,7 +690,16 @@ function Scoreboard({ state, moves }: { state: HotColdDuelState; moves: number }
   const opponent = state.opponent;
   return (
     <section className="grid grid-cols-2 gap-2">
-      <Side title="Вы" best={state.bestRank} moves={state.guesses.length} solved={state.solved} />
+      {/* Свои ходы считаются потраченными словами, а не написанными:
+          сгоревшее слово — такой же расход, и не показать его значило бы
+          врать. Раньше здесь стояла длина списка догадок, и счётчик
+          расходился с оставшимися словами ровно на число сгоревших. */}
+      <Side
+        title="Вы"
+        best={state.bestRank}
+        moves={HOT_COLD_DUEL_MAX_GUESSES - state.guessesLeft}
+        solved={state.solved}
+      />
       {/* Ключ по числу ходов соперника перезапускает анимацию на каждый
           его ход — тем же приёмом, что отсчёт перед дуэлью. Эффект с
           таймером ради одного мигания стоил бы лишней перерисовки на

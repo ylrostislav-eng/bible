@@ -1,5 +1,6 @@
 import {
-  HOT_COLD_DUEL_HINTS,
+  HOT_COLD_DUEL_HINT_LIMIT,
+  HOT_COLD_DUEL_PERSONAL_HINTS,
   HOT_COLD_DUEL_LOSER_SHARE,
   HOT_COLD_DUEL_LOSS_RATING,
   HOT_COLD_DUEL_MAX_GUESSES,
@@ -123,6 +124,10 @@ describe('правила дуэли', () => {
     open: false,
     youReady: false,
     startsAt: null,
+    riddle: 'Загадан человек, Ветхий Завет',
+    hints: [],
+    hintsLeft: HOT_COLD_DUEL_HINT_LIMIT,
+    hintRequest: null,
     vocabulary: 50_000,
     guesses: [],
     bestRank: null,
@@ -149,11 +154,13 @@ describe('правила дуэли', () => {
     expect(HOT_COLD_DUEL_LOSER_SHARE).toBeLessThan(0.5);
   });
 
-  it('подсказок в дуэли нет', () => {
-    // Не забывчивость: в гонке подсказка приближает к ответу быстрее
-    // любого хода, а платит за неё проигравший. Брать её было бы
-    // обязательно, то есть это не выбор, а лишнее нажатие.
-    expect(HOT_COLD_DUEL_HINTS).toBe(0);
+  it('личных подсказок в дуэли нет, общие — по согласию и по счёту', () => {
+    // Личная подсказка в гонке — фора: она приближает к ответу быстрее
+    // любого хода, а платит за неё проигравший.
+    expect(HOT_COLD_DUEL_PERSONAL_HINTS).toBe(0);
+    // Общие есть, но их считаное число: четвёртой ступени, которая была бы
+    // ближе формы слова и при этом не ответом, просто не существует.
+    expect(HOT_COLD_DUEL_HINT_LIMIT).toBe(3);
   });
 
   /** Соперник в состоянии — с полями, которые различают исходы. */

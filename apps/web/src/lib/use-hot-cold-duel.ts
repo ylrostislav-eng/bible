@@ -31,7 +31,8 @@ export type DuelNotice =
       understood: string | null;
       repeat: boolean;
     }
-  | { kind: 'burnt'; seq: number };
+  | { kind: 'burnt'; seq: number }
+  | { kind: 'hint-declined'; seq: number };
 
 /**
  * Живая связь одной дуэли «горячо-холодно».
@@ -106,6 +107,11 @@ export function useHotColdDuel(duelId: string | null) {
     function handleBurnt() {
       setNotice((prev) => ({ kind: 'burnt', seq: (prev?.seq ?? 0) + 1 }));
     }
+    // Отказ от подсказки надо сказать вслух: иначе предложение молча
+    // исчезает, и непонятно — отказали или что-то сломалось.
+    function handleHintDeclined() {
+      setNotice((prev) => ({ kind: 'hint-declined', seq: (prev?.seq ?? 0) + 1 }));
+    }
     function handleError(payload: { message: string }) {
       setError(payload.message);
     }
@@ -114,6 +120,7 @@ export function useHotColdDuel(duelId: string | null) {
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, handleState);
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.opponentMoved, handleOpponentMoved);
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.burnt, handleBurnt);
+    socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.hintDeclined, handleHintDeclined);
     socket.on(HOT_COLD_DUEL_WS_SERVER_EVENTS.error, handleError);
 
     return () => {
@@ -121,6 +128,7 @@ export function useHotColdDuel(duelId: string | null) {
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, handleState);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.opponentMoved, handleOpponentMoved);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.burnt, handleBurnt);
+      socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.hintDeclined, handleHintDeclined);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.error, handleError);
       socket.disconnect();
       socketRef.current = null;
@@ -144,6 +152,18 @@ export function useHotColdDuel(duelId: string | null) {
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.ready, { duelId });
   }, [duelId]);
 
+  /** «Я за подсказку»: и предложение, и согласие — одно и то же действие. */
+  const askHint = useCallback(() => {
+    setError(null);
+    socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.hint, { duelId });
+  }, [duelId]);
+
+  /** «Не надо»: снимает предложение соперника, и он об этом узнает. */
+  const declineHint = useCallback(() => {
+    setError(null);
+    socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.hintDecline, { duelId });
+  }, [duelId]);
+
   const surrender = useCallback(() => {
     setError(null);
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.surrender, { duelId });
@@ -162,6 +182,8 @@ export function useHotColdDuel(duelId: string | null) {
     opponentMoves,
     guess,
     setReady,
+    askHint,
+    declineHint,
     surrender,
     claimWin,
   };

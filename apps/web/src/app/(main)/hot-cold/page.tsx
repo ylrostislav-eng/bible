@@ -198,8 +198,13 @@ export default function HotColdPage() {
             {state.free ? `Своё слово №${state.round}` : formatDate(state.date)}
           </p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
+          {/* Не «Слово дня»: так называется другой режим приложения, и
+              подпись читалась как «вы не туда попали». Смысл тот же —
+              нулевая партия общая для всех, — но сказан своими словами. */}
           <p className="mt-1 text-sm text-text-secondary">
-            {state.free ? 'Своё слово — играйте сколько хотите.' : 'Слово дня, одно на всех.'}
+            {state.free
+              ? 'Своё слово — играйте сколько хотите.'
+              : 'Сегодня у всех одно и то же слово.'}
           </p>
         </div>
       </header>
@@ -216,6 +221,13 @@ export default function HotColdPage() {
               поняли правила из первого же ответа, и карточка ушла бы в
               шум. */}
           {state.guesses.length === 0 && <HowItWorks state={state} />}
+
+          {/* Загадка видна всегда, а не только до первого хода: это
+              единственное, от чего можно оттолкнуться, и на сороковом
+              слове она нужнее, чем на первом. */}
+          <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-center text-sm font-medium">
+            {state.riddle}
+          </p>
 
           <div className="flex flex-col gap-2">
             <input

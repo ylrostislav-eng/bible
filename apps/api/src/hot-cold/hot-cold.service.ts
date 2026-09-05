@@ -11,6 +11,8 @@ import {
   HOT_COLD_DAILY_ROUND,
   HOT_COLD_HINT_PROMISE,
   hotColdHintKind,
+  hotColdRiddle,
+  hotColdShapeHint,
   type HotColdHintKind,
   HOT_COLD_FREE_REWARD_SHARE,
   HOT_COLD_FREE_XP_PER_DAY,
@@ -59,6 +61,15 @@ interface WordRow {
   gloss: string;
 }
 
+/** Загаданное слово со всем, что о нём можно рассказать, не называя. */
+interface SecretRow extends WordRow {
+  /** `AliasCategory`. */
+  category: string;
+  /** `AliasTestament`. */
+  testament: string;
+  refBookId: number | null;
+}
+
 interface AttemptRow {
   id: string;
   round: number;
@@ -71,7 +82,7 @@ interface AttemptRow {
   finishedAt: Date | null;
   xpEarned: number;
   coinsEarned: number;
-  word: WordRow;
+  word: SecretRow;
 }
 
 @Injectable()
@@ -318,6 +329,13 @@ export class HotColdService {
       // а не как история ходов, и порядок появления здесь ничего не значит.
       guesses: [...guesses].sort((a, b) => a.rank - b.rank),
       vocabulary: this.semantics.size,
+      riddle: hotColdRiddle({
+        category: attempt.word.category,
+        testament: attempt.word.testament,
+        bookId: attempt.word.refBookId,
+        frequent: false,
+        word: attempt.word.word,
+      }),
       hintsUsed: attempt.hintsUsed,
       nextHint: finished
         ? null
@@ -598,7 +616,9 @@ export class HotColdService {
       // список, а не в догадки: положить их туда значило бы приписать им
       // расстояние, которого у них нет.
       const text =
-        kind === 'SHAPE' ? shapeHint(attempt.word.word) : attempt.word.gloss;
+        kind === 'SHAPE'
+          ? hotColdShapeHint(attempt.word.word)
+          : attempt.word.gloss;
       const updated = await this.prisma.hotColdAttempt.update({
         where: { id: attempt.id },
         data: {
@@ -721,28 +741,6 @@ function readHints(value: unknown): { kind: HotColdHintKind; text: string }[] {
         (entry as { kind?: unknown }).kind as string,
       ),
   );
-}
-
-/**
- * «Слово из семи букв, начинается на „К"».
- *
- * Длина и первая буква вместе сужают поиск куда сильнее, чем каждая по
- * отдельности, и при этом не называют ответ — в отличие от описания,
- * которое идёт следующей ступенью.
- */
-function shapeHint(word: string): string {
-  const clean = word.trim();
-  const letters = clean.length;
-  const first = clean[0]?.toUpperCase() ?? '';
-  const noun =
-    letters % 10 === 1 && letters % 100 !== 11
-      ? 'буквы'
-      : letters % 10 >= 2 &&
-          letters % 10 <= 4 &&
-          (letters % 100 < 10 || letters % 100 >= 20)
-        ? 'букв'
-        : 'букв';
-  return `Слово из ${letters} ${noun}, начинается на «${first}»`;
 }
 
 function readGuesses(value: unknown): HotColdGuess[] {

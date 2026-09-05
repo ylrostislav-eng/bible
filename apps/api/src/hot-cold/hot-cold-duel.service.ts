@@ -8,6 +8,10 @@ import type { Prisma } from '@prisma/client';
 import {
   HOT_COLD_DUEL_AWAY_MS,
   HOT_COLD_DUEL_COUNTDOWN_MS,
+  HOT_COLD_DUEL_HINT_LIMIT,
+  hotColdDuelHint,
+  hotColdRiddle,
+  type HotColdSecretFacts,
   HOT_COLD_DUEL_IDLE_MS,
   HOT_COLD_DUEL_LOSER_SHARE,
   HOT_COLD_DUEL_LOSS_RATING,
@@ -50,6 +54,14 @@ import { UsersService } from '../users/users.service';
  * условием «победителя ещё нет»: проигравшая гонку запись просто не
  * применится, а не перезапишет чужую победу.
  */
+
+/**
+ * С какого числа эпизодов слово считается частым.
+ *
+ * То же число, по которому слово вообще допускается к загадыванию: там оно
+ * значит «его знают», здесь — «мимо него не пройдёшь».
+ */
+const FREQUENT_EPISODES = 30;
 
 /** Сколько ближайших слов показать в разборе после дуэли. */
 const CLOSEST_SHOWN = 10;
@@ -448,6 +460,14 @@ export class HotColdDuelService {
       vocabulary: this.semantics.size,
 
       youReady: me.readyAt !== null,
+      // Загадка бесплатна и видна всегда: без неё игра начинается с
+      // перебора наугад, а это не задача, а угадайка.
+      riddle: hotColdRiddle(this.secretFacts(duel)),
+      hints: readHints(duel.hints),
+      hintsLeft: Math.max(0, HOT_COLD_DUEL_HINT_LIMIT - duel.hintsTaken),
+      hintRequest: duel.hintRequestedBy
+        ? { mine: duel.hintRequestedBy === userId }
+        : null,
       // Момент старта отдаётся, только пока он в будущем: после старта
       // экрану про него знать нечего, а «отсчёт закончился» он определит
       // по тому, что поле исчезло, а не по своим часам.
@@ -664,8 +684,19 @@ export class HotColdDuelService {
       });
     }
 
-    const other = duel.players.find((player) => player.userId !== userId);
-    if (other?.readyAt) {
+    // Готовность соперника перечитывается ПОСЛЕ своей записи, а не берётся
+    // из состояния, прочитанного в начале. Живая проверка поймала ровно
+    // это: двое нажали «готов» почти одновременно, каждый увидел соперника
+    // ещё не готовым — и партия осталась стоять навсегда, хотя готовы были
+    // оба. Чтение после записи такого случая не оставляет.
+    const players = await this.prisma.hotColdDuelPlayer.findMany({
+      where: { duelId },
+      select: { readyAt: true },
+    });
+    const bothReady =
+      players.length === 2 &&
+      players.every((player) => player.readyAt !== null);
+    if (bothReady) {
       // `updateMany` с условием «ещё проверка готовности»: двое, нажавших
       // «готов» в одну миллисекунду, иначе назначили бы два разных старта,
       // и у каждого на экране был бы свой отсчёт.
@@ -679,6 +710,118 @@ export class HotColdDuelService {
       });
     }
     return this.getState(duelId, userId);
+  }
+
+  /**
+   * Что можно рассказать о загаданном слове, не называя его.
+   *
+   * Всё берётся из банка слов, ничего не сочиняется на месте: род, Завет,
+   * книга. «Часто ли встречается» считает словарь смыслов — по числу
+   * эпизодов, в которых слово вообще участвует.
+   */
+  private secretFacts(duel: LoadedDuel): HotColdSecretFacts {
+    const lemma = this.semantics.lookup(duel.word.word);
+    return {
+      category: duel.word.category,
+      testament: duel.word.testament,
+      bookId: duel.word.refBookId,
+      frequent:
+        lemma !== null &&
+        this.semantics.episodesFor(lemma) >= FREQUENT_EPISODES,
+      word: duel.word.word,
+    };
+  }
+
+  /**
+   * «Я за подсказку».
+   *
+   * Одно действие и на предложение, и на согласие: два разных события
+   * пришлось бы мирить между собой, а разница между ними — только в том,
+   * кто нажал первым.
+   *
+   * Подсказка общая и берётся по согласию обоих. Иначе она была бы форой:
+   * отстающий брал бы её каждый раз, а платил бы за это тот, кто и так
+   * ведёт. Отказ — законный ответ, и предложившему о нём говорят.
+   */
+  async requestHint(
+    duelId: string,
+    userId: string,
+  ): Promise<{ state: HotColdDuelState; granted: boolean }> {
+    const duel = await this.load(duelId);
+    const me = duel.players.find((player) => player.userId === userId);
+    if (!me) throw new ForbiddenException('Вы не участник этой дуэли');
+    if (duel.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('Партия ещё не идёт');
+    }
+    if (duel.startsAt && duel.startsAt.getTime() > Date.now()) {
+      throw new BadRequestException('Идёт отсчёт — вот-вот начнём');
+    }
+    if (duel.hintsTaken >= HOT_COLD_DUEL_HINT_LIMIT) {
+      throw new BadRequestException('Подсказки на эту партию кончились');
+    }
+
+    if (duel.hintRequestedBy === userId) {
+      // Уже предложил и ждёт ответа — второе нажатие ничего не меняет.
+      return { state: this.toState(duel, userId), granted: false };
+    }
+
+    if (duel.hintRequestedBy === null) {
+      // Атомарно: двое, нажавших одновременно, иначе затёрли бы друг
+      // друга, и предложение осталось бы висеть от одного из них без
+      // возможности согласиться.
+      const claimed = await this.prisma.hotColdDuel.updateMany({
+        where: { id: duelId, hintRequestedBy: null, status: 'IN_PROGRESS' },
+        data: { hintRequestedBy: userId },
+      });
+      if (claimed.count > 0) {
+        return { state: await this.getState(duelId, userId), granted: false };
+      }
+      // Кто-то успел первым — значит, это его предложение, и наше нажатие
+      // становится согласием. Перечитываем и падаем в ветку ниже.
+      return this.requestHint(duelId, userId);
+    }
+
+    // Предложил соперник, а мы согласились: открываем следующую ступень.
+    const text = hotColdDuelHint(duel.hintsTaken, this.secretFacts(duel));
+    const granted = await this.prisma.hotColdDuel.updateMany({
+      where: {
+        id: duelId,
+        status: 'IN_PROGRESS',
+        hintsTaken: duel.hintsTaken,
+        hintRequestedBy: duel.hintRequestedBy,
+      },
+      data: {
+        hints: [...readHints(duel.hints), text],
+        hintsTaken: { increment: 1 },
+        hintRequestedBy: null,
+      },
+    });
+    return {
+      state: await this.getState(duelId, userId),
+      granted: granted.count > 0,
+    };
+  }
+
+  /** «Не надо»: предложение снимается, и предложившему это говорят. */
+  async declineHint(
+    duelId: string,
+    userId: string,
+  ): Promise<{ state: HotColdDuelState; requesterId: string | null }> {
+    const duel = await this.load(duelId);
+    if (!duel.players.some((player) => player.userId === userId)) {
+      throw new ForbiddenException('Вы не участник этой дуэли');
+    }
+    const requesterId = duel.hintRequestedBy;
+    if (!requesterId || requesterId === userId) {
+      // Своё же предложение отказом не снимают: это была бы кнопка
+      // «передумал», а её смысл в дуэли неотличим от «жму что попало».
+      return { state: this.toState(duel, userId), requesterId: null };
+    }
+    await this.prisma.hotColdDuel.updateMany({
+      where: { id: duelId, hintRequestedBy: requesterId },
+      data: { hintRequestedBy: null },
+    });
+    return { state: await this.getState(duelId, userId), requesterId };
   }
 
   /** Кто играет — шлюзу, чтобы завести часы обоим после отсчёта. */
@@ -897,6 +1040,12 @@ export class HotColdDuelService {
 
     return never.count + stalled.length;
   }
+}
+
+/** Открытые подсказки из JSON. Мусор в колонке не должен ронять партию. */
+function readHints(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
 }
 
 /**

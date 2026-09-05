@@ -256,6 +256,45 @@ export class HotColdDuelGateway
     });
   }
 
+  @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.hint)
+  async onHint(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    await this.guarded(socket, async () => {
+      const dto = await this.parse(HotColdDuelIdDto, body);
+      // Часы на слово подсказка не трогает: она общая и берётся в один
+      // тап, а останавливать время значило бы дать способ его тянуть.
+      await this.duels.requestHint(dto.duelId, socket.data.userId);
+      await this.broadcast(dto.duelId);
+    });
+  }
+
+  @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.hintDecline)
+  async onHintDecline(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    await this.guarded(socket, async () => {
+      const dto = await this.parse(HotColdDuelIdDto, body);
+      const { requesterId } = await this.duels.declineHint(
+        dto.duelId,
+        socket.data.userId,
+      );
+      // Отказ надо сказать вслух: предложивший иначе видит только, как
+      // предложение молча исчезло, и не понимает, отказали ему или
+      // случилась ошибка.
+      if (requesterId) {
+        for (const other of this.duelSockets.get(dto.duelId) ?? []) {
+          if (other.data.userId === requesterId) {
+            other.emit(HOT_COLD_DUEL_WS_SERVER_EVENTS.hintDeclined, {});
+          }
+        }
+      }
+      await this.broadcast(dto.duelId);
+    });
+  }
+
   @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.claim)
   async onClaim(
     @ConnectedSocket() socket: AuthedSocket,
