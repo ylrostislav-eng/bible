@@ -50,6 +50,17 @@ export const SOUND_VOLUME_MAX = 100;
 export interface SoundSettings {
   soundEnabled: boolean;
   musicEnabled: boolean;
+  /**
+   * Играет ли музыка во время партий, а не только в меню.
+   *
+   * Отдельно от `musicEnabled`, потому что это разные вопросы: «хочу ли я
+   * музыку вообще» и «мешает ли она мне играть». Одним тумблером человек,
+   * которому она мешает в дуэли, выключил бы её везде.
+   *
+   * Чтение и проверка главы молчат при любом значении: там музыка
+   * накладывается на текст, который читают, и это не вопрос вкуса.
+   */
+  musicInGames: boolean;
   hapticsEnabled: boolean;
   /** 0–100. Общая для звуков и музыки: две ручки никто не крутит. */
   soundVolume: number;
@@ -58,6 +69,7 @@ export interface SoundSettings {
 export const SOUND_SETTINGS_DEFAULT: SoundSettings = {
   soundEnabled: true,
   musicEnabled: false,
+  musicInGames: true,
   hapticsEnabled: true,
   soundVolume: SOUND_VOLUME_DEFAULT,
 };

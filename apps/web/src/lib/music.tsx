@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSound } from './sound';
 
 /**
@@ -86,34 +86,145 @@ const MELODY = [392.0, 440.0, 493.88, 523.25, 587.33, 659.25, 783.99, 880.0, 987
 const LOOKAHEAD_SECONDS = 2.5;
 
 /**
- * Экраны, где музыка молчит.
+ * Чтение и проверка главы. Молчат при любых настройках.
+ *
+ * Это не вопрос вкуса: музыка ложится на текст, который в этот момент
+ * читают, и мешает ровно тому, ради чего человек сюда пришёл. Всё
+ * остальное — выбор игрока, см. `musicInGames`.
+ */
+const READING_PREFIX = '/learn';
+
+/**
+ * Экраны партий.
  *
  * Список — по началу адреса, а не точным совпадением: у партий бывают
  * вложенные адреса, и точный список пришлось бы дополнять при каждом
  * новом экране режима.
  */
-const SILENT_PREFIXES = [
+const GAME_PREFIXES = [
   '/play/solo',
   '/play/duel',
   '/play/room',
   '/play/alias',
-  '/learn',
   '/daily',
   '/hot-cold',
 ];
 
-function musicAllowed(pathname: string | null): boolean {
+function musicAllowed(pathname: string | null, inGames: boolean): boolean {
   if (!pathname) return false;
-  return !SILENT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  if (pathname.startsWith(READING_PREFIX)) return false;
+  if (inGames) return true;
+  return !GAME_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
+
+/**
+ * Записанная тема, если она есть.
+ *
+ * Файл кладётся в `apps/web/public/music/` под этим именем. Нет файла —
+ * играет синтез: приложение не должно молчать из-за того, что запись ещё
+ * не приехала, и не должно ломаться, если её удалят.
+ */
+const TRACK_SRC = '/music/theme.mp3';
+
+/**
+ * Громкость записи.
+ *
+ * Отдельное число от синтеза: записанный трек сведён почти в полную
+ * шкалу, а синтез собирается из тихих голосов, и один множитель на двоих
+ * дал бы либо оглушительную запись, либо неслышный синтез.
+ */
+const TRACK_LEVEL = 0.3;
+
+/** Где остановились. Переход в чтение и обратно не должен начинать заново. */
+let trackPosition = 0;
 
 export function AmbientMusic() {
   const { settings, audioContext, unlocked } = useSound();
   const pathname = usePathname();
-  const allowed = musicAllowed(pathname);
+  const allowed = musicAllowed(pathname, settings.musicInGames);
+  const on = settings.musicEnabled && settings.soundVolume > 0 && allowed && unlocked;
 
+  // Есть ли записанная тема. `null` — ещё не ответила.
+  const [hasTrack, setHasTrack] = useState<boolean | null>(null);
   useEffect(() => {
-    if (!settings.musicEnabled || settings.soundVolume <= 0 || !allowed || !unlocked) return;
+    if (!on || hasTrack !== null) return;
+    // Спрашиваем только когда музыка действительно нужна: тянуть
+    // мегабайты тому, кто музыку выключил, — расход чужого трафика.
+    const probe = new Audio();
+    probe.preload = 'metadata';
+    const found = () => setHasTrack(true);
+    const missing = () => setHasTrack(false);
+    probe.addEventListener('loadedmetadata', found);
+    probe.addEventListener('error', missing);
+    probe.src = TRACK_SRC;
+    return () => {
+      probe.removeEventListener('loadedmetadata', found);
+      probe.removeEventListener('error', missing);
+      probe.src = '';
+    };
+  }, [on, hasTrack]);
+
+  useTrack(on && hasTrack === true, settings.soundVolume);
+  // Синтез играет, пока проба не сказала «есть запись», — а не пока она
+  // не сказала «нет».
+  //
+  // Разница не теоретическая: живая проверка показала полную тишину.
+  // Файл не отдавал ни `loadedmetadata`, ни `error` — просто висел, и
+  // состояние навсегда осталось «ещё не ответила». Ждать ответ, чтобы
+  // начать играть, значит поставить всю музыку в зависимость от одного
+  // запроса, который может не завершиться никогда.
+  useHearth(on && hasTrack !== true, audioContext, settings.soundVolume);
+  return null;
+}
+
+/**
+ * Проигрывание записанной темы.
+ *
+ * Обычный `<audio>`, а не узел Web Audio: через Web Audio пришлось бы
+ * тащить поток файла в граф ради одной только громкости, а платой за это
+ * были бы требования к заголовкам и молчание при любой ошибке загрузки.
+ * Вход и уход — плавные: музыка, обрывающаяся на полуслове, слышна
+ * сильнее, чем звучавшая.
+ */
+function useTrack(active: boolean, volume: number) {
+  useEffect(() => {
+    if (!active) return;
+    const audio = new Audio(TRACK_SRC);
+    audio.loop = true;
+    audio.currentTime = trackPosition;
+    audio.volume = 0;
+    const target = (volume / 100) * TRACK_LEVEL;
+    void audio.play().catch(() => undefined);
+
+    let step = 0;
+    const fadeIn = window.setInterval(() => {
+      step += 1;
+      audio.volume = Math.min(target, (target * step) / 40);
+      if (step >= 40) window.clearInterval(fadeIn);
+    }, 100);
+
+    return () => {
+      window.clearInterval(fadeIn);
+      trackPosition = audio.currentTime;
+      let out = audio.volume;
+      const fadeOut = window.setInterval(() => {
+        out -= target / 15;
+        if (out <= 0) {
+          window.clearInterval(fadeOut);
+          audio.pause();
+          audio.src = '';
+          return;
+        }
+        audio.volume = Math.max(0, out);
+      }, 60);
+    };
+  }, [active, volume]);
+}
+
+/** Синтезированный камин — пока записи нет. */
+function useHearth(active: boolean, audioContext: () => AudioContext | null, soundVolume: number) {
+  useEffect(() => {
+    if (!active) return;
     const context = audioContext();
     if (!context) return;
     // Локальная копия под замыкания: планировщик и обрыв зовутся позже, и
@@ -196,7 +307,7 @@ export function AmbientMusic() {
     // Доля посчитана, а не подобрана на слух: аккорд с басом и щипком дают
     // до двух амплитуды до общего множителя, отклик «верно» — 0.16. 0.05
     // оставляет фон примерно вдвое тише отклика.
-    const level = (settings.soundVolume / 100) * 0.05;
+    const level = (soundVolume / 100) * 0.05;
     const now = ctx.currentTime;
     master.gain.setValueAtTime(0.0001, now);
     // Вход через четыре секунды: музыка, включающаяся рывком, звучит как
@@ -346,7 +457,5 @@ export function AmbientMusic() {
         }
       }, 1800);
     };
-  }, [settings.musicEnabled, settings.soundVolume, allowed, unlocked, audioContext]);
-
-  return null;
+  }, [active, audioContext, soundVolume]);
 }

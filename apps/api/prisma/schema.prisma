@@ -92,6 +92,9 @@ model User {
   /// не крутит.
   soundEnabled   Boolean @default(true)
   musicEnabled   Boolean @default(false)
+  /// Музыка в партиях, а не только в меню. Чтение молчит при любом
+  /// значении: там она ложится на текст, который читают.
+  musicInGames   Boolean @default(true)
   hapticsEnabled Boolean @default(true)
   soundVolume    Int     @default(70)
 

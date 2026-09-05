@@ -192,6 +192,7 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     () => ({
       soundEnabled: user?.soundEnabled ?? SOUND_SETTINGS_DEFAULT.soundEnabled,
       musicEnabled: user?.musicEnabled ?? SOUND_SETTINGS_DEFAULT.musicEnabled,
+      musicInGames: user?.musicInGames ?? SOUND_SETTINGS_DEFAULT.musicInGames,
       hapticsEnabled: user?.hapticsEnabled ?? SOUND_SETTINGS_DEFAULT.hapticsEnabled,
       soundVolume: user?.soundVolume ?? SOUND_SETTINGS_DEFAULT.soundVolume,
     }),

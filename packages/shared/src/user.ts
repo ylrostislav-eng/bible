@@ -33,6 +33,7 @@ export interface UserProfile {
   /** Звук и вибро — см. `sound.ts`. */
   soundEnabled: boolean;
   musicEnabled: boolean;
+  musicInGames: boolean;
   hapticsEnabled: boolean;
   soundVolume: number;
   /** Interface text size. */
@@ -88,6 +89,7 @@ export interface UpdateProfileInput {
   questionPace?: QuestionPace;
   soundEnabled?: boolean;
   musicEnabled?: boolean;
+  musicInGames?: boolean;
   hapticsEnabled?: boolean;
   soundVolume?: number;
   textScale?: TextScale;

@@ -60,6 +60,7 @@ export function SoundSection() {
   async function save(patch: {
     soundEnabled?: boolean;
     musicEnabled?: boolean;
+    musicInGames?: boolean;
     hapticsEnabled?: boolean;
   }) {
     if (saving) return;
@@ -94,11 +95,25 @@ export function SoundSection() {
 
       <Switch
         label="Музыка"
-        hint="Тихая подложка в меню и профиле. В партии и при чтении молчит."
+        hint="Спокойный фон. При чтении и проверке главы молчит всегда."
         checked={user.musicEnabled}
         disabled={saving}
         onToggle={() => void save({ musicEnabled: !user.musicEnabled })}
       />
+
+      {/* Показывается только при включённой музыке: настройка того, чего
+          сейчас нет, читается как поломка. */}
+      {user.musicEnabled && (
+        <div className="pl-4">
+          <Switch
+            label="И во время партий"
+            hint="Выключите, если музыка мешает сосредоточиться в игре. Чтение и проверка главы молчат всегда."
+            checked={user.musicInGames}
+            disabled={saving}
+            onToggle={() => void save({ musicInGames: !user.musicInGames })}
+          />
+        </div>
+      )}
 
       <Switch
         label="Вибро"

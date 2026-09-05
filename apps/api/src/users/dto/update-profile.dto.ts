@@ -83,6 +83,10 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsBoolean()
+  musicInGames?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   hapticsEnabled?: boolean;
 
   @IsOptional()
