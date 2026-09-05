@@ -138,6 +138,12 @@ export function useHotColdDuel(duelId: string | null) {
     [duelId],
   );
 
+  /** «Я готов». Снять готовность нельзя — так решено на сервере. */
+  const setReady = useCallback(() => {
+    setError(null);
+    socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.ready, { duelId });
+  }, [duelId]);
+
   const surrender = useCallback(() => {
     setError(null);
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.surrender, { duelId });
@@ -149,5 +155,14 @@ export function useHotColdDuel(duelId: string | null) {
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.claim, { duelId });
   }, [duelId]);
 
-  return { state, notice, error, opponentMoves, guess, surrender, claimWin };
+  return {
+    state,
+    notice,
+    error,
+    opponentMoves,
+    guess,
+    setReady,
+    surrender,
+    claimWin,
+  };
 }

@@ -121,6 +121,8 @@ describe('правила дуэли', () => {
     status: 'FINISHED',
     inviteCode: 'ABC123',
     open: false,
+    youReady: false,
+    startsAt: null,
     vocabulary: 50_000,
     guesses: [],
     bestRank: null,
@@ -167,6 +169,7 @@ describe('правила дуэли', () => {
     guessesLeft: HOT_COLD_DUEL_MAX_GUESSES,
     solved: false,
     surrendered: false,
+    ready: true,
     online: true,
     ...patch,
   });

@@ -980,6 +980,8 @@ model HotColdFeedback {
 enum HotColdDuelStatus {
   /// Создана, второй игрок ещё не зашёл.
   WAITING
+  /// Оба на месте, но игра ещё не пошла: ждём «готов» от каждого.
+  READY_CHECK
   IN_PROGRESS
   FINISHED
   /// Никто не пришёл, или оба ушли, не доиграв.
@@ -1021,8 +1023,12 @@ model HotColdDuel {
   winnerId String?
 
   createdAt  DateTime  @default(now())
-  /// Когда зашёл второй игрок и пошла игра.
+  /// Когда оба нажали «готов» и пошла игра (после отсчёта).
   startedAt  DateTime?
+  /// Момент старта: до него идёт отсчёт «3-2-1», ходы не принимаются, часы
+  /// на слово не заведены. Хранится, а не держится в памяти, потому что
+  /// отсчёт должен пережить и перезагрузку страницы, и переподключение.
+  startsAt   DateTime?
   finishedAt DateTime?
 
   players HotColdDuelPlayer[]
@@ -1064,6 +1070,8 @@ model HotColdDuelPlayer {
   ratingCapped Boolean @default(false)
 
   joinedAt DateTime @default(now())
+  /// Нажал «готов». Пока пусто хотя бы у одного — партия не начинается.
+  readyAt  DateTime?
 
   @@unique([duelId, userId])
   @@index([userId, duelId])

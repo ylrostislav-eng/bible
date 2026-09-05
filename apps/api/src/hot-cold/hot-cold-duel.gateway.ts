@@ -77,6 +77,13 @@ export class HotColdDuelGateway
    * сказать.
    */
   private readonly guessTimers = new Map<string, NodeJS.Timeout>();
+  /**
+   * Отсчёт «3-2-1» перед началом партии. Ключ: id дуэли.
+   *
+   * Один на дуэль, а не на игрока: старт общий, и два отсчёта означали бы
+   * два разных момента начала у двоих в одной партии.
+   */
+  private readonly startTimers = new Map<string, NodeJS.Timeout>();
   private sweepTimer?: NodeJS.Timeout;
 
   constructor(
@@ -95,6 +102,8 @@ export class HotColdDuelGateway
     this.awayTimers.clear();
     for (const timer of this.guessTimers.values()) clearTimeout(timer);
     this.guessTimers.clear();
+    for (const timer of this.startTimers.values()) clearTimeout(timer);
+    this.startTimers.clear();
   }
 
   private async sweep(): Promise<void> {
@@ -158,7 +167,13 @@ export class HotColdDuelGateway
       // Часы пускаем обоим, а не только вошедшему: соперник может сидеть
       // с открытым экраном и молчать, и его слова должны гореть так же.
       const live = await this.duels.getState(dto.duelId, socket.data.userId);
-      if (live.status === 'IN_PROGRESS') {
+      if (live.status === 'IN_PROGRESS' && live.startsAt) {
+        // Идёт отсчёт «3-2-1»: часы на слово заводить рано. Планируем
+        // старт — и именно `schedule`, а не «завести заново»: вход
+        // повторяется на каждом переподключении, и без этой проверки
+        // каждое возвращение вкладки сдвигало бы старт вперёд.
+        this.scheduleStart(dto.duelId, Date.parse(live.startsAt));
+      } else if (live.status === 'IN_PROGRESS') {
         // ВАЖНО: именно `ensure`, а не «пустить заново». Вход в дуэль
         // случается не только в начале — он повторяется при каждом
         // переподключении сокета: переключил вкладку, свернул приложение,
@@ -184,16 +199,15 @@ export class HotColdDuelGateway
         socket.data.userId,
         dto.guess,
       );
-      // Ходившему — сразу и с разбором ввода: он ждёт ответа именно на своё
-      // слово, и общая рассылка состояния этого не скажет.
-      socket.emit(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, {
-        state: result.state,
-        rank: result.rank,
-        understood: result.understood,
-        repeat: result.repeat,
-      });
       // Слово написано — отсчёт с начала. Только если партия ещё идёт и
       // слова ещё есть: иначе часы шли бы у того, кому уже нечем ходить.
+      //
+      // ВАЖНО: часы перезаводятся ДО отправки состояния. Порядок был
+      // обратный, и это давало настоящий баг: в состоянии, посчитанном до
+      // перезапуска, лежал **старый** срок, экран дорисовывал остаток от
+      // прошлого слова, а на новый срок прыгал только со следующей
+      // рассылкой — «время скачет вверх, но не до тридцати». Своя же
+      // рассылка ходившего не догоняла: `broadcast` его пропускает.
       if (
         result.state.status === 'IN_PROGRESS' &&
         result.state.guessesLeft > 0
@@ -202,6 +216,14 @@ export class HotColdDuelGateway
       } else {
         this.stopClock(dto.duelId, socket.data.userId);
       }
+      // Ходившему — сразу и с разбором ввода: он ждёт ответа именно на своё
+      // слово, и общая рассылка состояния этого не скажет.
+      socket.emit(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, {
+        state: await this.duels.getState(dto.duelId, socket.data.userId),
+        rank: result.rank,
+        understood: result.understood,
+        repeat: result.repeat,
+      });
       await this.broadcast(dto.duelId, socket);
       // Сопернику — короткий сигнал «он сходил», чтобы подсветить число, а
       // не перерисовывать экран целиком.
@@ -213,6 +235,24 @@ export class HotColdDuelGateway
           rank: result.rank,
         },
       );
+    });
+  }
+
+  @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.ready)
+  async onReady(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    await this.guarded(socket, async () => {
+      const dto = await this.parse(HotColdDuelIdDto, body);
+      const state = await this.duels.setReady(dto.duelId, socket.data.userId);
+      // Часы здесь не заводятся: сначала отсчёт. Заводит их `beginPlay`,
+      // когда отсчёт кончится, — и обоим сразу, чтобы никто не получил
+      // лишних секунд за то, что у него быстрее интернет.
+      if (state.status === 'IN_PROGRESS' && state.startsAt) {
+        this.scheduleStart(dto.duelId, Date.parse(state.startsAt));
+      }
+      await this.broadcast(dto.duelId);
     });
   }
 
@@ -238,6 +278,38 @@ export class HotColdDuelGateway
       await this.duels.surrender(dto.duelId, socket.data.userId);
       await this.broadcast(dto.duelId);
     });
+  }
+
+  /**
+   * Запланировать начало партии на конец отсчёта.
+   *
+   * Повторный вызов ничего не сдвигает — и это главное: планирование
+   * случается и на «готов», и на каждом входе в дуэль, а вход повторяется
+   * при любом переподключении сокета. Ровно этим и был старый баг с
+   * таймерами: событие входа принимали за «начали заново».
+   */
+  private scheduleStart(duelId: string, startsAt: number): void {
+    if (this.startTimers.has(duelId)) return;
+    const timer = setTimeout(
+      () => {
+        this.startTimers.delete(duelId);
+        void this.beginPlay(duelId);
+      },
+      Math.max(0, startsAt - Date.now()),
+    );
+    this.startTimers.set(duelId, timer);
+  }
+
+  /** Отсчёт кончился: часы обоим и свежее состояние на экраны. */
+  private async beginPlay(duelId: string): Promise<void> {
+    try {
+      for (const userId of await this.duels.playerIds(duelId)) {
+        this.ensureClock(duelId, userId);
+      }
+      await this.broadcast(duelId);
+    } catch (err) {
+      this.logger.warn(`не удалось начать партию: ${err}`);
+    }
   }
 
   /**

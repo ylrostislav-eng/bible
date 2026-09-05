@@ -7,6 +7,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import {
   HOT_COLD_DUEL_AWAY_MS,
+  HOT_COLD_DUEL_COUNTDOWN_MS,
   HOT_COLD_DUEL_IDLE_MS,
   HOT_COLD_DUEL_LOSER_SHARE,
   HOT_COLD_DUEL_LOSS_RATING,
@@ -372,9 +373,12 @@ export class HotColdDuelService {
 
     // `updateMany` с условием «ещё ждёт»: двое, нажавших «войти»
     // одновременно, иначе оба стали бы вторым игроком.
+    // Партия не начинается сама: сначала оба говорят «готов». Раньше она
+    // стартовала в ту же секунду, когда заходил второй, и часы шли, пока
+    // человек ещё читал, что происходит на экране.
     const claimed = await this.prisma.hotColdDuel.updateMany({
       where: { id: duel.id, status: 'WAITING' },
-      data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      data: { status: 'READY_CHECK' },
     });
     if (claimed.count === 0) {
       throw new BadRequestException('Кто-то успел войти раньше');
@@ -443,6 +447,15 @@ export class HotColdDuelService {
       open: duel.openToMatchmaking,
       vocabulary: this.semantics.size,
 
+      youReady: me.readyAt !== null,
+      // Момент старта отдаётся, только пока он в будущем: после старта
+      // экрану про него знать нечего, а «отсчёт закончился» он определит
+      // по тому, что поле исчезло, а не по своим часам.
+      startsAt:
+        duel.startsAt && duel.startsAt.getTime() > Date.now()
+          ? duel.startsAt.toISOString()
+          : null,
+
       guesses: [...myGuesses].sort((a, b) => a.rank - b.rank),
       bestRank: me.bestRank,
       guessesLeft: Math.max(0, HOT_COLD_DUEL_MAX_GUESSES - me.guessCount),
@@ -480,6 +493,7 @@ export class HotColdDuelService {
             ),
             solved: other.solvedAt !== null,
             surrendered: other.surrenderedAt !== null,
+            ready: other.readyAt !== null,
             online: this.online.has(`${duel.id}:${other.userId}`),
           }
         : null,
@@ -528,6 +542,14 @@ export class HotColdDuelService {
     if (!me) throw new ForbiddenException('Вы не участник этой дуэли');
     if (duel.status === 'WAITING') {
       throw new BadRequestException('Соперник ещё не пришёл');
+    }
+    if (duel.status === 'READY_CHECK') {
+      throw new BadRequestException('Партия ещё не началась');
+    }
+    if (duel.startsAt && duel.startsAt.getTime() > Date.now()) {
+      // Отсчёт «3-2-1» — часть партии, а не заставка: слово, отправленное
+      // до старта, дало бы фору тому, кто успел набрать заранее.
+      throw new BadRequestException('Идёт отсчёт — вот-вот начнём');
     }
     if (duel.status !== 'IN_PROGRESS') {
       // Ход в законченную дуэль — не ошибка игрока, а гонка: он дожал
@@ -617,15 +639,80 @@ export class HotColdDuelService {
     };
   }
 
+  /**
+   * «Я готов». Когда готовы оба — пускается отсчёт и начинается партия.
+   *
+   * Момент старта пишется в базу, а не держится в памяти: до него не
+   * принимаются ходы и не заводятся часы на слово, и это должно пережить и
+   * перезагрузку страницы, и переподключение сокета, и второй открытый
+   * экран. Держать такое в памяти процесса значит получить две разные
+   * правды у двух игроков.
+   *
+   * Флаг ставится только один раз: снять «готов» нельзя — иначе появляется
+   * способ тянуть время, а соперник сидит и ждёт неизвестно чего.
+   */
+  async setReady(duelId: string, userId: string): Promise<HotColdDuelState> {
+    const duel = await this.load(duelId);
+    const me = duel.players.find((player) => player.userId === userId);
+    if (!me) throw new ForbiddenException('Вы не участник этой дуэли');
+    if (duel.status !== 'READY_CHECK') return this.toState(duel, userId);
+
+    if (!me.readyAt) {
+      await this.prisma.hotColdDuelPlayer.update({
+        where: { id: me.id },
+        data: { readyAt: new Date() },
+      });
+    }
+
+    const other = duel.players.find((player) => player.userId !== userId);
+    if (other?.readyAt) {
+      // `updateMany` с условием «ещё проверка готовности»: двое, нажавших
+      // «готов» в одну миллисекунду, иначе назначили бы два разных старта,
+      // и у каждого на экране был бы свой отсчёт.
+      await this.prisma.hotColdDuel.updateMany({
+        where: { id: duel.id, status: 'READY_CHECK' },
+        data: {
+          status: 'IN_PROGRESS',
+          startsAt: new Date(Date.now() + HOT_COLD_DUEL_COUNTDOWN_MS),
+          startedAt: new Date(),
+        },
+      });
+    }
+    return this.getState(duelId, userId);
+  }
+
+  /** Кто играет — шлюзу, чтобы завести часы обоим после отсчёта. */
+  async playerIds(duelId: string): Promise<string[]> {
+    const players = await this.prisma.hotColdDuelPlayer.findMany({
+      where: { duelId },
+      select: { userId: true },
+    });
+    return players.map((player) => player.userId);
+  }
+
+  /** Когда партия начнётся, если отсчёт ещё идёт. */
+  async startsAt(duelId: string): Promise<Date | null> {
+    const duel = await this.prisma.hotColdDuel.findUnique({
+      where: { id: duelId },
+      select: { status: true, startsAt: true },
+    });
+    if (!duel || duel.status !== 'IN_PROGRESS') return null;
+    return duel.startsAt && duel.startsAt.getTime() > Date.now()
+      ? duel.startsAt
+      : null;
+  }
+
   /** Сдаться: победа уходит сопернику, но это не то же самое, что уйти молча. */
   async surrender(duelId: string, userId: string): Promise<HotColdDuelState> {
     const duel = await this.load(duelId);
     const me = duel.players.find((player) => player.userId === userId);
     if (!me) throw new ForbiddenException('Вы не участник этой дуэли');
-    if (duel.status === 'WAITING') {
-      // Ждущую дуэль не «сдают», её отменяют — соперника ещё нет.
+    if (duel.status === 'WAITING' || duel.status === 'READY_CHECK') {
+      // Ждущую дуэль не «сдают», её отменяют — соперника ещё нет. То же и
+      // на проверке готовности: игра не началась, ходов не было, и
+      // назначать за это поражение не за что.
       await this.prisma.hotColdDuel.updateMany({
-        where: { id: duel.id, status: 'WAITING' },
+        where: { id: duel.id, status: duel.status },
         data: { status: 'ABANDONED', finishedAt: new Date() },
       });
       return this.getState(duel.id, userId);
@@ -781,7 +868,9 @@ export class HotColdDuelService {
     // Никто не пришёл на вызов — это не партия, и исхода у неё нет.
     const never = await this.prisma.hotColdDuel.updateMany({
       where: {
-        status: 'WAITING',
+        // И та, где второй зашёл, но «готов» так и не нажал: ходов не
+        // было, наград нет, исхода нет.
+        status: { in: ['WAITING', 'READY_CHECK'] },
         createdAt: { lt: new Date(now - HOT_COLD_DUEL_WAIT_MS) },
       },
       data: { status: 'ABANDONED', finishedAt: new Date() },

@@ -92,8 +92,13 @@ export default function HotColdDuelPage() {
 
   // Активная партия — чтобы вкладка «Играть» возвращала сюда, а входящие
   // вызовы не всплывали посреди гонки. Ровно как в дуэли по вопросам.
+  // Проверка готовности — тоже активная партия: иначе вкладка «Играть» не
+  // вернёт в неё, а входящие вызовы полезут поверх экрана готовности.
   const liveStatus =
-    state && (state.status === 'WAITING' || state.status === 'IN_PROGRESS') ? state.status : null;
+    state &&
+    (state.status === 'WAITING' || state.status === 'READY_CHECK' || state.status === 'IN_PROGRESS')
+      ? state.status
+      : null;
   useEffect(() => {
     if (duelId && liveStatus) {
       setActiveGame({
@@ -207,6 +212,8 @@ export default function HotColdDuelPage() {
 
       {state.status === 'WAITING' ? (
         <WaitingCard code={state.inviteCode} open={state.open} onCancel={duel.surrender} />
+      ) : state.status === 'READY_CHECK' ? (
+        <ReadyCard state={state} onReady={duel.setReady} onCancel={duel.surrender} />
       ) : (
         <>
           <Scoreboard state={state} moves={duel.opponentMoves} />
@@ -234,6 +241,13 @@ export default function HotColdDuelPage() {
             />
           ) : (
             <>
+              {/* Отсчёт «3-2-1»: пока он идёт, ходы сервер не принимает, и
+                  поле ввода показывать нечестно — набранное всё равно
+                  отскочит. Момент старта приходит с сервера, отсчёт
+                  считается с поправкой на часы устройства. */}
+              {state.startsAt && (
+                <StartCountdown startsAt={state.startsAt} serverNow={state.serverNow} />
+              )}
               <div className="flex flex-col gap-2">
                 {/* Часы над полем, а не под ним: смотреть надо туда же,
                     куда печатаешь. */}
@@ -257,7 +271,8 @@ export default function HotColdDuelPage() {
                   spellCheck={false}
                   placeholder="Любое слово"
                   aria-label="Слово"
-                  className="h-12 rounded-xl border border-border bg-surface px-4 text-base outline-none transition focus:border-primary"
+                  disabled={state.startsAt !== null}
+                  className="h-12 rounded-xl border border-border bg-surface px-4 text-base outline-none transition focus:border-primary disabled:opacity-50"
                 />
                 {/* Показывается всегда только последнее, что случилось со
                     мной: ответ на моё слово или сгоревшее слово. Ключ по
@@ -272,7 +287,10 @@ export default function HotColdDuelPage() {
                   <Verdict key={duel.notice.seq} verdict={duel.notice} />
                 )}
                 {duel.error && <p className="text-sm text-danger">{duel.error}</p>}
-                <Button onClick={send} disabled={guess.trim().length === 0}>
+                <Button
+                  onClick={send}
+                  disabled={guess.trim().length === 0 || state.startsAt !== null}
+                >
                   Проверить
                 </Button>
               </div>
@@ -384,6 +402,99 @@ function Lobby({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Оба на месте — но игра не начинается, пока каждый не скажет «готов».
+ *
+ * Партия раньше стартовала в ту же секунду, когда заходил соперник, и
+ * часы на первое слово шли, пока человек ещё читал экран. Здесь он успевает
+ * осмотреться, а видеть чужую готовность важно не меньше: ждать, не зная,
+ * ждёшь ли ты вообще кого-то, — худшее, что можно предложить.
+ */
+function ReadyCard({
+  state,
+  onReady,
+  onCancel,
+}: {
+  state: HotColdDuelState;
+  onReady: () => void;
+  onCancel: () => void;
+}) {
+  const opponent = state.opponent;
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="rounded-2xl border border-border bg-surface p-4">
+        <p className="text-sm font-semibold">Соперник найден</p>
+        <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
+          Одно слово на двоих. Пишите русские слова — игра ответит, какое место каждое занимает по
+          близости к загаданному. У соперника видны те же числа, но не сами слова.
+        </p>
+        <p className="mt-2 text-xs text-text-muted">
+          {HOT_COLD_DUEL_MAX_GUESSES} слов на каждого, {HOT_COLD_DUEL_SECONDS_PER_GUESS} секунд на
+          слово. Не успели — слово сгорает.
+        </p>
+      </section>
+
+      <section className="flex flex-col gap-2 rounded-2xl border border-border bg-surface p-4">
+        <ReadyRow name="Вы" ready={state.youReady} />
+        <ReadyRow name={opponent?.nickname ?? 'Соперник'} ready={opponent?.ready ?? false} />
+      </section>
+
+      <Button onClick={onReady} disabled={state.youReady}>
+        {state.youReady ? 'Ждём соперника…' : 'Готов'}
+      </Button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="self-center text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline"
+      >
+        Отменить
+      </button>
+    </div>
+  );
+}
+
+/** Строка «кто готов»: галочка или ожидание. */
+function ReadyRow({ name, ready }: { name: string; ready: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+      <span className={clsx('shrink-0 text-sm', ready ? 'text-success' : 'text-text-muted')}>
+        {ready ? '✓ готов' : 'ещё думает'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * «3-2-1-поехали» перед первым словом.
+ *
+ * Считается от серверного момента с поправкой на часы устройства — как и
+ * часы на слово. Своих часов у этого отсчёта нет и быть не должно: старт
+ * назначает сервер, а экран его только показывает. Когда отсчёт кончится,
+ * сервер сам пришлёт новое состояние — здесь ничего «начинать» не надо.
+ */
+function StartCountdown({ startsAt, serverNow }: { startsAt: string; serverNow: string }) {
+  const [skew] = useState(() => Date.parse(serverNow) - Date.now());
+  const [left, setLeft] = useState(() => Date.parse(startsAt) - (Date.now() + skew));
+
+  useEffect(() => {
+    const tick = () => setLeft(Date.parse(startsAt) - (Date.now() + skew));
+    tick();
+    const timer = window.setInterval(tick, 100);
+    return () => window.clearInterval(timer);
+  }, [startsAt, skew]);
+
+  const seconds = Math.ceil(left / 1000);
+  return (
+    <section className="rounded-2xl border border-primary/40 bg-primary/10 p-6 text-center">
+      <p className="text-4xl font-bold tabular-nums" aria-live="polite">
+        {seconds > 0 ? seconds : 'Поехали!'}
+      </p>
+      <p className="mt-1 text-xs text-text-muted">Начинаем</p>
+    </section>
   );
 }
 
