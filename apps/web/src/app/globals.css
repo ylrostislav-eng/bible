@@ -183,3 +183,28 @@ a {
     animation: none;
   }
 }
+
+/* Появление экрана при переходе (components/ui/screen-transition.tsx).
+ *
+ * Короткое и небольшое: длинное появление превращает быстрый переход в
+ * ожидание. Смещение — 8 пикселей, ровно чтобы глаз заметил направление
+ * и понял, что содержимое сменилось. */
+@keyframes screen-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.screen-enter {
+  animation: screen-enter 0.28s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-enter {
+    animation: none;
+  }
+}

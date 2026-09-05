@@ -7,6 +7,7 @@ import { DailyGoalCard } from '@/components/daily-goal-card';
 import { DailyWordCard } from '@/components/daily-word-card';
 import { HotColdCard } from '@/components/hot-cold-card';
 import { LearnIcon, PlayIcon, SettingsIcon, TournamentIcon } from '@/components/icons/nav-icons';
+import { modeTheme } from '@/lib/mode-theme';
 
 const QUICK_LINKS = [
   { href: '/play', label: 'Играть', icon: PlayIcon },
@@ -65,7 +66,11 @@ export default function HomePage() {
           {QUICK_LINKS.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href}>
               <Card className="flex-row items-center gap-3">
-                <Icon className="h-6 w-6 text-primary" />
+                {/* Цвет режима вместо общего янтаря: четыре одинаково
+                    жёлтые иконки читались как один пункт, разбитый на
+                    четыре. Медальона тут нет намеренно — на главной и без
+                    него хватает карточек. */}
+                <Icon className="h-6 w-6" style={{ color: modeTheme(href).accent }} />
                 <span className="font-medium">{label}</span>
               </Card>
             </Link>

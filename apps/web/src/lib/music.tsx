@@ -200,11 +200,17 @@ function useTrack(active: boolean, volume: number) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const targetRef = useRef(0);
   const fadingRef = useRef(false);
-  targetRef.current = (volume / 100) * TRACK_LEVEL;
 
+  // Цель пишется в эффекте, а не в теле: запись в ref во время отрисовки
+  // ловит линтер и ловит правильно — при повторной отрисовке того же
+  // состояния она выполнится лишний раз. Эффект объявлен раньше того,
+  // который создаёт проигрывание, поэтому к моменту создания цель уже
+  // на месте.
+  //
   // Пока идёт вход или уход, громкостью распоряжается он: иначе ползунок
   // выставит её мгновенно и съест плавность.
   useEffect(() => {
+    targetRef.current = (volume / 100) * TRACK_LEVEL;
     const audio = audioRef.current;
     if (audio && !fadingRef.current) audio.volume = targetRef.current;
   }, [volume]);
@@ -273,11 +279,12 @@ function useTrack(active: boolean, volume: number) {
 function useHearth(active: boolean, audioContext: () => AudioContext | null, musicVolume: number) {
   const masterRef = useRef<GainNode | null>(null);
   const levelRef = useRef(musicVolume);
-  levelRef.current = musicVolume;
 
   // Как и у записи: ползунок правит громкость на живом узле, а не
-  // пересобирает весь камин заново.
+  // пересобирает весь камин заново. Запись в ref — в эффекте: в теле
+  // отрисовки её справедливо ловит линтер.
   useEffect(() => {
+    levelRef.current = musicVolume;
     const master = masterRef.current;
     if (!master) return;
     try {
