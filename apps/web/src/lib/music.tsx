@@ -135,6 +135,30 @@ const TRACK_SRC = '/music/theme.mp3';
  */
 const TRACK_LEVEL = 0.3;
 
+/**
+ * Сколько отрезать от краёв при зацикливании.
+ *
+ * У экспорта из любого редактора и генератора края почти всегда с
+ * тишиной: приехавший трек имел 0.51 с в начале и 0.32 с в конце, и на
+ * стыке петли это давало паузу почти в секунду — слышную и оттого
+ * особенно неприятную, потому что фон должен быть незаметным.
+ *
+ * Хвост режется с запасом (0.6 против измеренных 0.32): `timeupdate`
+ * приходит примерно четырежды в секунду, и живая проверка показала
+ * перескок на 0.15 с позже намеченного. Лишняя четверть секунды
+ * приходится на затухание, а не на музыку.
+ *
+ * Режем в коде, а не в файле: перекодировать mp3 — значит потерять
+ * качество ещё раз и держать в репозитории версию, отличную от той, что
+ * прислал владелец. Числа с запасом: `timeupdate` приходит примерно
+ * четырежды в секунду, и перескок случается чуть позже намеченного.
+ *
+ * При замене трека их стоит сверить — как мерить, написано в
+ * `apps/web/public/music/README.md`.
+ */
+const TRACK_HEAD_SILENCE = 0.5;
+const TRACK_TAIL_SILENCE = 0.6;
+
 /** Где остановились. Переход в чтение и обратно не должен начинать заново. */
 let trackPosition = 0;
 
@@ -190,11 +214,27 @@ function useTrack(active: boolean, volume: number) {
   useEffect(() => {
     if (!active) return;
     const audio = new Audio(TRACK_SRC);
-    audio.loop = true;
-    audio.currentTime = trackPosition;
+    // Не `loop`: он возвращает ровно в нулевую секунду, вместе с тишиной
+    // в начале файла. Прыгаем сами, минуя края.
+    audio.loop = false;
+    audio.currentTime = Math.max(trackPosition, TRACK_HEAD_SILENCE);
     audio.volume = 0;
     const target = (volume / 100) * TRACK_LEVEL;
     void audio.play().catch(() => undefined);
+
+    function rewind() {
+      const end = audio.duration - TRACK_TAIL_SILENCE;
+      // Короткий файл резать нечем — пусть играет как есть.
+      if (!Number.isFinite(end) || end <= TRACK_HEAD_SILENCE) return;
+      if (audio.currentTime >= end) audio.currentTime = TRACK_HEAD_SILENCE;
+    }
+    audio.addEventListener('timeupdate', rewind);
+    // Подстраховка: если перескок всё же опоздал и файл доиграл до конца,
+    // молчания быть не должно.
+    audio.addEventListener('ended', () => {
+      audio.currentTime = TRACK_HEAD_SILENCE;
+      void audio.play().catch(() => undefined);
+    });
 
     let step = 0;
     const fadeIn = window.setInterval(() => {
@@ -205,6 +245,7 @@ function useTrack(active: boolean, volume: number) {
 
     return () => {
       window.clearInterval(fadeIn);
+      audio.removeEventListener('timeupdate', rewind);
       trackPosition = audio.currentTime;
       let out = audio.volume;
       const fadeOut = window.setInterval(() => {
