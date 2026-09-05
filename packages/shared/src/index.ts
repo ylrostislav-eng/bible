@@ -16,6 +16,7 @@ export * from './nickname';
 export * from './age';
 export * from './achievements';
 export * from './accessibility';
+export * from './sound';
 export * from './alias';
 export * from './daily-word';
 export * from './typo';

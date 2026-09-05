@@ -232,6 +232,10 @@ export class UsersService {
           remindersEnabled: dto.remindersEnabled,
           questionPace: dto.questionPace,
           textScale: dto.textScale,
+          soundEnabled: dto.soundEnabled,
+          musicEnabled: dto.musicEnabled,
+          hapticsEnabled: dto.hapticsEnabled,
+          soundVolume: dto.soundVolume,
           ...(guardianConfirmedAt ? { guardianConfirmedAt } : {}),
           ...(leavingChildMode && !guardianConfirmedAt
             ? { guardianConfirmedAt: null }
@@ -926,6 +930,10 @@ export class UsersService {
       remindersEnabled: user.remindersEnabled,
       questionPace: user.questionPace,
       textScale: user.textScale,
+      soundEnabled: user.soundEnabled,
+      musicEnabled: user.musicEnabled,
+      hapticsEnabled: user.hapticsEnabled,
+      soundVolume: user.soundVolume,
       level: user.level,
       experience: user.experience,
       coins: user.coins,

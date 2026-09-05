@@ -30,6 +30,11 @@ export interface UserProfile {
   remindersEnabled: boolean;
   /** Timer for the solo chapter check-up — see `accessibility.ts`. */
   questionPace: QuestionPace;
+  /** Звук и вибро — см. `sound.ts`. */
+  soundEnabled: boolean;
+  musicEnabled: boolean;
+  hapticsEnabled: boolean;
+  soundVolume: number;
   /** Interface text size. */
   textScale: TextScale;
 
@@ -81,6 +86,10 @@ export interface UpdateProfileInput {
   guardianConfirmed?: boolean;
   remindersEnabled?: boolean;
   questionPace?: QuestionPace;
+  soundEnabled?: boolean;
+  musicEnabled?: boolean;
+  hapticsEnabled?: boolean;
+  soundVolume?: number;
   textScale?: TextScale;
 }
 

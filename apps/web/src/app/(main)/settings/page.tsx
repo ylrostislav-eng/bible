@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { AgeSafetySection } from '@/components/settings/age-safety-section';
 import { ReadingComfortSection } from '@/components/settings/reading-comfort-section';
 import { RemindersSection } from '@/components/settings/reminders-section';
+import { SoundSection } from '@/components/settings/sound-section';
 import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
 
@@ -128,6 +129,8 @@ export default function SettingsPage() {
       </form>
 
       <ReadingComfortSection />
+
+      <SoundSection />
 
       <AgeSafetySection />
 

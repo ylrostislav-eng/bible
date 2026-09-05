@@ -7,6 +7,8 @@ import {
   NICKNAME_MAX_LENGTH,
   NICKNAME_MIN_LENGTH,
   NICKNAME_PATTERN,
+  SOUND_VOLUME_MAX,
+  SOUND_VOLUME_MIN,
   SUPPORTED_LANGUAGES,
   type AgeBand,
   type LanguageCode,
@@ -16,10 +18,13 @@ import {
 import {
   IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsUrl,
   Length,
   Matches,
+  Max,
+  Min,
 } from 'class-validator';
 
 export class UpdateProfileDto {
@@ -67,4 +72,22 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsIn(TEXT_SCALES)
   textScale?: TextScale;
+
+  @IsOptional()
+  @IsBoolean()
+  soundEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  musicEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hapticsEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(SOUND_VOLUME_MIN)
+  @Max(SOUND_VOLUME_MAX)
+  soundVolume?: number;
 }

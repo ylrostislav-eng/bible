@@ -86,6 +86,15 @@ model User {
   questionPace QuestionPace @default(NORMAL)
   textScale    TextScale    @default(NORMAL)
 
+  /// Звук — см. `packages/shared/src/sound.ts`. Звуки включены, музыка нет:
+  /// незапрошенная музыка в транспорте ощущается как поломка, а короткий
+  /// звук на нажатие — как отклик. Громкость одна на всё: две ручки никто
+  /// не крутит.
+  soundEnabled   Boolean @default(true)
+  musicEnabled   Boolean @default(false)
+  hapticsEnabled Boolean @default(true)
+  soundVolume    Int     @default(70)
+
   /// Evening reminder when the daily streak is about to lapse. On by
   /// default, off with one tap in settings — and turned off automatically
   /// if Telegram reports the bot was blocked, so a person who walked away
