@@ -57,9 +57,24 @@ class EnvironmentVariables {
   @IsNotEmpty()
   JWT_SECRET!: string;
 
+  /**
+   * Срок жизни токена доступа.
+   *
+   * Было тридцать дней. Это значило, что утёкший токен — из логов, из
+   * чужого устройства, из ошибки в стороннем коде — открывал аккаунт на
+   * месяц, и отобрать его было нечем: подпись валидна, отзыва нет.
+   *
+   * Пятнадцать минут ограничивают ущерб, ничего не ломая: клиент держит
+   * токен только в памяти вкладки и умеет молча войти заново по данным
+   * Telegram (см. `setSessionRecovery` в `apps/web/src/lib/api.ts`).
+   * Игрок этого не замечает.
+   *
+   * Сюда же попадает бан: заблокированный игрок теряет доступ в пределах
+   * этого срока, а не носит валидный токен месяц.
+   */
   @IsString()
   @IsOptional()
-  JWT_EXPIRES_IN: string = '30d';
+  JWT_EXPIRES_IN: string = '15m';
 
   /// Comma-separated Telegram user ids allowed to read/resolve error
   /// telemetry (see `AdminGuard`). Unset means nobody can — a safe default

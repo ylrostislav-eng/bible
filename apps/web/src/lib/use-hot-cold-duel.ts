@@ -9,7 +9,7 @@ import {
 } from '@bible-arena/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { getAccessToken } from './api';
+import { getAccessToken, refreshSession } from './api';
 import { HOT_COLD_HEAT_SOUNDS } from './hot-cold-sound';
 import { playSound } from './sound';
 
@@ -79,6 +79,19 @@ export function useHotColdDuel(duelId: string | null) {
     });
     socketRef.current = socket;
 
+    // Отказ в рукопожатии — почти всегда протухший токен: соединение
+    // живёт дольше пятнадцати минут, а токен нет. Обновляем сессию и
+    // пробуем снова, вместо того чтобы показывать «не удалось
+    // подключиться» посреди партии.
+    function handleConnectError() {
+      void refreshSession().then((renewed) => {
+        if (!renewed || socketRef.current !== socket) return;
+        socket.auth = { token: renewed };
+        socket.connect();
+      });
+    }
+    socket.on('connect_error', handleConnectError);
+
     function handleConnect() {
       socket.emit(HOT_COLD_DUEL_WS_EVENTS.join, { duelId });
     }
@@ -138,6 +151,7 @@ export function useHotColdDuel(duelId: string | null) {
 
     return () => {
       socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, handleState);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.opponentMoved, handleOpponentMoved);
       socket.off(HOT_COLD_DUEL_WS_SERVER_EVENTS.burnt, handleBurnt);

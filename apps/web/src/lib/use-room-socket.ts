@@ -4,7 +4,7 @@ import type { RoomAnswerInput, RoomState } from '@bible-arena/shared';
 import { ROOM_WS_EVENTS, ROOM_WS_NAMESPACE, ROOM_WS_SERVER_EVENTS } from '@bible-arena/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { getAccessToken } from './api';
+import { getAccessToken, refreshSession } from './api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -57,6 +57,19 @@ export function useRoomSocket(sessionId: string | null) {
     });
     socketRef.current = socket;
 
+    // Отказ в рукопожатии — почти всегда протухший токен: соединение
+    // живёт дольше пятнадцати минут, а токен нет. Обновляем сессию и
+    // пробуем снова, вместо того чтобы показывать «не удалось
+    // подключиться» посреди партии.
+    function handleConnectError() {
+      void refreshSession().then((renewed) => {
+        if (!renewed || socketRef.current !== socket) return;
+        socket.auth = { token: renewed };
+        socket.connect();
+      });
+    }
+    socket.on('connect_error', handleConnectError);
+
     function handleConnect() {
       socket.emit(ROOM_WS_EVENTS.enter, { sessionId });
     }
@@ -88,6 +101,7 @@ export function useRoomSocket(sessionId: string | null) {
 
     return () => {
       socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
       socket.off(ROOM_WS_SERVER_EVENTS.state, handleState);
       socket.off(ROOM_WS_SERVER_EVENTS.error, handleError);
       socket.off(ROOM_WS_SERVER_EVENTS.kicked, handleKicked);

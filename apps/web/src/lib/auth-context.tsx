@@ -3,7 +3,7 @@
 import type { AuthResponse, UpdateProfileInput, UserProfile } from '@bible-arena/shared';
 import { retrieveRawInitData } from '@telegram-apps/sdk-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ApiError, apiClient, setAccessToken } from './api';
+import { ApiError, apiClient, setAccessToken, setSessionRecovery } from './api';
 
 type AuthStatus = 'loading' | 'no-telegram' | 'authenticated' | 'error';
 
@@ -35,41 +35,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus('authenticated');
   }, []);
 
+  /**
+   * Собственно вход — без единого касания состояния экрана.
+   *
+   * Отделён от `login` намеренно: тем же входом сессия восстанавливается
+   * после истечения токена, и там показывать «Загрузка…» нельзя. Игрок в
+   * этот момент посреди партии, и мигнувший экран входа он прочтёт как
+   * вылет, даже если всё восстановилось за полсекунды.
+   *
+   * `null` означает «войти нечем» — приложение открыли не из Telegram.
+   */
+  const authenticate = useCallback(async (): Promise<AuthResponse | null> => {
+    if (useDevLogin) {
+      const slot = Number(new URLSearchParams(window.location.search).get('devSlot')) || 1;
+      return apiClient.post<AuthResponse>('/auth/dev-login', { slot });
+    }
+
+    let initData: string | undefined;
+    try {
+      initData = retrieveRawInitData();
+    } catch {
+      initData = undefined;
+    }
+    if (!initData) return null;
+    return apiClient.post<AuthResponse>('/auth/telegram', { initData });
+  }, [useDevLogin]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function login() {
       setStatus('loading');
       setErrorMessage(null);
-
-      if (useDevLogin) {
-        try {
-          const slot = Number(new URLSearchParams(window.location.search).get('devSlot')) || 1;
-          const response = await apiClient.post<AuthResponse>('/auth/dev-login', { slot });
-          if (!cancelled) applySession(response);
-        } catch (error) {
-          if (cancelled) return;
-          setErrorMessage(error instanceof ApiError ? error.message : 'Не удалось войти');
-          setStatus('error');
+      try {
+        const response = await authenticate();
+        if (cancelled) return;
+        if (!response) {
+          setStatus('no-telegram');
+          return;
         }
-        return;
-      }
-
-      let initData: string | undefined;
-      try {
-        initData = retrieveRawInitData();
-      } catch {
-        initData = undefined;
-      }
-
-      if (!initData) {
-        if (!cancelled) setStatus('no-telegram');
-        return;
-      }
-
-      try {
-        const response = await apiClient.post<AuthResponse>('/auth/telegram', { initData });
-        if (!cancelled) applySession(response);
+        applySession(response);
       } catch (error) {
         if (cancelled) return;
         const message =
@@ -84,7 +89,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [attempt, useDevLogin, applySession]);
+  }, [attempt, authenticate, applySession]);
+
+  // Токен доступа живёт пятнадцать минут. Чтобы это не выбрасывало игрока
+  // на экран входа посреди партии, `apiClient` при отказе по сроку зовёт
+  // отсюда тот же вход и повторяет запрос. Молча: экран не меняется.
+  useEffect(() => {
+    setSessionRecovery(async () => {
+      try {
+        const response = await authenticate();
+        if (!response) return null;
+        applySession(response);
+        return response.accessToken;
+      } catch {
+        // Не вышло — пусть исходный отказ дойдёт до вызвавшего как есть.
+        return null;
+      }
+    });
+    return () => setSessionRecovery(null);
+  }, [authenticate, applySession]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const devLogin = useCallback(() => setUseDevLogin(true), []);
