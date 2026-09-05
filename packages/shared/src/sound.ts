@@ -43,6 +43,8 @@ export type SoundName = (typeof SOUND_NAMES)[number];
 
 /** Громкость по умолчанию: слышно, но не громче уведомлений системы. */
 export const SOUND_VOLUME_DEFAULT = 70;
+/** Музыка тише откликов: это фон, а не сообщение. */
+export const MUSIC_VOLUME_DEFAULT = 60;
 export const SOUND_VOLUME_MIN = 0;
 export const SOUND_VOLUME_MAX = 100;
 
@@ -50,26 +52,24 @@ export const SOUND_VOLUME_MAX = 100;
 export interface SoundSettings {
   soundEnabled: boolean;
   musicEnabled: boolean;
-  /**
-   * Играет ли музыка во время партий, а не только в меню.
-   *
-   * Отдельно от `musicEnabled`, потому что это разные вопросы: «хочу ли я
-   * музыку вообще» и «мешает ли она мне играть». Одним тумблером человек,
-   * которому она мешает в дуэли, выключил бы её везде.
-   *
-   * Чтение и проверка главы молчат при любом значении: там музыка
-   * накладывается на текст, который читают, и это не вопрос вкуса.
-   */
-  musicInGames: boolean;
   hapticsEnabled: boolean;
-  /** 0–100. Общая для звуков и музыки: две ручки никто не крутит. */
+  /** 0–100. Отклики: щелчки, «верно», исход партии. */
   soundVolume: number;
+  /**
+   * 0–100, отдельно от откликов.
+   *
+   * Сначала громкость была одна на всё — «две ручки никто не крутит».
+   * Оказалось наоборот: музыка играет постоянно и мешает не так, как
+   * короткий щелчок, поэтому убавляют именно её, а отклики оставляют
+   * слышными. Одна ручка заставляла выбирать между «громко» и «глухо».
+   */
+  musicVolume: number;
 }
 
 export const SOUND_SETTINGS_DEFAULT: SoundSettings = {
   soundEnabled: true,
   musicEnabled: false,
-  musicInGames: true,
   hapticsEnabled: true,
   soundVolume: SOUND_VOLUME_DEFAULT,
+  musicVolume: MUSIC_VOLUME_DEFAULT,
 };

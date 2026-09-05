@@ -9,7 +9,9 @@ import { useSound } from '@/lib/sound';
 /**
  * Звук и вибро.
  *
- * Музыка отдельным переключателем от звуков и выключена по умолчанию:
+ * Музыка отдельным переключателем от звуков и со своей громкостью — она
+ * играет постоянно и мешает не так, как короткий щелчок. Выключена по
+ * умолчанию:
  * незапрошенная музыка в транспорте или на работе ощущается как поломка,
  * а не как атмосфера. Короткие отклики — наоборот, включены: они отвечают
  * на нажатие.
@@ -60,7 +62,6 @@ export function SoundSection() {
   async function save(patch: {
     soundEnabled?: boolean;
     musicEnabled?: boolean;
-    musicInGames?: boolean;
     hapticsEnabled?: boolean;
   }) {
     if (saving) return;
@@ -101,18 +102,14 @@ export function SoundSection() {
         onToggle={() => void save({ musicEnabled: !user.musicEnabled })}
       />
 
-      {/* Показывается только при включённой музыке: настройка того, чего
-          сейчас нет, читается как поломка. */}
+      {/* Громкость музыки крутят чаще всего не в настройках, а в тот
+          момент, когда она помешала, — поэтому здесь только напоминание,
+          где её ручка. Дублировать сюда ползунок значило бы завести два
+          места под одно число. */}
       {user.musicEnabled && (
-        <div className="pl-4">
-          <Switch
-            label="И во время партий"
-            hint="Выключите, если музыка мешает сосредоточиться в игре. Чтение и проверка главы молчат всегда."
-            checked={user.musicInGames}
-            disabled={saving}
-            onToggle={() => void save({ musicInGames: !user.musicInGames })}
-          />
-        </div>
+        <p className="-mt-2 pl-1 text-xs text-text-muted">
+          Громкость музыки — на кнопке с нотой в углу экрана, с любого места.
+        </p>
       )}
 
       <Switch

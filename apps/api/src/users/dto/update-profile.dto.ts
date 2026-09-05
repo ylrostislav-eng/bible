@@ -82,8 +82,10 @@ export class UpdateProfileDto {
   musicEnabled?: boolean;
 
   @IsOptional()
-  @IsBoolean()
-  musicInGames?: boolean;
+  @IsInt()
+  @Min(SOUND_VOLUME_MIN)
+  @Max(SOUND_VOLUME_MAX)
+  musicVolume?: number;
 
   @IsOptional()
   @IsBoolean()

@@ -92,11 +92,11 @@ model User {
   /// не крутит.
   soundEnabled   Boolean @default(true)
   musicEnabled   Boolean @default(false)
-  /// Музыка в партиях, а не только в меню. Чтение молчит при любом
-  /// значении: там она ложится на текст, который читают.
-  musicInGames   Boolean @default(true)
   hapticsEnabled Boolean @default(true)
   soundVolume    Int     @default(70)
+  /// Громкость музыки отдельно от откликов: музыка играет постоянно и
+  /// мешает не так, как короткий щелчок, поэтому убавляют именно её.
+  musicVolume    Int     @default(60)
 
   /// Evening reminder when the daily streak is about to lapse. On by
   /// default, off with one tap in settings — and turned off automatically

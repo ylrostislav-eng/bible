@@ -1,7 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSound } from './sound';
 
 /**
@@ -86,36 +85,19 @@ const MELODY = [392.0, 440.0, 493.88, 523.25, 587.33, 659.25, 783.99, 880.0, 987
 const LOOKAHEAD_SECONDS = 2.5;
 
 /**
- * Чтение и проверка главы. Молчат при любых настройках.
+ * ## Почему нет списка экранов, где музыка молчит
  *
- * Это не вопрос вкуса: музыка ложится на текст, который в этот момент
- * читают, и мешает ровно тому, ради чего человек сюда пришёл. Всё
- * остальное — выбор игрока, см. `musicInGames`.
- */
-const READING_PREFIX = '/learn';
-
-/**
- * Экраны партий.
+ * Он был: чтение и проверка главы молчали всегда, партии — по настройке
+ * «и во время партий». Отброшено по решению владельца, и решение
+ * правильное: список экранов — это чужая догадка о том, что человеку
+ * мешает, и он неизбежно ошибается в обе стороны. Кому-то музыка мешает
+ * читать, кому-то с ней читается лучше.
  *
- * Список — по началу адреса, а не точным совпадением: у партий бывают
- * вложенные адреса, и точный список пришлось бы дополнять при каждом
- * новом экране режима.
+ * Вместо догадки — своя громкость у музыки и быстрый доступ к ней с
+ * любого экрана (`components/music-widget.tsx`): мешает — убавил, не
+ * уходя с того места, где помешало.
+ *
  */
-const GAME_PREFIXES = [
-  '/play/solo',
-  '/play/duel',
-  '/play/room',
-  '/play/alias',
-  '/daily',
-  '/hot-cold',
-];
-
-function musicAllowed(pathname: string | null, inGames: boolean): boolean {
-  if (!pathname) return false;
-  if (pathname.startsWith(READING_PREFIX)) return false;
-  if (inGames) return true;
-  return !GAME_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-}
 
 /**
  * Записанная тема, если она есть.
@@ -164,9 +146,7 @@ let trackPosition = 0;
 
 export function AmbientMusic() {
   const { settings, audioContext, unlocked } = useSound();
-  const pathname = usePathname();
-  const allowed = musicAllowed(pathname, settings.musicInGames);
-  const on = settings.musicEnabled && settings.soundVolume > 0 && allowed && unlocked;
+  const on = settings.musicEnabled && settings.musicVolume > 0 && unlocked;
 
   // Есть ли записанная тема. `null` — ещё не ответила.
   const [hasTrack, setHasTrack] = useState<boolean | null>(null);
@@ -188,7 +168,7 @@ export function AmbientMusic() {
     };
   }, [on, hasTrack]);
 
-  useTrack(on && hasTrack === true, settings.soundVolume);
+  useTrack(on && hasTrack === true, settings.musicVolume);
   // Синтез играет, пока проба не сказала «есть запись», — а не пока она
   // не сказала «нет».
   //
@@ -197,7 +177,7 @@ export function AmbientMusic() {
   // состояние навсегда осталось «ещё не ответила». Ждать ответ, чтобы
   // начать играть, значит поставить всю музыку в зависимость от одного
   // запроса, который может не завершиться никогда.
-  useHearth(on && hasTrack !== true, audioContext, settings.soundVolume);
+  useHearth(on && hasTrack === false, audioContext, settings.musicVolume);
   return null;
 }
 
@@ -209,8 +189,26 @@ export function AmbientMusic() {
  * были бы требования к заголовкам и молчание при любой ошибке загрузки.
  * Вход и уход — плавные: музыка, обрывающаяся на полуслове, слышна
  * сильнее, чем звучавшая.
+ *
+ * Громкость нарочно не в зависимостях эффекта: с ней каждое движение
+ * ползунка пересоздавало элемент, и трек заново вплывал четыре секунды.
+ * Живая проверка это и показала — вместо ожидаемых 0.12 громкость была
+ * 0.03, потому что вход ещё шёл. Ползунок меняет громкость на живом
+ * элементе, ничего не пересоздавая.
  */
 function useTrack(active: boolean, volume: number) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const targetRef = useRef(0);
+  const fadingRef = useRef(false);
+  targetRef.current = (volume / 100) * TRACK_LEVEL;
+
+  // Пока идёт вход или уход, громкостью распоряжается он: иначе ползунок
+  // выставит её мгновенно и съест плавность.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio && !fadingRef.current) audio.volume = targetRef.current;
+  }, [volume]);
+
   useEffect(() => {
     if (!active) return;
     const audio = new Audio(TRACK_SRC);
@@ -219,7 +217,8 @@ function useTrack(active: boolean, volume: number) {
     audio.loop = false;
     audio.currentTime = Math.max(trackPosition, TRACK_HEAD_SILENCE);
     audio.volume = 0;
-    const target = (volume / 100) * TRACK_LEVEL;
+    audioRef.current = audio;
+    fadingRef.current = true;
     void audio.play().catch(() => undefined);
 
     function rewind() {
@@ -239,17 +238,25 @@ function useTrack(active: boolean, volume: number) {
     let step = 0;
     const fadeIn = window.setInterval(() => {
       step += 1;
-      audio.volume = Math.min(target, (target * step) / 40);
-      if (step >= 40) window.clearInterval(fadeIn);
+      // Цель берётся на каждом шаге: ползунок могли подвинуть прямо во
+      // время входа, и доводить до устаревшего числа незачем.
+      audio.volume = Math.min(targetRef.current, (targetRef.current * step) / 40);
+      if (step >= 40) {
+        window.clearInterval(fadeIn);
+        fadingRef.current = false;
+      }
     }, 100);
 
     return () => {
       window.clearInterval(fadeIn);
       audio.removeEventListener('timeupdate', rewind);
       trackPosition = audio.currentTime;
-      let out = audio.volume;
+      audioRef.current = null;
+      fadingRef.current = true;
+      const from = audio.volume;
+      let out = from;
       const fadeOut = window.setInterval(() => {
-        out -= target / 15;
+        out -= from / 15;
         if (out <= 0) {
           window.clearInterval(fadeOut);
           audio.pause();
@@ -259,11 +266,27 @@ function useTrack(active: boolean, volume: number) {
         audio.volume = Math.max(0, out);
       }, 60);
     };
-  }, [active, volume]);
+  }, [active]);
 }
 
 /** Синтезированный камин — пока записи нет. */
-function useHearth(active: boolean, audioContext: () => AudioContext | null, soundVolume: number) {
+function useHearth(active: boolean, audioContext: () => AudioContext | null, musicVolume: number) {
+  const masterRef = useRef<GainNode | null>(null);
+  const levelRef = useRef(musicVolume);
+  levelRef.current = musicVolume;
+
+  // Как и у записи: ползунок правит громкость на живом узле, а не
+  // пересобирает весь камин заново.
+  useEffect(() => {
+    const master = masterRef.current;
+    if (!master) return;
+    try {
+      master.gain.setTargetAtTime(Math.max(0.0001, (musicVolume / 100) * 0.05), 0, 0.2);
+    } catch {
+      // Узел мог уже отключиться — музыка не игра.
+    }
+  }, [musicVolume]);
+
   useEffect(() => {
     if (!active) return;
     const context = audioContext();
@@ -281,6 +304,7 @@ function useHearth(active: boolean, audioContext: () => AudioContext | null, sou
     try {
       master = ctx.createGain();
       master.connect(ctx.destination);
+      masterRef.current = master;
 
       // Комната: короткое эхо с затуханием и срезом верха. Четыре узла — и
       // синтез перестаёт звучать у самого уха. Дешевле способа сделать
@@ -348,7 +372,7 @@ function useHearth(active: boolean, audioContext: () => AudioContext | null, sou
     // Доля посчитана, а не подобрана на слух: аккорд с басом и щипком дают
     // до двух амплитуды до общего множителя, отклик «верно» — 0.16. 0.05
     // оставляет фон примерно вдвое тише отклика.
-    const level = (soundVolume / 100) * 0.05;
+    const level = (levelRef.current / 100) * 0.05;
     const now = ctx.currentTime;
     master.gain.setValueAtTime(0.0001, now);
     // Вход через четыре секунды: музыка, включающаяся рывком, звучит как
@@ -488,6 +512,7 @@ function useHearth(active: boolean, audioContext: () => AudioContext | null, sou
       } catch {
         // Ничего не поделать — узлы всё равно отключатся ниже.
       }
+      masterRef.current = null;
       window.setTimeout(() => {
         try {
           bed.stop();
@@ -498,5 +523,5 @@ function useHearth(active: boolean, audioContext: () => AudioContext | null, sou
         }
       }, 1800);
     };
-  }, [active, audioContext, soundVolume]);
+  }, [active, audioContext]);
 }

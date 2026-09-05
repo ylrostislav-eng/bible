@@ -15,6 +15,7 @@ import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
 import { BottomNav } from './navigation/bottom-nav';
 import { TextScaleProvider } from './text-scale-provider';
+import { MusicWidget } from './music-widget';
 import { PendingInvitesWidget } from './pending-invites-widget';
 import { AgeBandGate } from './onboarding/age-band-gate';
 import { OnboardingForm } from './onboarding/onboarding-form';
@@ -129,6 +130,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
       <DeclineNoticeToast />
       <PendingInvitesWidget />
       <ChatWidget />
+      <MusicWidget />
       <BottomNav />
     </>
   );
