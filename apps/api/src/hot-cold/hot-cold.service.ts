@@ -10,6 +10,7 @@ import {
   HOT_COLD_SECRET_MIN_EPISODES,
   HOT_COLD_DAILY_ROUND,
   HOT_COLD_HINT_PROMISE,
+  HOT_COLD_KIN_WORDS,
   hotColdHintKind,
   hotColdRiddle,
   hotColdShapeHint,
@@ -183,7 +184,7 @@ export class HotColdService {
   }
 
   /** Отранжированный словарь для загаданного слова. */
-  private rankingFor(word: WordRow): SemanticRanking {
+  private rankingFor(word: WordRow | SecretRow): SemanticRanking {
     const cached = this.rankings.get(word.id);
     if (cached) return cached;
 
@@ -191,7 +192,13 @@ export class HotColdService {
     if (lemma === null) {
       throw new BadRequestException('Игра не знает загаданного слова');
     }
-    const ranking = this.semantics.rank(lemma);
+    // Слова рода передаём в ранжирование: иначе «человек» и «мужчина»
+    // отвечают случайными числами, и щупать ими поле бесполезно.
+    const ranking = this.semantics.rank(
+      lemma,
+      undefined,
+      HOT_COLD_KIN_WORDS['category' in word ? word.category : ''] ?? [],
+    );
     // Простое вытеснение по возрасту: записей всё равно единицы, а `Map`
     // хранит ключи в порядке добавления, так что первый и есть старейший.
     if (this.rankings.size >= RANKING_CACHE_LIMIT) {

@@ -87,10 +87,28 @@ export interface FusionTuning {
    */
   secondOrderWeight: number;
   /**
+   * На сколько мест отодвинуть второй круг от прямых связей.
+   *
+   * Без отступа догадка «через одну» весила почти как выписанное руками
+   * знание — см. `stated`.
+   */
+  secondOrderOffset: number;
+  /**
    * Насколько весит порядок, расставленный моделью. Ноль — не учитывать,
    * даже если файл есть.
    */
   rerankWeight: number;
+  /**
+   * Насколько вычитать «похожесть на всё сразу» — см. `hubness`.
+   *
+   * Ноль — не вычитать вовсе (как было). Единица — вычесть целиком.
+   */
+  hubPenalty: number;
+  /**
+   * Каким местом отзываются слова рода — см. `rank`. Чем меньше число, тем
+   * горячее ответ на «человек» у загаданного человека.
+   */
+  kinPlace: number;
   /**
    * Смягчение для порядка модели. Своё, а не общее с выписанными связями:
    * связь, написанная руками, — это знание, а порядок модели — догадка,
@@ -123,6 +141,9 @@ export const DEFAULT_FUSION: FusionTuning = {
   statedWeight: 1,
   statedSmoothing: 10,
   secondOrderWeight: 1,
+  secondOrderOffset: 40,
+  hubPenalty: 0.25,
+  kinPlace: 40,
   rerankWeight: 1,
   rerankSmoothing: RANK_SMOOTHING,
 };
@@ -261,9 +282,28 @@ export class SemanticsService implements OnModuleInit {
   /** Смысл: похожесть по графу знаний. */
   private meaning: Int8Array = new Int8Array(0);
   private meaningNorms: Float64Array = new Float64Array(0);
+  /**
+   * Насколько слово смотрит «во все стороны сразу».
+   *
+   * В многомерных словарях есть известная беда — слова-перекрёстки: они
+   * оказываются близки почти ко всему, и не потому, что связаны, а потому,
+   * что стоят в середине облака. У нас это «пророк», «царь», «бог»: они
+   * встречаются везде, и вектор у них усреднённый. Замер показал, во что
+   * это превращается в игре: у «пастухов» «пророк» стоял пятнадцатым, у
+   * «Вифлеема» — тринадцатым. Игрок пишет верное слово, видит «горячо» и
+   * не понимает, приблизился он или нет.
+   *
+   * Лечится вычитанием среднего направления: близость к «середине облака»
+   * — это не близость к загаданному слову. Считается один раз при
+   * загрузке: среднее по всем словам и потом скалярное произведение с ним
+   * у каждого слова.
+   */
+  private meaningHub: Float64Array = new Float64Array(0);
   /** Речь: сочетаемость по корпусу. Нулевая длина — слова нет в корпусе. */
   private usage: Int8Array = new Int8Array(0);
   private usageNorms: Float64Array = new Float64Array(0);
+  /** То же для меры «речь» — см. `meaningHub`. */
+  private usageHub: Float64Array = new Float64Array(0);
   /** Слова каждого эпизода подряд; границы — в `episodeStart`. */
   private episodeWords: Int32Array = new Int32Array(0);
   private episodeStart: Int32Array = new Int32Array(1);
@@ -374,6 +414,8 @@ export class SemanticsService implements OnModuleInit {
     };
     this.meaningNorms = lengths(this.meaning);
     this.usageNorms = lengths(this.usage);
+    this.meaningHub = this.hubness(this.meaning, this.meaningNorms);
+    this.usageHub = this.hubness(this.usage, this.usageNorms);
 
     // Поиск ближайшего написания строим по леммам: подставлять игроку
     // «ковчегами» вместо «ковчега» незачем, а лемм вчетверо меньше, значит
@@ -488,19 +530,47 @@ export class SemanticsService implements OnModuleInit {
     // Второй круг: соседи соседей. Голубь выписан у Ноя, Ной — у ковчега,
     // значит голубь и ковчег тоже связаны. Писать это руками пришлось бы
     // квадратом от числа связей, а вывести — один проход.
+    //
+    // Порядок внутри круга — не «как встретилось», и это важнее, чем
+    // кажется. Раньше слова шли в порядке обхода, и наверх попадали те, у
+    // кого связей больше всех: «пророк», «царь», «апостол» выписаны у
+    // десятков слов, поэтому они оказывались во втором круге у всего
+    // подряд. Живая игра показала итог: у слова «пастухи» «пророк» стоял
+    // пятнадцатым, у «Вифлеема» — тринадцатым. Игрок пишет верное по
+    // смыслу слово, видит «горячо» и не может понять, приблизился он или
+    // нет, — то есть теряет единственный доступный ему инструмент.
+    //
+    // Поэтому путь через слово-перекрёсток стоит тем меньше, чем больше у
+    // этого слова связей, и то же самое — для самого дальнего слова. Это
+    // обычная поправка на частотность: связь «через Амоса» говорит много,
+    // связь «через пророка» — почти ничего.
+    const degree = (lemma: number): number =>
+      this.known.get(lemma)?.length ?? 0;
     for (const [lemma, direct] of this.known) {
       const seen = new Set<number>(direct);
       seen.add(lemma);
-      const second: number[] = [];
+      const weight = new Map<number, number>();
       for (const neighbour of direct) {
+        const viaCost = 1 / Math.log2(2 + degree(neighbour));
         for (const far of this.known.get(neighbour) ?? []) {
-          if (!seen.has(far)) {
-            seen.add(far);
-            second.push(far);
-          }
+          if (seen.has(far)) continue;
+          weight.set(far, (weight.get(far) ?? 0) + viaCost);
         }
       }
-      if (second.length > 0) this.knownSecond.set(lemma, second);
+      // Делим на число связей самого дальнего слова, а не смягчаем
+      // логарифмом. Логарифма не хватило, и это видно по замеру: «пророк»
+      // добирается до слова десятком разных путей, и сумма по путям
+      // возвращала его наверх — то есть само «много путей» у
+      // слова-перекрёстка означает не близость, а его общность.
+      for (const [far, gain] of weight) {
+        weight.set(far, gain / Math.max(1, degree(far)));
+      }
+      if (weight.size > 0) {
+        this.knownSecond.set(
+          lemma,
+          [...weight.entries()].sort((a, b) => b[1] - a[1]).map(([far]) => far),
+        );
+      }
     }
   }
 
@@ -605,10 +675,52 @@ export class SemanticsService implements OnModuleInit {
    * достаётся −1, чтобы оно ушло в конец списка и не мешалось, а слияние
    * потом вовсе не станет его учитывать.
    */
+  /**
+   * Среднее направление словаря и близость каждого слова к нему.
+   *
+   * Один проход считает среднее по единичным векторам, второй — насколько
+   * каждое слово на него похоже. Это и есть «слово-перекрёсток»:
+   * единица — смотрит ровно туда же, куда всё сразу; ноль — своё
+   * собственное место в облаке.
+   */
+  private hubness(vectors: Int8Array, norms: Float64Array): Float64Array {
+    const count = norms.length;
+    const mean = new Float64Array(this.dims);
+    let known = 0;
+    for (let i = 0; i < count; i += 1) {
+      if (norms[i] === 0) continue;
+      const base = i * this.dims;
+      for (let d = 0; d < this.dims; d += 1) {
+        mean[d] += vectors[base + d] / norms[i];
+      }
+      known += 1;
+    }
+    if (known === 0) return new Float64Array(count);
+    let meanNorm = 0;
+    for (let d = 0; d < this.dims; d += 1) {
+      mean[d] /= known;
+      meanNorm += mean[d] ** 2;
+    }
+    meanNorm = Math.sqrt(meanNorm);
+
+    const hub = new Float64Array(count);
+    if (meanNorm === 0) return hub;
+    for (let i = 0; i < count; i += 1) {
+      if (norms[i] === 0) continue;
+      const base = i * this.dims;
+      let dot = 0;
+      for (let d = 0; d < this.dims; d += 1) dot += vectors[base + d] * mean[d];
+      hub[i] = dot / (norms[i] * meanNorm);
+    }
+    return hub;
+  }
+
   private closeness(
     vectors: Int8Array,
     norms: Float64Array,
     lemmaIndex: number,
+    hub: Float64Array | null = null,
+    penalty = 0,
   ): Float64Array {
     const count = this.lemmas.length;
     const scores = new Float64Array(count);
@@ -626,7 +738,10 @@ export class SemanticsService implements OnModuleInit {
       const other = j * this.dims;
       for (let d = 0; d < this.dims; d += 1)
         dot += vectors[base + d] * vectors[other + d];
-      scores[j] = dot / (norms[lemmaIndex] * norms[j]);
+      const cosine = dot / (norms[lemmaIndex] * norms[j]);
+      // Вычитаем то, чем слово похоже на «всё сразу»: остаётся близость
+      // именно к загаданному, а не к середине облака.
+      scores[j] = hub ? cosine - penalty * hub[j] : cosine;
     }
     return scores;
   }
@@ -688,9 +803,14 @@ export class SemanticsService implements OnModuleInit {
       places[lemma] = at + 2;
     });
     if (tuning.secondOrderWeight > 0) {
-      // Связи через одну идут следом за прямыми и потому весят меньше —
-      // отдельного коэффициента им не нужно, место само всё скажет.
-      const after = links.length + 2;
+      // Связи через одну идут не сразу за прямыми, а с отступом.
+      //
+      // Раньше отступа не было, и это оказалось ошибкой масштаба: при
+      // смягчении в десятку место 12 и место 3 отличаются вдвое, то есть
+      // догадка «через одну» весила почти как выписанное руками знание и
+      // легко обходила все четыре статистические меры разом. Отступ
+      // ставит её туда, где ей и место: слышно, но не громче остальных.
+      const after = links.length + 2 + tuning.secondOrderOffset;
       (this.knownSecond.get(lemmaIndex) ?? []).forEach((lemma, at) => {
         if (places[lemma] === 0) places[lemma] = after + at;
       });
@@ -736,14 +856,32 @@ export class SemanticsService implements OnModuleInit {
    * Считается один раз на загаданное слово; дальше каждая догадка стоит
    * одного обращения к массиву.
    */
+  /**
+   * @param kin Слова рода загаданного — «человек», «город», «предмет».
+   *   Статистика про них молчит, а банк слов знает ответ, и знание это
+   *   надо отдать игроку: иначе щупать поле общими словами бесполезно.
+   */
   rank(
     lemmaIndex: number,
     tuning: FusionTuning = DEFAULT_FUSION,
+    kin: readonly string[] = [],
   ): SemanticRanking {
     const count = this.lemmas.length;
-    const sense = this.closeness(this.meaning, this.meaningNorms, lemmaIndex);
+    const sense = this.closeness(
+      this.meaning,
+      this.meaningNorms,
+      lemmaIndex,
+      this.meaningHub,
+      tuning.hubPenalty,
+    );
     const byMeaning = placesOf(sense);
-    const spoken = this.closeness(this.usage, this.usageNorms, lemmaIndex);
+    const spoken = this.closeness(
+      this.usage,
+      this.usageNorms,
+      lemmaIndex,
+      this.usageHub,
+      tuning.hubPenalty,
+    );
     const bySpeech = placesOf(spoken);
     const story = this.association(lemmaIndex);
     const byStory = placesOf(story);
@@ -770,6 +908,16 @@ export class SemanticsService implements OnModuleInit {
       if (byModel && byModel[j] > 0) {
         fused[j] += tuning.rerankWeight / (tuning.rerankSmoothing + byModel[j]);
       }
+    }
+
+    // Слова рода отвечают знанием, а не статистикой: одно и то же место
+    // всем, и это место — «горячо», но не первая десятка. Прибавляем, а не
+    // назначаем: если слово рода и без того близко, оно не должно уехать
+    // вниз из-за поправки.
+    for (const word of kin) {
+      const at = this.lookup(word);
+      if (at === null || at === lemmaIndex) continue;
+      fused[at] += 1 / (RANK_SMOOTHING + tuning.kinPlace);
     }
 
     const places = placesOf(fused);

@@ -9,6 +9,7 @@ import {
   HOT_COLD_DUEL_AWAY_MS,
   HOT_COLD_DUEL_COUNTDOWN_MS,
   HOT_COLD_HINT_COMMON_LIMIT,
+  HOT_COLD_KIN_WORDS,
   HOT_COLD_DUEL_HINT_BANDS,
   HOT_COLD_DUEL_HINT_LIMIT,
   HOT_COLD_DUEL_HINT_TITLES,
@@ -76,6 +77,8 @@ interface WordRow {
   id: string;
   word: string;
   gloss: string;
+  /** `AliasCategory` — по нему подбираются слова рода для ранжирования. */
+  category: string;
 }
 
 type LoadedDuel = Prisma.HotColdDuelGetPayload<{
@@ -199,7 +202,7 @@ export class HotColdDuelService {
    */
   private async pickWord(userIds: string[]): Promise<WordRow> {
     const words = await this.prisma.aliasWord.findMany({
-      select: { id: true, word: true, gloss: true },
+      select: { id: true, word: true, gloss: true, category: true },
     });
     // Сегодняшние партии, а не все за историю: за год ежедневной игры
     // человек проходит весь банк, и «чего он не играл» стало бы пустым.
@@ -422,7 +425,11 @@ export class HotColdDuelService {
     if (lemma === null) {
       throw new BadRequestException('Игра не знает загаданного слова');
     }
-    const ranking = this.semantics.rank(lemma);
+    const ranking = this.semantics.rank(
+      lemma,
+      undefined,
+      HOT_COLD_KIN_WORDS[word.category] ?? [],
+    );
     if (this.rankings.size >= RANKING_CACHE_LIMIT) {
       for (const oldest of this.rankings.keys()) {
         this.rankings.delete(oldest);

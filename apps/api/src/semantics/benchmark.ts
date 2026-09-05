@@ -20,7 +20,12 @@
  *   до 10 000   — «холодно», но не бессмыслица;
  *   дальше      — «ледяное», связи не видно.
  */
-import { RELATED, UNRELATED, type Pair } from './benchmark-pairs';
+import {
+  FALSE_NEIGHBOURS,
+  RELATED,
+  UNRELATED,
+  type Pair,
+} from './benchmark-pairs';
 import { KNOWN_LINKS } from './known-links';
 import { SemanticsService } from './semantics.service';
 
@@ -151,6 +156,23 @@ function main(): void {
     .slice(0, 5);
   console.log('\n  ближе всех подобрались:');
   for (const { secret, guess, rank } of tooClose) {
+    console.log(
+      `    ${`${secret} → ${guess}`.padEnd(32)}${String(rank).padStart(7)}`,
+    );
+  }
+  // Ложные соседи — отдельной строкой: общебиблейское слово не должно
+  // липнуть ко всему подряд, иначе «горячо» перестаёт что-либо значить.
+  console.log('\nЛОЖНЫЕ СОСЕДИ — общие слова Писания, чем дальше, тем лучше\n');
+  const hubs = measure(service, FALSE_NEIGHBOURS);
+  const hubRanks = hubs.flatMap((m) => (m.rank === null ? [] : [m.rank]));
+  console.log(`  медиана ${median(hubRanks)}`);
+  console.log(`  в «горячо» (плохо): ${share(hubRanks, HOT)}`);
+  const stuck = hubs
+    .filter((m): m is Measured & { rank: number } => m.rank !== null)
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, 6);
+  console.log('\n  прилипли ближе всех:');
+  for (const { secret, guess, rank } of stuck) {
     console.log(
       `    ${`${secret} → ${guess}`.padEnd(32)}${String(rank).padStart(7)}`,
     );
