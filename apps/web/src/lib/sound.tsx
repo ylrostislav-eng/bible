@@ -1,7 +1,15 @@
 'use client';
 
 import { SOUND_SETTINGS_DEFAULT, type SoundName, type SoundSettings } from '@bible-arena/shared';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useAuth } from './auth-context';
 
 /**
@@ -145,6 +153,16 @@ export interface PlayOptions {
 interface SoundApi {
   play: (name: SoundName, options?: PlayOptions) => void;
   settings: SoundSettings;
+  /**
+   * Та же звуковая дорожка, что и у откликов, — для фоновой музыки.
+   *
+   * Второй контекст заводить нельзя: браузеры держат их по счёту, и
+   * два — это ещё и два разных момента разблокировки. `null`, пока
+   * игрок ничего не нажал.
+   */
+  audioContext: () => AudioContext | null;
+  /** Контекст уже заведён: был жест игрока. Меняется — экран узнаёт. */
+  unlocked: boolean;
 }
 
 /**
@@ -166,6 +184,9 @@ const SoundContext = createContext<SoundApi | null>(null);
 export function SoundProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const contextRef = useRef<AudioContext | null>(null);
+  // Отдельным состоянием, а не только ссылкой: музыке надо узнать, что
+  // контекст появился, а изменение ссылки перерисовку не вызывает.
+  const [unlocked, setUnlocked] = useState(false);
 
   const settings = useMemo<SoundSettings>(
     () => ({
@@ -193,6 +214,7 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
         if (!Ctor) return;
         const created = new Ctor();
         contextRef.current = created;
+        setUnlocked(true);
         // Свежий контекст на части браузеров рождается приостановленным даже
         // внутри жеста — без этого первый звук просто теряется.
         void created.resume().catch(() => undefined);
@@ -291,7 +313,11 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [play]);
 
-  const value = useMemo<SoundApi>(() => ({ play, settings }), [play, settings]);
+  const audioContext = useCallback(() => contextRef.current, []);
+  const value = useMemo<SoundApi>(
+    () => ({ play, settings, audioContext, unlocked }),
+    [play, settings, audioContext, unlocked],
+  );
 
   useEffect(() => {
     live = value;
@@ -339,6 +365,8 @@ export function useSound(): SoundApi {
     useContext(SoundContext) ?? {
       play: () => undefined,
       settings: SOUND_SETTINGS_DEFAULT,
+      audioContext: () => null,
+      unlocked: false,
     }
   );
 }

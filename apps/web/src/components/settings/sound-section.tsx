@@ -9,9 +9,10 @@ import { useSound } from '@/lib/sound';
 /**
  * Звук и вибро.
  *
- * Здесь только то, что уже звучит. Поле для фоновой музыки в профиле есть,
- * но переключателя нет: тумблер, который ничего не выключает, читается как
- * поломка — он появится вместе с самой музыкой.
+ * Музыка отдельным переключателем от звуков и выключена по умолчанию:
+ * незапрошенная музыка в транспорте или на работе ощущается как поломка,
+ * а не как атмосфера. Короткие отклики — наоборот, включены: они отвечают
+ * на нажатие.
  *
  * Громкость сохраняется не на каждое движение ползунка, а когда он замер:
  * иначе один проход от края до края — это сотня запросов к серверу.
@@ -56,7 +57,11 @@ export function SoundSection() {
 
   if (!user) return null;
 
-  async function save(patch: { soundEnabled?: boolean; hapticsEnabled?: boolean }) {
+  async function save(patch: {
+    soundEnabled?: boolean;
+    musicEnabled?: boolean;
+    hapticsEnabled?: boolean;
+  }) {
     if (saving) return;
     setSaving(true);
     setError(null);
@@ -85,6 +90,14 @@ export function SoundSection() {
         checked={user.soundEnabled}
         disabled={saving}
         onToggle={() => void save({ soundEnabled: !user.soundEnabled })}
+      />
+
+      <Switch
+        label="Музыка"
+        hint="Тихая подложка в меню и профиле. В партии и при чтении молчит."
+        checked={user.musicEnabled}
+        disabled={saving}
+        onToggle={() => void save({ musicEnabled: !user.musicEnabled })}
       />
 
       <Switch

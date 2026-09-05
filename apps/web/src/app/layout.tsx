@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { GlobalErrorReporter } from '@/components/global-error-reporter';
 import { AuthProvider } from '@/lib/auth-context';
+import { AmbientMusic } from '@/lib/music';
 import { SoundProvider } from '@/lib/sound';
 import { TelegramProvider } from '@/lib/telegram-provider';
 import './globals.css';
@@ -31,7 +32,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <AuthProvider>
               {/* Звук выше всех экранов: настройки живут в профиле, и
                   провайдер должен видеть его целиком. */}
-              <SoundProvider>{children}</SoundProvider>
+              <SoundProvider>
+                <AmbientMusic />
+                {children}
+              </SoundProvider>
             </AuthProvider>
           </TelegramProvider>
         </ErrorBoundary>
