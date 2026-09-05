@@ -127,6 +127,8 @@ describe('правила дуэли', () => {
     riddle: 'Загадан человек, Ветхий Завет',
     hints: [],
     hintsLeft: HOT_COLD_DUEL_HINT_LIMIT,
+    lookups: [],
+    lookupsLeft: 3,
     hintRequest: null,
     vocabulary: 50_000,
     guesses: [],

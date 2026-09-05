@@ -27,6 +27,7 @@ import { isAllowedWsOrigin } from '../config/ws-cors.util';
 import {
   HotColdDuelGuessDto,
   HotColdDuelIdDto,
+  HotColdDuelLookupDto,
 } from './dto/hot-cold-duel-ws.dto';
 import { HotColdDuelService } from './hot-cold-duel.service';
 
@@ -267,6 +268,24 @@ export class HotColdDuelGateway
       // тап, а останавливать время значило бы дать способ его тянуть.
       await this.duels.requestHint(dto.duelId, socket.data.userId);
       await this.broadcast(dto.duelId);
+    });
+  }
+
+  @SubscribeMessage(HOT_COLD_DUEL_WS_EVENTS.lookup)
+  async onLookup(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    await this.guarded(socket, async () => {
+      const dto = await this.parse(HotColdDuelLookupDto, body);
+      const state = await this.duels.lookup(
+        dto.duelId,
+        socket.data.userId,
+        dto.word,
+      );
+      // Только себе: поиски личные, и соперник о них не знает — иначе
+      // словарь стал бы подглядыванием за чужим ходом мысли.
+      socket.emit(HOT_COLD_DUEL_WS_SERVER_EVENTS.state, { state });
     });
   }
 

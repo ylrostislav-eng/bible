@@ -158,6 +158,18 @@ export function useHotColdDuel(duelId: string | null) {
     socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.hint, { duelId });
   }, [duelId]);
 
+  /** Словарь: пять слов, близких по смыслу к названному. */
+  const lookup = useCallback(
+    (word: string) => {
+      setError(null);
+      socketRef.current?.emit(HOT_COLD_DUEL_WS_EVENTS.lookup, {
+        duelId,
+        word,
+      });
+    },
+    [duelId],
+  );
+
   /** «Не надо»: снимает предложение соперника, и он об этом узнает. */
   const declineHint = useCallback(() => {
     setError(null);
@@ -184,6 +196,7 @@ export function useHotColdDuel(duelId: string | null) {
     setReady,
     askHint,
     declineHint,
+    lookup,
     surrender,
     claimWin,
   };

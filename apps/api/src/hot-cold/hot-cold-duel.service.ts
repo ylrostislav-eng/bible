@@ -9,6 +9,9 @@ import {
   HOT_COLD_DUEL_AWAY_MS,
   HOT_COLD_DUEL_COUNTDOWN_MS,
   HOT_COLD_HINT_COMMON_LIMIT,
+  HOT_COLD_DUEL_LOOKUPS,
+  HOT_COLD_DUEL_LOOKUP_WORDS,
+  type HotColdDuelLookup,
   HOT_COLD_KIN_WORDS,
   HOT_COLD_DUEL_HINT_BANDS,
   HOT_COLD_DUEL_HINT_LIMIT,
@@ -66,6 +69,14 @@ import { UsersService } from '../users/users.service';
  * значит «его знают», здесь — «мимо него не пройдёшь».
  */
 const FREQUENT_EPISODES = 30;
+
+/**
+ * Сколько ближайших слов просматривать для одного поиска по словарю.
+ *
+ * С запасом: часть отсеется как редкая, однокоренная загаданному или уже
+ * показанная, а вернуть надо пять.
+ */
+const LOOKUP_SCAN = 60;
 
 /** Сколько ближайших слов показать в разборе после дуэли. */
 const CLOSEST_SHOWN = 10;
@@ -474,6 +485,11 @@ export class HotColdDuelService {
       // перебора наугад, а это не задача, а угадайка.
       riddle: hotColdRiddle(this.secretFacts(duel)),
       hints: readHints(duel.hints),
+      // Поиски личные: у соперника они свои, и в чужое состояние не
+      // уезжают — иначе словарь превратился бы в подглядывание за чужим
+      // ходом мысли.
+      lookups: readLookups(me.lookups),
+      lookupsLeft: Math.max(0, HOT_COLD_DUEL_LOOKUPS - me.lookupCount),
       hintsLeft: Math.max(0, HOT_COLD_DUEL_HINT_LIMIT - duel.hintsTaken),
       hintRequest: duel.hintRequestedBy
         ? { mine: duel.hintRequestedBy === userId }
@@ -844,6 +860,84 @@ export class HotColdDuelService {
     return `${HOT_COLD_DUEL_HINT_TITLES[step]}: ${[...taken].join(', ')}`;
   }
 
+  /**
+   * Словарь: пять слов, близких по смыслу к названному.
+   *
+   * Это не подсказка про загаданное слово, а помощь вспомнить сами слова.
+   * Библейская лексика — главная стена режима: человек понимает, куда
+   * думать, но не может вспомнить ни одного подходящего слова.
+   *
+   * Три вещи, без которых словарь стал бы дырой:
+   *
+   * 1. **Загаданное слово не показывается никогда** — ни оно само, ни
+   *    однокоренное ему. Иначе поиск рядом с ответом просто выдал бы ответ.
+   * 2. **Показанное не повторяется**: следующий поиск даёт новые слова, а
+   *    не тот же список — иначе три поиска превращаются в один.
+   * 3. **Только обиходные слова**: редкость и транслитерация не помогут
+   *    вспомнить ничего, это уже проверено на подсказках.
+   */
+  async lookup(
+    duelId: string,
+    userId: string,
+    rawWord: string,
+  ): Promise<HotColdDuelState> {
+    const trimmed = rawWord.trim();
+    if (trimmed.length === 0) throw new BadRequestException('Пустой запрос');
+
+    const duel = await this.load(duelId);
+    const me = duel.players.find((player) => player.userId === userId);
+    if (!me) throw new ForbiddenException('Вы не участник этой дуэли');
+    if (duel.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('Партия ещё не идёт');
+    }
+    if (duel.startsAt && duel.startsAt.getTime() > Date.now()) {
+      throw new BadRequestException('Идёт отсчёт — вот-вот начнём');
+    }
+    if (me.lookupCount >= HOT_COLD_DUEL_LOOKUPS) {
+      throw new BadRequestException(
+        'Поиски по словарю на эту партию кончились',
+      );
+    }
+
+    const resolved = this.semantics.resolve(trimmed);
+    if (!resolved) {
+      // Неизвестное слово поиска не стоит: наказывать за то, чего словарь
+      // не знает, нечестно — ровно как с догадками.
+      throw new BadRequestException('Игра не знает такого слова');
+    }
+
+    const secretLemma = this.semantics.lookup(duel.word.word);
+    const before = readLookups(me.lookups);
+    const shown = new Set(before.flatMap((entry) => entry.words));
+    const ranking = this.semantics.rank(resolved.lemma);
+    const words: string[] = [];
+    for (const near of ranking.closest(LOOKUP_SCAN)) {
+      if (words.length >= HOT_COLD_DUEL_LOOKUP_WORDS) break;
+      if (shown.has(near.word)) continue;
+      const lemma = this.semantics.lookup(near.word);
+      if (lemma === null || lemma >= HOT_COLD_HINT_COMMON_LIMIT) continue;
+      if (lemma === secretLemma) continue;
+      if (sameRoot(near.word, duel.word.word)) continue;
+      words.push(near.word);
+    }
+    if (words.length === 0) {
+      throw new BadRequestException('Рядом с этим словом ничего не нашлось');
+    }
+
+    const next: HotColdDuelLookup[] = [
+      ...before,
+      { query: resolved.word, words },
+    ];
+    await this.prisma.hotColdDuelPlayer.update({
+      where: { id: me.id },
+      data: {
+        lookups: next.map((entry) => ({ ...entry })),
+        lookupCount: { increment: 1 },
+      },
+    });
+    return this.getState(duelId, userId);
+  }
+
   /** «Не надо»: предложение снимается, и предложившему это говорят. */
   async declineHint(
     duelId: string,
@@ -1082,6 +1176,44 @@ export class HotColdDuelService {
 
     return never.count + stalled.length;
   }
+}
+
+/**
+ * Однокоренные ли слова — грубо, по общему началу.
+ *
+ * Та же мерка, что в разборе после игры: «пастырь» рядом с «пастухом» —
+ * это не подсказка, а половина ответа.
+ */
+function sameRoot(word: string, secret: string): boolean {
+  const needed = Math.min(4, secret.length - 2);
+  if (needed <= 0) return word === secret;
+  let shared = 0;
+  while (
+    shared < word.length &&
+    shared < secret.length &&
+    word[shared] === secret[shared]
+  ) {
+    shared += 1;
+  }
+  return shared >= needed;
+}
+
+/** Поиски по словарю из JSON. */
+function readLookups(value: unknown): HotColdDuelLookup[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const row = entry as { query?: unknown; words?: unknown };
+    if (typeof row.query !== 'string' || !Array.isArray(row.words)) return [];
+    return [
+      {
+        query: row.query,
+        words: row.words.filter(
+          (word): word is string => typeof word === 'string',
+        ),
+      },
+    ];
+  });
 }
 
 /** Открытые подсказки из JSON. Мусор в колонке не должен ронять партию. */

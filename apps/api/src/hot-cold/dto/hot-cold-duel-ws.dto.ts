@@ -12,3 +12,9 @@ export class HotColdDuelGuessDto extends HotColdDuelIdDto {
   @Length(1, 64)
   guess!: string;
 }
+
+export class HotColdDuelLookupDto extends HotColdDuelIdDto {
+  @IsString()
+  @Length(1, 64)
+  word!: string;
+}

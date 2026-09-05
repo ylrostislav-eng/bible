@@ -1082,6 +1082,11 @@ model HotColdDuelPlayer {
   /// Нажал «готов». Пока пусто хотя бы у одного — партия не начинается.
   readyAt  DateTime?
 
+  /// Словарь: что игрок искал и что ему показали. Массив
+  /// `{ query, words }` по порядку. Личное — у каждого свои поиски.
+  lookups     Json @default("[]")
+  lookupCount Int  @default(0)
+
   @@unique([duelId, userId])
   @@index([userId, duelId])
   @@map("hot_cold_duel_players")
