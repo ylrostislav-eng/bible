@@ -130,6 +130,22 @@ export class DuelService {
     userId: string,
     dto: CreateDuelDto,
   ): Promise<{ sessionId: string; matched: boolean }> {
+    // Незакрытая дуэль важнее новой: без этой проверки живая проверка
+    // завела человеку вторую партию поверх первой — он остался бы висеть в
+    // очереди, пока его ждут в уже идущей игре, а подобранный к нему
+    // соперник получил бы игрока, который сидит в другом окне. Возвращаем
+    // ту, что есть, — экран сам покажет, где он остановился.
+    const mine = await this.prisma.gameSession.findFirst({
+      where: {
+        mode: 'DUEL',
+        status: { in: ['WAITING_FOR_OPPONENT', 'IN_PROGRESS'] },
+        participants: { some: { userId } },
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true },
+    });
+    if (mine) return { sessionId: mine.id, matched: false };
+
     const blocked = await blockedWith(this.prisma, userId);
 
     for (let attempt = 0; attempt < MATCH_ATTEMPTS; attempt += 1) {
@@ -784,6 +800,7 @@ export class DuelService {
       sessionId: session.id,
       status: session.status as DuelStateStatus,
       inviteCode: session.inviteCode,
+      open: session.openToMatchmaking,
       questionCount: session.questionCount,
       timeLimitSeconds: session.timeLimitSeconds,
       you: toView(me),

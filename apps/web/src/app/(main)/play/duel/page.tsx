@@ -38,7 +38,7 @@ const POLL_INTERVAL_MS = 1200;
  * page for no real benefit — this is a one-shot handoff, not shareable state). */
 const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
-type Menu = 'menu' | 'create' | 'createByCode' | 'join';
+type Menu = 'menu' | 'find' | 'create' | 'createByCode' | 'join';
 
 export default function DuelPage() {
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
@@ -260,6 +260,29 @@ export default function DuelPage() {
     }
   }, [questionCount]);
 
+  /**
+   * «Найти соперника» — незнакомец вместо кода от друга.
+   *
+   * Число вопросов входит в подбор и потому спрашивается заранее: посадить
+   * того, кто просил пять, к тому, кто просил двадцать, значит навязать
+   * одному из них чужие правила. Лучше подождать, чем начать не ту партию.
+   */
+  const findOpponent = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.post<{ sessionId: string; matched: boolean }>(
+        '/game/duel/find-opponent',
+        { questionCount },
+      );
+      setSessionId(res.sessionId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось найти соперника');
+    } finally {
+      setLoading(false);
+    }
+  }, [questionCount]);
+
   const fetchJoinPreview = useCallback(async () => {
     if (inviteCodeInput.length !== 6) return;
     setLoading(true);
@@ -394,12 +417,27 @@ export default function DuelPage() {
     if (duelState.status === 'WAITING_FOR_OPPONENT') {
       return (
         <div className="mx-auto flex max-w-md flex-col items-center gap-5 px-4 pt-10 text-center">
-          <h1 className="text-xl font-bold">Ожидание соперника…</h1>
+          {/* Два разных ожидания: подбор незнакомца и позванный друг. Текст
+              обязан их различать — иначе вставший в очередь сидит и гадает,
+              кому он должен диктовать код. */}
+          <h1 className="text-xl font-bold">
+            {duelState.open ? 'Ищем соперника…' : 'Ждём соперника…'}
+          </h1>
           <p className="text-sm text-text-secondary">
-            Отправьте этот код другу — он должен ввести его в разделе «Дуэль → Присоединиться»
+            {duelState.open
+              ? 'Партия начнётся сама, как только найдётся тот, кто ждёт столько же вопросов.'
+              : 'Отправьте этот код — его вводят в разделе «Дуэль → Присоединиться»'}
           </p>
-          <Card className="flex-col items-center gap-2 px-8 py-6">
-            <p className="text-3xl font-bold tracking-[0.3em] text-primary">
+          {/* В подборе код мельче: он рабочий и там, но человек ждёт не
+              его. Подпись одна и та же в обоих режимах игры. */}
+          <Card className="flex-col items-center gap-1 px-8 py-6">
+            <p className="text-xs text-text-muted">Код приглашения</p>
+            <p
+              className={clsx(
+                'font-bold tracking-[0.3em] text-primary',
+                duelState.open ? 'text-2xl' : 'text-3xl',
+              )}
+            >
               {duelState.inviteCode}
             </p>
           </Card>
@@ -664,6 +702,34 @@ export default function DuelPage() {
     );
   }
 
+  if (menu === 'find') {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+        <h1 className="text-xl font-bold">Найти соперника</h1>
+        <p className="text-sm text-text-secondary">
+          Игра посадит вас к тому, кто уже ждёт партию на столько же вопросов. Если сейчас никто не
+          ждёт — подождём вместе с вами.
+        </p>
+        <Card className="flex-col gap-3">
+          <QuestionCountSlider
+            label="Количество вопросов"
+            value={questionCount}
+            min={DUEL_QUESTION_COUNT_MIN}
+            max={DUEL_QUESTION_COUNT_MAX}
+            onChange={setQuestionCount}
+          />
+        </Card>
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <Button onClick={findOpponent} disabled={loading}>
+          {loading ? 'Ищем…' : 'Найти соперника'}
+        </Button>
+        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
+          Назад
+        </button>
+      </div>
+    );
+  }
+
   if (menu === 'createByCode') {
     return (
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
@@ -821,7 +887,12 @@ export default function DuelPage() {
         </Card>
       )}
 
-      <Button onClick={() => setMenu('create')}>Создать дуэль</Button>
+      {/* Первым — поиск соперника: игра с друзьями упирается в то, есть ли
+          друг под рукой прямо сейчас, а сыграть хочется сразу. */}
+      <Button onClick={() => setMenu('find')}>Найти соперника</Button>
+      <Button onClick={() => setMenu('create')} variant="secondary">
+        Пригласить
+      </Button>
       <Button onClick={() => setMenu('join')} variant="secondary">
         Присоединиться по коду
       </Button>

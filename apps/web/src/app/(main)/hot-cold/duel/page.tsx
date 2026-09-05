@@ -119,6 +119,30 @@ export default function HotColdDuelPage() {
     }
   }, []);
 
+  /**
+   * «Найти соперника» — незнакомец вместо кода от друга.
+   *
+   * Отдельная кнопка, а не «создать и ждать»: сервер сначала смотрит, не
+   * ждёт ли уже кто-то, и сажает к нему. Ответ приходит одинаковый —
+   * номер партии, — а `matched` говорит, посадили нас или мы встали в
+   * очередь; экран разберётся сам по состоянию партии.
+   */
+  const findOpponent = useCallback(async () => {
+    setStarting(true);
+    setStartError(null);
+    try {
+      const response = await apiClient.post<{ duelId: string; matched: boolean }>(
+        '/hot-cold/duel/find-opponent',
+        {},
+      );
+      setDuelId(response.duelId);
+    } catch (err) {
+      setStartError(err instanceof ApiError ? err.message : 'Не удалось найти соперника');
+    } finally {
+      setStarting(false);
+    }
+  }, []);
+
   const join = useCallback(async () => {
     const value = code.trim();
     if (!value) return;
@@ -150,6 +174,7 @@ export default function HotColdDuelPage() {
       <Lobby
         code={code}
         onCode={setCode}
+        onFind={() => void findOpponent()}
         onStart={() => void start()}
         onJoin={() => void join()}
         busy={starting}
@@ -181,7 +206,7 @@ export default function HotColdDuelPage() {
       </header>
 
       {state.status === 'WAITING' ? (
-        <WaitingCard code={state.inviteCode} onCancel={duel.surrender} />
+        <WaitingCard code={state.inviteCode} open={state.open} onCancel={duel.surrender} />
       ) : (
         <>
           <Scoreboard state={state} moves={duel.opponentMoves} />
@@ -277,10 +302,11 @@ export default function HotColdDuelPage() {
   );
 }
 
-/** Пока дуэли нет: создать свою или войти по чужому коду. */
+/** Пока дуэли нет: найти незнакомца, позвать друга или войти по коду. */
 function Lobby({
   code,
   onCode,
+  onFind,
   onStart,
   onJoin,
   busy,
@@ -288,6 +314,7 @@ function Lobby({
 }: {
   code: string;
   onCode: (value: string) => void;
+  onFind: () => void;
   onStart: () => void;
   onJoin: () => void;
   busy: boolean;
@@ -312,9 +339,22 @@ function Lobby({
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      <Button onClick={onStart} disabled={busy}>
-        {busy ? <Spinner /> : 'Создать дуэль'}
+      {/* Поиск соперника стоит первым и выглядит главным действием: игра по
+          коду упирается в то, есть ли кому его отправить прямо сейчас, а
+          сыграть хочется сразу. Названия кнопок те же, что в дуэли по
+          вопросам, — режимы разные, а действия одни и те же. */}
+      <Button onClick={onFind} disabled={busy}>
+        {busy ? <Spinner /> : 'Найти соперника'}
       </Button>
+
+      <button
+        type="button"
+        onClick={onStart}
+        disabled={busy}
+        className="rounded-xl bg-surface-hover px-5 py-3 text-sm font-semibold transition hover:bg-border disabled:opacity-40"
+      >
+        Пригласить
+      </button>
 
       <div className="flex flex-col gap-2">
         <p className="text-sm font-semibold">Или войти по коду</p>
@@ -347,8 +387,23 @@ function Lobby({
   );
 }
 
-/** Ждём второго: код крупно, потому что его сейчас будут диктовать. */
-function WaitingCard({ code, onCancel }: { code: string; onCancel: () => void }) {
+/**
+ * Ждём второго.
+ *
+ * Два разных ожидания под одной крышей. Позвали друга — главное здесь код,
+ * его сейчас будут диктовать. Встали в подбор — главное «ищем», а код
+ * уходит вниз мелким: он и тогда работает (друг может влезть первым), но
+ * человек ждёт не его.
+ */
+function WaitingCard({
+  code,
+  open,
+  onCancel,
+}: {
+  code: string;
+  open: boolean;
+  onCancel: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -360,23 +415,48 @@ function WaitingCard({ code, onCancel }: { code: string; onCancel: () => void })
     }
   };
 
+  const copyButton = (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className="mt-3 rounded-xl bg-surface-hover px-4 py-2 text-xs font-semibold transition hover:bg-border"
+    >
+      {copied ? 'Скопировано' : 'Скопировать'}
+    </button>
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-2xl border border-border bg-surface p-5 text-center">
-        <p className="text-sm text-text-secondary">Код для соперника</p>
-        <p className="mt-2 text-4xl font-bold tracking-[0.3em]">{code}</p>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="mt-3 rounded-xl bg-surface-hover px-4 py-2 text-xs font-semibold transition hover:bg-border"
-        >
-          {copied ? 'Скопировано' : 'Скопировать'}
-        </button>
-      </section>
-      <div className="flex items-center justify-center gap-2 text-sm text-text-secondary">
-        <Spinner />
-        Ждём соперника…
-      </div>
+      {open ? (
+        <>
+          <section className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface p-6 text-center">
+            <Spinner />
+            <p className="text-base font-semibold">Ищем соперника…</p>
+            <p className="text-sm text-text-secondary">
+              Партия начнётся сама, как только соперник найдётся.
+            </p>
+          </section>
+          {/* Код и в подборе остаётся рабочим, но уходит вниз мелким: он
+              здесь не то, чего человек ждёт. */}
+          <section className="rounded-2xl border border-border bg-surface p-4 text-center">
+            <p className="text-xs text-text-muted">Код приглашения</p>
+            <p className="mt-1 text-2xl font-bold tracking-[0.3em]">{code}</p>
+            {copyButton}
+          </section>
+        </>
+      ) : (
+        <>
+          <section className="rounded-2xl border border-border bg-surface p-5 text-center">
+            <p className="text-sm text-text-secondary">Код приглашения</p>
+            <p className="mt-2 text-4xl font-bold tracking-[0.3em]">{code}</p>
+            {copyButton}
+          </section>
+          <div className="flex items-center justify-center gap-2 text-sm text-text-secondary">
+            <Spinner />
+            Ждём соперника…
+          </div>
+        </>
+      )}
       <button
         type="button"
         onClick={onCancel}

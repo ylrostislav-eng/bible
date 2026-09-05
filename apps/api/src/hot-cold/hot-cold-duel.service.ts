@@ -436,6 +436,11 @@ export class HotColdDuelService {
       id: duel.id,
       status: duel.status,
       inviteCode: duel.inviteCode,
+      // Открыта ли партия для подбора, экран знать обязан: ожидание «сейчас
+      // подберём незнакомца» и ожидание «продиктуйте код другу» выглядят
+      // одинаково, а означают разное. Держать это на клиенте нельзя —
+      // перезагрузка страницы стёрла бы, чем всё началось.
+      open: duel.openToMatchmaking,
       vocabulary: this.semantics.size,
 
       guesses: [...myGuesses].sort((a, b) => a.rank - b.rank),

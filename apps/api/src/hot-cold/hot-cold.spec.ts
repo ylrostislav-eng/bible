@@ -120,6 +120,7 @@ describe('правила дуэли', () => {
     id: 'd1',
     status: 'FINISHED',
     inviteCode: 'ABC123',
+    open: false,
     vocabulary: 50_000,
     guesses: [],
     bestRank: null,

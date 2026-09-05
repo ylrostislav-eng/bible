@@ -106,6 +106,14 @@ export interface DuelState {
   sessionId: string;
   status: DuelStateStatus;
   inviteCode: string | null;
+  /**
+   * Партия открыта для подбора: соперника ищет игра, а не игрок.
+   *
+   * Экран ждёт по-разному — «ищем соперника» и «продиктуйте код другу»
+   * говорят человеку разное о том, чего он ждёт. Хранить это на клиенте
+   * нельзя: перезагрузка страницы стёрла бы, чем всё началось.
+   */
+  open: boolean;
   questionCount: number;
   timeLimitSeconds: number;
 
