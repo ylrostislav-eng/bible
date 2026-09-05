@@ -19,6 +19,7 @@ import { CompletionHero } from '@/components/ui/completion-hero';
 import { StreakSection } from '@/components/ui/streak-section';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useSound } from '@/lib/sound';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 type View = 'books' | 'chapters' | 'reader';
@@ -266,6 +267,7 @@ function ChapterCheckView({
 }) {
   const { user, updateProfile } = useAuth();
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
+  const { play } = useSound();
 
   const [phase, setPhase] = useState<CheckPhase>('loading');
   const [settingGoal, setSettingGoal] = useState(false);
@@ -343,6 +345,9 @@ function ChapterCheckView({
         });
         setCorrectCount(res.correctCount);
         setPendingNext(res.nextQuestion);
+        // Сгоревшее время звучит не как ошибка: не ответил и ответил
+        // неверно — разные вещи, и путать их обидно.
+        play(res.timeExpired ? 'burnt' : res.correct ? 'correct' : 'wrong');
         if (res.finished && res.summary) {
           setSummary(res.summary);
           // Refresh the cached profile so Profile reflects the new streak/rating.
@@ -355,7 +360,7 @@ function ChapterCheckView({
         setSubmitting(false);
       }
     },
-    [sessionId, question, feedback, submitting, syncProfile],
+    [sessionId, question, feedback, submitting, syncProfile, play],
   );
 
   const setStreakGoal = useCallback(
@@ -379,13 +384,18 @@ function ChapterCheckView({
       const timeout = setTimeout(() => void submitAnswer(undefined), 0);
       return () => clearTimeout(timeout);
     }
+    // Тик только на последних пяти секундах — ровно там, где на экране
+    // уже краснеет счётчик. Тикать всю минуту значит превратить отклик в
+    // фон, который перестают слышать.
+    if (secondsLeft <= 5) play('tick');
     const timeout = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(timeout);
-  }, [phase, feedback, secondsLeft, submitAnswer]);
+  }, [phase, feedback, secondsLeft, submitAnswer, play]);
 
   const continueCheck = useCallback(async () => {
     if (summary) {
       setPhase('summary');
+      play('reward');
       return;
     }
     if (!pendingNext || !sessionId) return;
@@ -405,7 +415,7 @@ function ChapterCheckView({
     setSelectedIndex(null);
     setFeedback(null);
     setSecondsLeft(timeLimitSeconds);
-  }, [summary, pendingNext, timeLimitSeconds, sessionId]);
+  }, [summary, pendingNext, timeLimitSeconds, sessionId, play]);
 
   if (phase === 'loading') {
     return (
@@ -534,6 +544,8 @@ function ChapterCheckView({
           return (
             <button
               key={index}
+              // Свой звук: сразу за нажатием придёт «верно»/«неверно».
+              data-no-sound
               onClick={() => submitAnswer(index)}
               disabled={selectedIndex !== null || submitting || !!feedback}
               className={clsx(

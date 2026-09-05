@@ -21,6 +21,7 @@ import { CompletionHero } from '@/components/ui/completion-hero';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ApiError, apiClient } from '@/lib/api';
 import { pluralCoins, pluralDays } from '@/lib/plural';
+import { useSound } from '@/lib/sound';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
 type Phase = 'setup' | 'question' | 'summary';
@@ -36,6 +37,7 @@ interface Feedback {
 
 export default function PlayPage() {
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
+  const { play } = useSound();
 
   const [phase, setPhase] = useState<Phase>('setup');
   const [questionCount, setQuestionCount] = useState<number>(10);
@@ -101,6 +103,7 @@ export default function PlayPage() {
         });
         setCorrectCount(res.correctCount);
         setPendingNext(res.nextQuestion);
+        play(res.correct ? 'correct' : 'wrong');
         if (res.finished && res.summary) {
           setSummary(res.summary);
           // Refresh the cached profile so Home/Profile reflect the new
@@ -114,12 +117,13 @@ export default function PlayPage() {
         setLoading(false);
       }
     },
-    [sessionId, question, selectedIndex, loading, questionStartedAt, syncProfile],
+    [sessionId, question, selectedIndex, loading, questionStartedAt, syncProfile, play],
   );
 
   const continueGame = useCallback(() => {
     if (summary) {
       setPhase('summary');
+      play('reward');
       return;
     }
     if (!pendingNext) return;
@@ -129,7 +133,7 @@ export default function PlayPage() {
     setSelectedIndex(null);
     setFeedback(null);
     setQuestionStartedAt(Date.now());
-  }, [summary, pendingNext]);
+  }, [summary, pendingNext, play]);
 
   const playAgain = useCallback(() => {
     setPhase('setup');
@@ -293,6 +297,9 @@ export default function PlayPage() {
           return (
             <button
               key={index}
+              // Свой звук: сразу за нажатием придёт «верно»/«неверно»,
+              // и щелчок перед ним превращается в кашу.
+              data-no-sound
               onClick={() => selectAnswer(index)}
               disabled={selectedIndex !== null || loading}
               className={clsx(

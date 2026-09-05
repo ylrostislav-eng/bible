@@ -115,6 +115,8 @@ export function SoundSection() {
         />
         <button
           type="button"
+          // Своя нота: щелчок перед ней — это уже два звука на одно нажатие.
+          data-no-sound
           disabled={!user.soundEnabled}
           onClick={() => play('reward')}
           className="self-start rounded-xl border border-border bg-surface-hover px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"

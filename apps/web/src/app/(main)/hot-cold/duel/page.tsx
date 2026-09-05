@@ -22,6 +22,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { useActiveGame } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
+import { playSound, useSoundWhen } from '@/lib/sound';
 import { useHotColdDuel } from '@/lib/use-hot-cold-duel';
 
 /**
@@ -82,6 +83,19 @@ export default function HotColdDuelPage() {
   // есть ответ, поэтому сервер его просто не отдаёт.
   const duelOver = state?.status === 'FINISHED' || state?.status === 'ABANDONED';
   const finishedId = duelOver ? state.id : null;
+
+  // Три исхода звучат по-разному. Несостоявшаяся партия — не поражение и
+  // не ничья: там нечего объявлять, и она молчит.
+  useSoundWhen(
+    state?.status !== 'FINISHED'
+      ? null
+      : state.winnerId === null
+        ? 'draw'
+        : state.winnerId === user?.id
+          ? 'win'
+          : 'lose',
+    state?.status === 'FINISHED',
+  );
   useEffect(() => {
     if (!finishedId) return;
     apiClient
@@ -683,6 +697,19 @@ function StartCountdown({ startsAt, serverNow }: { startsAt: string; serverNow: 
   }, [startsAt, skew]);
 
   const seconds = Math.ceil(left / 1000);
+
+  // Отсчёт слышно так же, как видно: тик на каждой цифре и аккорд на
+  // «Поехали!». Звук привязан к показанному числу, а не к своему таймеру —
+  // иначе они бы разъезжались, и это ровно тот баг, который здесь уже
+  // чинили с часами на слово.
+  const spoken = useRef<number | null>(null);
+  useEffect(() => {
+    const step = Math.max(0, seconds);
+    if (spoken.current === step) return;
+    spoken.current = step;
+    playSound(step > 0 ? 'tick' : 'start');
+  }, [seconds]);
+
   return (
     <section className="rounded-2xl border border-primary/40 bg-primary/10 p-6 text-center">
       <p className="text-4xl font-bold tabular-nums" aria-live="polite">

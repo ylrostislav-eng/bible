@@ -4,11 +4,14 @@ import {
   HOT_COLD_DUEL_WS_EVENTS,
   HOT_COLD_DUEL_WS_NAMESPACE,
   HOT_COLD_DUEL_WS_SERVER_EVENTS,
+  hotColdBand,
   type HotColdDuelState,
 } from '@bible-arena/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { getAccessToken } from './api';
+import { HOT_COLD_HEAT_SOUNDS } from './hot-cold-sound';
+import { playSound } from './sound';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -86,6 +89,14 @@ export function useHotColdDuel(duelId: string | null) {
       repeat?: boolean;
     }) {
       setState(payload.state);
+      // Звук — здесь же, а не на экране: событие приходит сюда, и только
+      // тут видно, чей это ход. Общая рассылка звучать не должна — иначе
+      // собственный ход соперника отзывался бы «моим» откликом.
+      if (payload.rank !== undefined) {
+        playSound(
+          payload.rank === null ? 'wrong' : HOT_COLD_HEAT_SOUNDS[hotColdBand(payload.rank)],
+        );
+      }
       // Разбор ввода приходит только в ответ на собственный ход; при общей
       // рассылке этих полей нет, и старое сообщение надо убрать, иначе оно
       // висело бы под чужим ходом.
@@ -103,9 +114,11 @@ export function useHotColdDuel(duelId: string | null) {
     }
     function handleOpponentMoved() {
       setOpponentMoves((count) => count + 1);
+      playSound('opponent');
     }
     function handleBurnt() {
       setNotice((prev) => ({ kind: 'burnt', seq: (prev?.seq ?? 0) + 1 }));
+      playSound('burnt');
     }
     // Отказ от подсказки надо сказать вслух: иначе предложение молча
     // исчезает, и непонятно — отказали или что-то сломалось.

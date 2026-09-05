@@ -132,9 +132,33 @@ const HAPTICS: Partial<Record<SoundName, number | number[]>> = {
   lose: 40,
 };
 
+/**
+ * `hapticsOnly` — вибрация без звука. Нужно там, где у режима есть своя
+ * галочка звука: в Alias телефон передают из рук в руки, и человек,
+ * выключивший звук, чтобы не мешать объясняющему, вибрацию терять не
+ * должен.
+ */
+export interface PlayOptions {
+  hapticsOnly?: boolean;
+}
+
 interface SoundApi {
-  play: (name: SoundName) => void;
+  play: (name: SoundName, options?: PlayOptions) => void;
   settings: SoundSettings;
+}
+
+/**
+ * Звук из кода, который не является компонентом.
+ *
+ * Провайдер кладёт сюда себя, и модули без хуков (обратная связь Alias)
+ * зовут звук отсюда. Без этого у Alias был собственный `AudioContext` со
+ * своими нотами — второй движок, который не знал ни о настройках
+ * профиля, ни о свёрнутой вкладке.
+ */
+let live: SoundApi | null = null;
+
+export function playSound(name: SoundName, options?: PlayOptions): void {
+  live?.play(name, options);
 }
 
 const SoundContext = createContext<SoundApi | null>(null);
@@ -198,7 +222,7 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const play = useCallback(
-    (name: SoundName) => {
+    (name: SoundName, options?: PlayOptions) => {
       if (settings.hapticsEnabled) {
         const pattern = HAPTICS[name];
         if (pattern !== undefined && typeof navigator.vibrate === 'function') {
@@ -209,6 +233,7 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
+      if (options?.hapticsOnly) return;
       if (!settings.soundEnabled || settings.soundVolume <= 0) return;
       const context = contextRef.current;
       if (!context) return;
@@ -244,8 +269,62 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     [settings],
   );
 
+  // Щелчок на нажатие — одним слушателем на весь документ, а не правкой
+  // каждой кнопки.
+  //
+  // Кнопки тут не только `Button`: есть ссылки-плитки, переключатели,
+  // варианты ответа, карточки игроков. Обойти их все руками — гарантия
+  // забыть половину и заново забывать при каждом новом экране. Слушатель
+  // всплытия ловит любое нажатие и молчит там, где звук будет свой:
+  // `data-no-sound` на ответе, у которого свой «верно»/«неверно».
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest('button, a[href], [role="switch"], [role="button"]');
+      if (!control || control.hasAttribute('data-no-sound')) return;
+      if (control.closest('[data-no-sound]')) return;
+      if (control instanceof HTMLButtonElement && control.disabled) return;
+      play('tap');
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [play]);
+
   const value = useMemo<SoundApi>(() => ({ play, settings }), [play, settings]);
+
+  useEffect(() => {
+    live = value;
+    return () => {
+      if (live === value) live = null;
+    };
+  }, [value]);
+
   return <SoundContext.Provider value={value}>{children}</SoundContext.Provider>;
+}
+
+/**
+ * Звук на событие, а не на перерисовку.
+ *
+ * Экраны узнают о случившемся из состояния — «соперник ответил», «партия
+ * завершена», — а состояние приходит опросом и приезжает по многу раз
+ * подряд. Прямой `play` в отрисовке звучал бы каждую секунду. Здесь звук
+ * играет один раз на переход `false → true` и снова становится
+ * возможным, когда условие отпустило: на следующем вопросе тот же ход
+ * соперника прозвучит опять.
+ */
+export function useSoundWhen(name: SoundName | null, when: boolean) {
+  const { play } = useSound();
+  const fired = useRef(false);
+  useEffect(() => {
+    if (!when) {
+      fired.current = false;
+      return;
+    }
+    if (fired.current) return;
+    fired.current = true;
+    if (name) play(name);
+  }, [when, name, play]);
 }
 
 /**

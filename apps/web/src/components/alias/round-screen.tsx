@@ -206,6 +206,8 @@ export function AliasRoundScreen({
       <div className="pb-safe grid grid-cols-2 gap-3 px-4 pb-4">
         <button
           type="button"
+          // Свой звук: за нажатием сразу идёт «пропустили».
+          data-no-sound
           onClick={() => answer(false)}
           className="flex h-20 flex-col items-center justify-center gap-1 rounded-2xl bg-surface text-text-secondary transition active:scale-[0.98]"
         >
@@ -216,6 +218,8 @@ export function AliasRoundScreen({
         </button>
         <button
           type="button"
+          // Свой звук: за нажатием сразу идёт «угадали».
+          data-no-sound
           onClick={() => answer(true)}
           className="flex h-20 flex-col items-center justify-center gap-1 rounded-2xl bg-success text-bg transition active:scale-[0.98]"
         >

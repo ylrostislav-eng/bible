@@ -12,7 +12,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
+import { useSound, useSoundWhen } from '@/lib/sound';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useRoomSocket } from '@/lib/use-room-socket';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
@@ -33,6 +34,7 @@ type Menu = 'menu' | 'create' | 'join';
 
 export default function RoomPage() {
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
+  const { play } = useSound();
   const { user } = useAuth();
   const { activeGame, setActiveGame } = useActiveGame();
   const { invites: pendingInvites, removeInvite } = useIncomingRoomInvites();
@@ -194,6 +196,41 @@ export default function RoomPage() {
     storageKey: 'bible-arena:room-intro-shown-for',
     stepMs: ROOM_INTRO_STEP_MS,
   });
+
+  // Отсчёт слышно так же, как видно.
+  useEffect(() => {
+    if (introStep === null) return;
+    play(introStep === 0 ? 'start' : 'tick');
+  }, [introStep, play]);
+
+  // Кто-то вошёл в лобби. Считается по числу участников: список приходит
+  // целиком, и сравнивать имена ради звука — лишняя работа.
+  const participantCount = roomState?.participants.length ?? 0;
+  const knownCount = useRef(participantCount);
+  useEffect(() => {
+    if (participantCount > knownCount.current) play('opponent');
+    knownCount.current = participantCount;
+  }, [participantCount, play]);
+
+  // Свой ответ звучит на раскрытии раунда, а не на нажатии: до него
+  // правильность ещё не показана.
+  const myAnswer = roomState?.reveal?.answers.find((a) => a.userId === roomState.you.userId);
+  useSoundWhen(
+    roomState?.reveal == null
+      ? null
+      : myAnswer?.selectedIndex == null
+        ? 'burnt'
+        : myAnswer.isCorrect
+          ? 'correct'
+          : 'wrong',
+    roomState?.reveal != null,
+  );
+
+  // Табло: первое место звучит победой, остальные — нейтральным аккордом.
+  // Третье место из пяти — не поражение, и объявлять его поражением
+  // нечестно.
+  const myPlace = roomState?.finalRanking?.findIndex((p) => p.userId === roomState.you.userId);
+  useSoundWhen(myPlace === 0 ? 'win' : 'draw', roomState?.status === 'COMPLETED');
 
   const createRoom = useCallback(async () => {
     const trimmedName = roomName.trim();
@@ -661,6 +698,8 @@ export default function RoomPage() {
             return (
               <button
                 key={index}
+                // Свой звук: правильность объявится на раскрытии раунда.
+                data-no-sound
                 onClick={() => {
                   setSelectedIndex(index);
                   answer({ questionId: question.id, answerIndex: index });

@@ -16,8 +16,10 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { pluralCoins } from '@/lib/plural';
+import { useSound } from '@/lib/sound';
 
 export default function DailyWordPage() {
+  const { play } = useSound();
   const [state, setState] = useState<DailyWordState | null>(null);
   const [friends, setFriends] = useState<DailyWordFriendsResponse | null>(null);
   const [guess, setGuess] = useState('');
@@ -71,13 +73,15 @@ export default function DailyWordPage() {
       setState(result.state);
       setGuess('');
       setLastWrong(result.correct ? null : { value, near: result.near === true });
+      // Разгаданное слово дня — это ещё и награда, а не просто «верно».
+      play(result.correct ? 'reward' : 'wrong');
       if (!result.correct) inputRef.current?.focus();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось отправить ответ');
     } finally {
       setBusy(false);
     }
-  }, [guess, busy]);
+  }, [guess, busy, play]);
 
   const takeHint = useCallback(async () => {
     if (busy) return;

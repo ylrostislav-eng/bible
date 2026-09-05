@@ -28,6 +28,7 @@ import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { pickEncouragement } from '@/lib/encouragement';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
+import { useSound, useSoundWhen } from '@/lib/sound';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
 
@@ -42,6 +43,7 @@ type Menu = 'menu' | 'find' | 'create' | 'createByCode' | 'join';
 
 export default function DuelPage() {
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
+  const { play } = useSound();
   const { activeGame, setActiveGame } = useActiveGame();
   const { challenges: pendingChallenges, removeChallenge } = useIncomingChallenges();
 
@@ -204,6 +206,44 @@ export default function DuelPage() {
     storageKey: 'bible-arena:duel-intro-shown-for',
     stepMs: DUEL_INTRO_STEP_MS,
   });
+
+  // Отсчёт слышно так же, как видно: три тика и аккорд на «Поехали!».
+  useEffect(() => {
+    if (introStep === null) return;
+    play(introStep === 0 ? 'start' : 'tick');
+  }, [introStep, play]);
+
+  // Три исхода звучат по-разному: одинаковый звук на победу, поражение и
+  // ничью обесценивает и победу, и мысль о том, что ничья — тоже
+  // результат.
+  useSoundWhen(
+    duelState?.outcome === 'win'
+      ? 'win'
+      : duelState?.outcome === 'loss'
+        ? 'lose'
+        : duelState?.outcome === 'draw'
+          ? 'draw'
+          : null,
+    duelState?.status === 'COMPLETED',
+  );
+
+  // Соперник ответил — тихая отметка, чтобы напряжение было слышно, а не
+  // только видно. Сбрасывается на каждом вопросе сама: условие отпускает.
+  useSoundWhen('opponent', duelState?.opponentAnswered === true && !duelState.roundResolved);
+
+  // Свой ответ звучит не в момент нажатия, а когда раунд раскрылся: до
+  // ответа соперника правильность ещё не показана, и звук раньше картинки
+  // выдавал бы её вперёд экрана.
+  useSoundWhen(
+    duelState?.reveal == null
+      ? null
+      : duelState.reveal.you.selectedIndex === null
+        ? 'burnt'
+        : duelState.reveal.you.isCorrect
+          ? 'correct'
+          : 'wrong',
+    duelState?.reveal != null,
+  );
 
   const startResponding = useCallback((challenge: PendingChallenge) => {
     setRespondingTo(challenge.sessionId);
@@ -625,6 +665,8 @@ export default function DuelPage() {
             return (
               <button
                 key={index}
+                // Свой звук: правильность объявится на раскрытии раунда.
+                data-no-sound
                 onClick={() => answer(index)}
                 disabled={duelState.youAnswered || loading}
                 className={clsx(

@@ -1,87 +1,40 @@
+import { playSound } from '@/lib/sound';
+
 /**
- * Звук и вибрация раунда.
+ * Обратная связь раунда Alias.
  *
- * Тоны синтезируются, а не грузятся файлами: сигнал должен сработать
- * мгновенно и на выключенном интернете, а любой звуковой файл — это ещё
- * одна загрузка, которая на даче не приедет. Пары осцилляторов хватает,
- * чтобы «угадали», «пропуск» и «время вышло» отличались на слух даже в
- * шумной комнате.
+ * Раньше здесь был собственный `AudioContext` со своими нотами — второй
+ * звуковой движок в приложении. Он не знал ни о настройках профиля, ни о
+ * свёрнутой вкладке, и выключение звука в настройках его не касалось.
+ * Теперь это тонкая прослойка над общим движком, а своё у Alias осталось
+ * только одно: галочка звука в самой партии.
+ *
+ * Она не то же самое, что настройка профиля. Телефон здесь передают из
+ * рук в руки, и звук выключают, чтобы не мешать объясняющему, — вибрацию
+ * при этом терять нельзя, поэтому выключенный звук партии даёт
+ * `hapticsOnly`, а не тишину.
  */
-
-let context: AudioContext | null = null;
-
-function getContext(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    if (!context) {
-      const Ctor =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return null;
-      context = new Ctor();
-    }
-    // Браузеры держат контекст «приостановленным», пока страница не
-    // получила касания. Первое же нажатие в игре его будит.
-    if (context.state === 'suspended') void context.resume();
-    return context;
-  } catch {
-    return null;
-  }
-}
-
-function tone(frequency: number, durationMs: number, gain = 0.08): void {
-  const ctx = getContext();
-  if (!ctx) return;
-  try {
-    const oscillator = ctx.createOscillator();
-    const volume = ctx.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.value = frequency;
-    volume.gain.value = gain;
-    // Гасим хвост: резко оборванная синусоида щёлкает.
-    volume.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
-    oscillator.connect(volume);
-    volume.connect(ctx.destination);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + durationMs / 1000);
-  } catch {
-    // Звук — приятная мелочь, а не условие игры.
-  }
-}
-
-function vibrate(pattern: number | number[]): void {
-  if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
-  try {
-    navigator.vibrate(pattern);
-  } catch {
-    /* пусто */
-  }
-}
-
 export const aliasFeedback = {
-  /** Разбудить звук первым касанием — до того, как он реально понадобится. */
-  prime(): void {
-    getContext();
-  },
+  /**
+   * Раньше здесь заводился звуковой контекст на первом касании. Теперь
+   * это делает общий провайдер на любом нажатии в приложении, и
+   * будить нечего — но вызов оставлен: он стоит в начале партии и
+   * читается как «звук готов».
+   */
+  prime(): void {},
   guessed(soundEnabled: boolean): void {
-    if (soundEnabled) tone(880, 90);
-    vibrate(18);
+    playSound('correct', { hapticsOnly: !soundEnabled });
   },
   skipped(soundEnabled: boolean): void {
-    if (soundEnabled) tone(220, 120);
-    vibrate(35);
+    playSound('wrong', { hapticsOnly: !soundEnabled });
   },
   /** Последние секунды: тихий щелчок раз в секунду, чтобы держать напряжение
    * и не перекрикивать объясняющего. */
   tick(soundEnabled: boolean): void {
-    if (soundEnabled) tone(660, 45, 0.04);
+    if (soundEnabled) playSound('tick');
   },
   timeUp(soundEnabled: boolean): void {
-    if (soundEnabled) {
-      tone(440, 220, 0.12);
-      window.setTimeout(() => tone(330, 320, 0.12), 200);
-    }
-    vibrate([90, 60, 180]);
+    playSound('burnt', { hapticsOnly: !soundEnabled });
   },
 };
 

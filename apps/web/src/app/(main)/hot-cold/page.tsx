@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { pluralCoins } from '@/lib/plural';
+import { HOT_COLD_HEAT_SOUNDS } from '@/lib/hot-cold-sound';
+import { useSound } from '@/lib/sound';
 
 /**
  * «Горячо-холодно».
@@ -48,6 +50,7 @@ const BAND_STYLE: Record<HotColdBand, { bar: string; dot: string; text: string }
 };
 
 export default function HotColdPage() {
+  const { play } = useSound();
   const [state, setState] = useState<HotColdState | null>(null);
   const [guess, setGuess] = useState('');
   const [busy, setBusy] = useState(false);
@@ -93,13 +96,17 @@ export default function HotColdPage() {
       // Поле очищаем только если слово принято: неопознанное лучше оставить,
       // человек его сейчас поправит, а не будет набирать заново.
       if (result.rank !== null) setGuess('');
+      // Ступень тепла слышна так же, как видна: чем ближе слово, тем выше
+      // и светлее отклик. Неопознанное слово звучит иначе, чем холодное, —
+      // это разные неудачи: одну игра не поняла, вторая просто далеко.
+      play(result.rank === null ? 'wrong' : HOT_COLD_HEAT_SOUNDS[hotColdBand(result.rank)]);
       inputRef.current?.focus();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось отправить слово');
     } finally {
       setBusy(false);
     }
-  }, [guess, busy, round]);
+  }, [guess, busy, round, play]);
 
   const dispute = useCallback(
     async (word: string) => {
