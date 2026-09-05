@@ -2,6 +2,9 @@
 
 import {
   HOT_COLD_BAND_LABELS,
+  HOT_COLD_LEVELS,
+  HOT_COLD_LEVEL_HINTS,
+  HOT_COLD_LEVEL_LABELS,
   hotColdAttemptsLabel,
   hotColdBand,
   hotColdHeat,
@@ -9,6 +12,7 @@ import {
   type HotColdBand,
   type HotColdGuess,
   type HotColdGuessResult,
+  type HotColdLevel,
   type HotColdState,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
@@ -123,21 +127,24 @@ export default function HotColdPage() {
    * `last` живёт только на клиенте, и без сброса под новым словом висела
    * бы оценка предыдущего.
    */
-  const nextWord = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setState(await apiClient.post<HotColdState>('/hot-cold/next', {}));
-      setLast(null);
-      setGuess('');
-      inputRef.current?.focus();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось взять новое слово');
-    } finally {
-      setBusy(false);
-    }
-  }, [busy]);
+  const nextWord = useCallback(
+    async (level: HotColdLevel) => {
+      if (busy) return;
+      setBusy(true);
+      setError(null);
+      try {
+        setState(await apiClient.post<HotColdState>('/hot-cold/next', { level }));
+        setLast(null);
+        setGuess('');
+        inputRef.current?.focus();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Не удалось взять новое слово');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy],
+  );
 
   /**
    * «Сдаюсь». Отдельно от подсказок: подсказка — это помощь в игре, а это
@@ -195,7 +202,9 @@ export default function HotColdPage() {
         <BackLink href="/" label="Назад на главную" />
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-text-muted">
-            {state.free ? `Своё слово №${state.round}` : formatDate(state.date)}
+            {state.free
+              ? `Своё слово №${state.round} · ${HOT_COLD_LEVEL_LABELS[state.level]}`
+              : formatDate(state.date)}
           </p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
           {/* Не «Слово дня»: так называется другой режим приложения, и
@@ -210,7 +219,12 @@ export default function HotColdPage() {
       </header>
 
       {state.finished ? (
-        <FinishedCard state={state} onNext={() => void nextWord()} busy={busy} />
+        <FinishedCard
+          state={state}
+          onNext={(level) => void nextWord(level)}
+          busy={busy}
+          error={error}
+        />
       ) : (
         <>
           {/* Правила — до первого хода и только до него.
@@ -490,10 +504,12 @@ function FinishedCard({
   state,
   onNext,
   busy,
+  error,
 }: {
   state: HotColdState;
-  onNext: () => void;
+  onNext: (level: HotColdLevel) => void;
   busy: boolean;
+  error: string | null;
 }) {
   const guessCount = state.guesses.filter((entry) => !entry.revealed).length;
   const shareText = hotColdShareText({
@@ -566,9 +582,30 @@ function FinishedCard({
           здесь стояла строчка «новое слово — завтра», и на этом игра
           кончалась: пять минут в день и до свидания. */}
       <section className="flex flex-col gap-2 border-t border-border pt-4">
-        <Button onClick={onNext} disabled={busy}>
-          {busy ? <Spinner /> : 'Ещё слово'}
-        </Button>
+        {/* Уровень выбирается здесь, а не в настройках: решение принимают
+            ровно в этот момент — «ещё раз, но полегче». Раньше кнопка была
+            одна, слова шли вперемешку, и человек, пришедший поиграть,
+            упирался в редкое имя на второй партии и закрывал игру. */}
+        <p className="text-sm font-semibold">Ещё слово — какое?</p>
+        {/* Примеры слов под каждым уровнем: «средне» само по себе ничего
+            не говорит, а «скиния, притча, Иордан» говорит сразу. */}
+        <div className="flex flex-col gap-2">
+          {HOT_COLD_LEVELS.map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => onNext(level)}
+              disabled={busy}
+              className="rounded-xl bg-surface-hover px-3 py-2.5 text-left transition hover:bg-border disabled:opacity-40"
+            >
+              <span className="text-sm font-semibold">{HOT_COLD_LEVEL_LABELS[level]}</span>
+              <span className="mt-0.5 block text-xs text-text-muted">
+                {HOT_COLD_LEVEL_HINTS[level]}
+              </span>
+            </button>
+          ))}
+        </div>
+        {error && <p className="text-center text-sm text-danger">{error}</p>}
         {/* Про награду сказано до партии, а не после: узнать, что играл
             вхолостую, постфактум — обидно, даже когда всё честно. */}
         <p className="text-center text-xs text-text-muted">

@@ -14,6 +14,7 @@ import {
   hotColdRiddle,
   hotColdShapeHint,
   type HotColdHintKind,
+  type HotColdLevel,
   HOT_COLD_FREE_REWARD_SHARE,
   HOT_COLD_FREE_XP_PER_DAY,
   hotColdReward,
@@ -59,6 +60,8 @@ interface WordRow {
   id: string;
   word: string;
   gloss: string;
+  /** `AliasDifficulty`: EASY, MEDIUM, HARD. */
+  difficulty: string;
 }
 
 /** Загаданное слово со всем, что о нём можно рассказать, не называя. */
@@ -112,7 +115,7 @@ export class HotColdService {
    */
   private async usableWords(): Promise<WordRow[]> {
     const words = await this.prisma.aliasWord.findMany({
-      select: { id: true, word: true, gloss: true },
+      select: { id: true, word: true, gloss: true, difficulty: true },
     });
     const usable = words.filter((row) => {
       const lemma = this.semantics.lookup(row.word);
@@ -155,16 +158,25 @@ export class HotColdService {
     userId: string,
     date: Date,
     used: Set<string>,
+    level?: HotColdLevel,
   ): Promise<WordRow> {
     const usable = await this.usableWords();
+    // Уровень — фильтр, а не пожелание: попросил «легко», получил
+    // «Мелхиседека» — и выбор оказался обманом. Кончились слова уровня —
+    // честно сказать об этом и предложить другой, а не подсунуть чужой.
+    const pool = level
+      ? usable.filter((row) => row.difficulty === level)
+      : usable;
     const ordered = shuffledByKey(
-      usable,
+      pool,
       (row) => `${userId}:${dateLabel(date)}:${row.id}`,
     );
     const next = ordered.find((row) => !used.has(row.id));
     if (!next) {
       throw new BadRequestException(
-        'Слова на сегодня кончились — все сыграны. Возвращайтесь завтра.',
+        level
+          ? 'Слова этого уровня на сегодня кончились — возьмите другой уровень'
+          : 'Слова на сегодня кончились — все сыграны. Возвращайтесь завтра.',
       );
     }
     return next;
@@ -277,6 +289,7 @@ export class HotColdService {
   async startNextRound(
     userId: string,
     timezoneOffsetMinutes: number,
+    level?: HotColdLevel,
   ): Promise<HotColdState> {
     const date = localDate(timezoneOffsetMinutes);
     const played = await this.prisma.hotColdAttempt.findMany({
@@ -298,6 +311,7 @@ export class HotColdService {
       userId,
       date,
       new Set(played.map((row) => row.wordId)),
+      level,
     );
     const attempt = await this.prisma.hotColdAttempt.upsert({
       where: { userId_date_round: { userId, date, round } },
@@ -329,6 +343,7 @@ export class HotColdService {
       // а не как история ходов, и порядок появления здесь ничего не значит.
       guesses: [...guesses].sort((a, b) => a.rank - b.rank),
       vocabulary: this.semantics.size,
+      level: attempt.word.difficulty as HotColdLevel,
       riddle: hotColdRiddle({
         category: attempt.word.category,
         testament: attempt.word.testament,

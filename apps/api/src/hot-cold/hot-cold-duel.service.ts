@@ -8,9 +8,12 @@ import type { Prisma } from '@prisma/client';
 import {
   HOT_COLD_DUEL_AWAY_MS,
   HOT_COLD_DUEL_COUNTDOWN_MS,
+  HOT_COLD_HINT_COMMON_LIMIT,
+  HOT_COLD_DUEL_HINT_BANDS,
   HOT_COLD_DUEL_HINT_LIMIT,
-  hotColdDuelHint,
+  HOT_COLD_DUEL_HINT_TITLES,
   hotColdRiddle,
+  hotColdShapeHint,
   type HotColdSecretFacts,
   HOT_COLD_DUEL_IDLE_MS,
   HOT_COLD_DUEL_LOSER_SHARE,
@@ -782,7 +785,7 @@ export class HotColdDuelService {
     }
 
     // Предложил соперник, а мы согласились: открываем следующую ступень.
-    const text = hotColdDuelHint(duel.hintsTaken, this.secretFacts(duel));
+    const text = this.hintText(duel);
     const granted = await this.prisma.hotColdDuel.updateMany({
       where: {
         id: duelId,
@@ -800,6 +803,38 @@ export class HotColdDuelService {
       state: await this.getState(duelId, userId),
       granted: granted.count > 0,
     };
+  }
+
+  /**
+   * Текст очередной общей подсказки.
+   *
+   * Первые две ступени называют соседние по смыслу слова: сначала дальние,
+   * потом ближние. Раньше здесь были раздел Писания и книга — и это была
+   * ошибка: «искать в исторических книгах» ничего не говорит тому, кто
+   * Писание знает плохо, а именно ему подсказка и нужна. Соседние слова
+   * понятны любому и показывают сторону, а не полку.
+   *
+   * Слова берутся с мест, названных в `HOT_COLD_DUEL_HINT_BANDS`, только из
+   * обиходной части словаря и без однокоренных ответу: подсказка полезна
+   * тем, что называет то, о чём человек мог подумать сам.
+   */
+  private hintText(duel: LoadedDuel): string {
+    const step = duel.hintsTaken;
+    const band = HOT_COLD_DUEL_HINT_BANDS[step];
+    if (!band) return hotColdShapeHint(duel.word.word);
+
+    const ranking = this.rankingFor(duel.word);
+    const taken = new Set<string>();
+    for (const place of band) {
+      const near = ranking.wordAt(
+        place,
+        taken,
+        (lemma) => lemma < HOT_COLD_HINT_COMMON_LIMIT,
+      );
+      if (near) taken.add(near.word);
+    }
+    if (taken.size === 0) return hotColdShapeHint(duel.word.word);
+    return `${HOT_COLD_DUEL_HINT_TITLES[step]}: ${[...taken].join(', ')}`;
   }
 
   /** «Не надо»: предложение снимается, и предложившему это говорят. */

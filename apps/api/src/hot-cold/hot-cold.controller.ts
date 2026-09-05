@@ -8,7 +8,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Min,
+} from 'class-validator';
+import type { HotColdLevel } from '@bible-arena/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
@@ -43,6 +51,13 @@ export class HotColdGuessDto extends RoundDto {
 }
 
 export class HotColdHintDto extends RoundDto {}
+
+/** Уровень свободной партии. Пусто — любое слово, как было раньше. */
+export class HotColdNextDto {
+  @IsOptional()
+  @IsIn(['EASY', 'MEDIUM', 'HARD'])
+  level?: HotColdLevel;
+}
 
 export class HotColdQueryDto extends RoundDto {}
 
@@ -79,11 +94,13 @@ export class HotColdController {
   @Post('next')
   async next(
     @CurrentUser() currentUser: JwtPayload,
+    @Body() dto: HotColdNextDto,
     @Headers('x-timezone-offset') offset?: string,
   ) {
     return this.hotColdService.startNextRound(
       currentUser.sub,
       readOffset(offset),
+      dto.level,
     );
   }
 
