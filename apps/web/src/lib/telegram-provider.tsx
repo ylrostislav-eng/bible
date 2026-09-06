@@ -2,12 +2,14 @@
 
 import {
   bindViewportCssVars,
+  disableVerticalSwipes,
   expandViewport,
   init,
   isFullscreen,
   isTMA,
   miniAppReady,
   mountMiniApp,
+  mountSwipeBehavior,
   mountViewport,
   requestFullscreen,
 } from '@telegram-apps/sdk-react';
@@ -50,6 +52,11 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
     const cleanup = init();
 
+    // Класс ставится сразу и синхронно: `isTMA()` уже ответил, ждать нечего.
+    // Через него стили узнают, что отступы придётся считать самим — Telegram
+    // отдаёт и высоту часов, и высоту своих кнопок нулём (см. `globals.css`).
+    document.documentElement.classList.add('tg');
+
     mountMiniApp();
     miniAppReady();
     expandViewport();
@@ -63,27 +70,51 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         if (mountViewport.isAvailable()) {
           await mountViewport();
         }
-        // Экран мог смениться, пока ждали монтирования.
-        if (cancelled) return;
+      } catch {
+        // Не смонтировался — дальше просто нечего настраивать.
+      }
+      // Экран мог смениться, пока ждали монтирования.
+      if (cancelled) return;
 
-        if (bindViewportCssVars.isAvailable()) {
-          unbindCssVars = bindViewportCssVars();
+      if (bindViewportCssVars.isAvailable()) {
+        unbindCssVars = bindViewportCssVars();
+      }
+
+      // Слежение за режимом ставится ДО запроса, а не после.
+      //
+      // Живой баг: запрос падает, если приложение уже открыто на весь экран
+      // (в BotFather выставлен режим запуска Fullscreen). Исключение
+      // перехватывалось, и до установки класса дело не доходило — а без
+      // класса не работали ни отступ под кнопки Telegram, ни таймер в их
+      // полосе. Класс здесь не украшение: Telegram сообщает высоту своих
+      // кнопок нулём, и без него считать её неоткуда (см. `globals.css`).
+      const syncFullscreenClass = () => {
+        document.documentElement.classList.toggle('tg-fullscreen', isFullscreen());
+      };
+      syncFullscreenClass();
+      unsubFullscreen = isFullscreen.sub(syncFullscreenClass);
+
+      // Вертикальный свайп по умолчанию сворачивает мини-приложение. В
+      // партии это чистая потеря: смахнул рукой по экрану — и раунд
+      // свёрнут. Своих вертикальных жестов у приложения нет, так что
+      // отключение ничего не отнимает.
+      try {
+        if (mountSwipeBehavior.isAvailable()) {
+          mountSwipeBehavior();
         }
-        await requestFullscreen.ifAvailable();
+        disableVerticalSwipes.ifAvailable();
+      } catch {
+        // На старых клиентах такого управления нет — там сворачивание
+        // остаётся, и это не повод ронять приложение.
+      }
 
-        // Класс на корне — единственный способ узнать в стилях, что режим
-        // включён. Нужен потому, что Telegram сообщает высоту собственных
-        // кнопок («Закрыть», «⌄ •••») нулём: складывать оказалось не с
-        // чем, и шапка экрана ложилась прямо под них. В полноэкранном
-        // режиме место под них резервируется явно — см. `globals.css`.
-        const syncFullscreenClass = () => {
-          document.documentElement.classList.toggle('tg-fullscreen', isFullscreen());
-        };
-        syncFullscreenClass();
-        unsubFullscreen = isFullscreen.sub(syncFullscreenClass);
+      try {
+        await requestFullscreen.ifAvailable();
       } catch {
         // Отказ в полноэкранном режиме не повод ронять приложение: оно
         // остаётся работоспособным в обычном, просто с шапкой Telegram.
+        // Сюда же попадает «уже полноэкранный» — ровно тот случай, ради
+        // которого слежение выше стоит раньше запроса.
       }
     })();
 
@@ -91,7 +122,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       unsubFullscreen?.();
       unbindCssVars?.();
-      document.documentElement.classList.remove('tg-fullscreen');
+      document.documentElement.classList.remove('tg', 'tg-fullscreen');
       cleanup();
     };
   }, []);

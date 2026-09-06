@@ -92,6 +92,23 @@ a {
   --app-height: var(--tg-viewport-stable-height, 100dvh);
 }
 
+/* Внутри Telegram у высоты часов есть нижняя граница.
+ *
+ * По уму её сообщают `env(safe-area-inset-top)` и переменная от SDK, но на
+ * живом iPhone оба нуля: шапка раунда легла прямо на часы и камеру. Отсюда
+ * `2.75rem` — меньше настоящей строки состояния на телефонах с вырезом, то
+ * есть граница срабатывает только когда платформа промолчала. Настоящее
+ * значение, если оно придёт, победит: берётся большее из трёх.
+ *
+ * Класс ставит `lib/telegram-provider.tsx` синхронно, по `isTMA()`. */
+:root.tg {
+  --safe-top-device: max(
+    env(safe-area-inset-top),
+    var(--tg-viewport-safe-area-inset-top, 0px),
+    2.75rem
+  );
+}
+
 /* Высота полосы кнопок Telegram.
  *
  * По уму её должна сообщать `--tg-viewport-content-safe-area-inset-top`,
