@@ -26,6 +26,19 @@ RUN pnpm --filter @bible-arena/api exec prisma generate
 
 RUN pnpm --filter @bible-arena/api build
 
+# Проверка на месте сборки, а не на запуске.
+#
+# Куда TypeScript кладёт результат, зависит от того, какие файлы попали в
+# компиляцию: один лишний `.ts` рядом с `src` — и `main.js` уезжает в
+# `dist/src/`. Сборка при этом проходит молча, а падает уже боевой запуск
+# с `Cannot find module`, то есть в самом дорогом месте.
+#
+# Здесь это ловится сразу, и в логе сборки видно, что на самом деле лежит
+# в `dist` — без этого причину приходится угадывать по одной строке
+# ошибки в контейнере, который уже мёртв.
+RUN ls -la apps/api/dist \
+  && test -f apps/api/dist/main.js
+
 ENV NODE_ENV=production
 WORKDIR /app/apps/api
 EXPOSE 3001
