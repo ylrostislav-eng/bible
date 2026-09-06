@@ -18,6 +18,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
+import { ModerationService } from '../moderation/moderation.service';
 import { TelegramBotService } from '../notifications/telegram-bot.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,6 +55,7 @@ export class FriendsService {
     private readonly prisma: PrismaService,
     private readonly presenceService: PresenceService,
     private readonly telegramBot: TelegramBotService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async search(
@@ -164,6 +166,10 @@ export class FriendsService {
     if (toUserId === currentUserId) {
       throw new BadRequestException('Нельзя добавить себя в друзья');
     }
+
+    // Ограничение по жалобам действует и здесь: заявка приходит
+    // уведомлением, то есть это способ дотянуться до человека.
+    await this.moderation.assertNotMuted(currentUserId);
 
     // A stale client (search result for an account since deleted, say)
     // could otherwise reach the upsert below with an id that no longer
@@ -678,22 +684,6 @@ export class FriendsService {
       }),
       this.prisma.friendship.deleteMany({
         where: { userId: friendId, friendId: currentUserId },
-      }),
-      // Once unfriended, `ChatService.assertCanMessage` requires an active
-      // friendship, so this conversation becomes permanently unreachable —
-      // neither side can open it again to mark anything read. Any message
-      // still sitting unread at this exact moment would otherwise keep
-      // counting toward the recipient's unread badge forever, with no way
-      // for them to ever clear it.
-      this.prisma.chatMessage.updateMany({
-        where: {
-          readAt: null,
-          OR: [
-            { senderId: currentUserId, recipientId: friendId },
-            { senderId: friendId, recipientId: currentUserId },
-          ],
-        },
-        data: { readAt: new Date() },
       }),
     ]);
   }

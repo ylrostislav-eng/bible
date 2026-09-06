@@ -14,9 +14,13 @@ export class ModerationService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Files a complaint. Reporting a specific message copies its text into
-   * the report — the offender can delete the conversation, and a complaint
-   * whose evidence is gone can't be reviewed.
+   * Жалоба на игрока.
+   *
+   * Раньше жаловаться можно было и на конкретное сообщение — текст при этом
+   * копировался в жалобу, чтобы улику нельзя было удалить вместе с
+   * перепиской. Личной переписки в приложении больше нет, поэтому осталась
+   * жалоба на человека: за поведение в комнате, за ник, за спам
+   * приглашениями.
    */
   async report(reporterId: string, dto: CreateReportDto): Promise<void> {
     if (dto.targetUserId === reporterId) {
@@ -30,34 +34,13 @@ export class ModerationService {
       throw new NotFoundException('Игрок не найден');
     }
 
-    let messageBody: string | null = null;
-    if (dto.messageId) {
-      const message = await this.prisma.chatMessage.findUnique({
-        where: { id: dto.messageId },
-      });
-      // Only a message actually addressed to the reporter can be reported by
-      // them, and only against its real sender — otherwise a report could be
-      // used to attach someone else's words to an innocent player.
-      if (
-        !message ||
-        message.recipientId !== reporterId ||
-        message.senderId !== dto.targetUserId
-      ) {
-        throw new NotFoundException('Сообщение не найдено');
-      }
-      messageBody = message.body;
-    }
-
     try {
       await this.prisma.abuseReport.create({
         data: {
-          kind: dto.messageId ? 'MESSAGE' : 'USER',
           reason: dto.reason,
           comment: dto.comment?.trim() || null,
           reporterId,
           targetUserId: dto.targetUserId,
-          messageId: dto.messageId ?? null,
-          messageBody,
         },
       });
     } catch (error) {
@@ -72,15 +55,6 @@ export class ModerationService {
       }
       throw error;
     }
-  }
-
-  /** Whether this user is currently barred from sending chat messages. */
-  async isMuted(userId: string): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { mutedUntil: true },
-    });
-    return !!user?.mutedUntil && user.mutedUntil > new Date();
   }
 
   // ---- moderator side ----
@@ -106,13 +80,11 @@ export class ModerationService {
 
     return rows.map((row): AbuseReportView => ({
       id: row.id,
-      kind: row.kind,
       reason: row.reason,
       comment: row.comment,
       reporterNickname: row.reporter.nickname,
       targetUserId: row.targetUserId,
       targetNickname: row.targetUser.nickname,
-      messageBody: row.messageBody,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
       pendingAgainstTarget: pendingByTarget.get(row.targetUserId) ?? 0,
@@ -185,6 +157,17 @@ export class ModerationService {
     }
   }
 
+  /**
+   * Ограничение по жалобам: пока оно действует, нельзя дотянуться до
+   * другого человека — ни заявкой в друзья, ни вызовом на дуэль, ни
+   * приглашением в комнату. Играть и читать при этом можно.
+   *
+   * Раньше это был мут в чате, и после удаления личной переписки проверка
+   * осталась без единого вызова — санкция модерации перестала что-либо
+   * значить. Поэтому её подключили ко всему, чем ещё можно донимать
+   * человека: смысл наказания не в конкретном канале, а в том, чтобы
+   * обидчик до жертвы не доставал.
+   */
   async assertNotMuted(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -195,7 +178,7 @@ export class ModerationService {
         (user.mutedUntil.getTime() - Date.now()) / (60 * 60 * 1000),
       );
       throw new ForbiddenException(
-        `Отправка сообщений ограничена ещё ${hours} ч. по жалобе других игроков`,
+        `Приглашения и заявки ограничены ещё ${hours} ч. по жалобе других игроков`,
       );
     }
   }

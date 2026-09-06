@@ -14,7 +14,6 @@ interface ReportSheetProps {
   /** Present when reporting one specific message rather than the player in
    * general — the server copies its text into the report so the evidence
    * survives the conversation being deleted. */
-  messageId?: string;
   messageBody?: string;
   onClose: () => void;
 }
@@ -32,7 +31,6 @@ interface ReportSheetProps {
 export function ReportSheet({
   targetUserId,
   targetNickname,
-  messageId,
   messageBody,
   onClose,
 }: ReportSheetProps) {
@@ -50,7 +48,6 @@ export function ReportSheet({
       await apiClient.post('/moderation/reports', {
         targetUserId,
         reason,
-        messageId,
         comment: comment.trim() || undefined,
       });
       setSent(true);

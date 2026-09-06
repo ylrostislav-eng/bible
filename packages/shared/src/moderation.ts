@@ -13,23 +13,28 @@ export type AbuseReportReasonValue = (typeof ABUSE_REPORT_REASONS)[number];
 export const ABUSE_REPORT_REASON_LABELS: Record<AbuseReportReasonValue, string> = {
   INSULT: 'Оскорбляет или угрожает',
   SPAM: 'Спамит или навязывается',
-  INAPPROPRIATE: 'Пишет непристойное',
+  INAPPROPRIATE: 'Ведёт себя непристойно',
   IMPERSONATION: 'Выдаёт себя за другого',
   OTHER: 'Другое',
 };
 
-/** How long a mute lasts by default when a complaint is upheld. */
+/**
+ * На сколько по умолчанию ограничивают нарушителя, если жалоба
+ * подтвердилась.
+ *
+ * Раньше это был мут в чате. Личной переписки больше нет, и ограничение
+ * стало шире: пока оно действует, нельзя звать в игры, слать вызовы и
+ * заявки в друзья — то есть всё, чем можно донимать другого человека.
+ */
 export const DEFAULT_MUTE_HOURS = 24;
 
 export interface AbuseReportView {
   id: string;
-  kind: 'USER' | 'MESSAGE';
   reason: AbuseReportReasonValue;
   comment: string | null;
   reporterNickname: string | null;
   targetUserId: string;
   targetNickname: string | null;
-  messageBody: string | null;
   status: 'PENDING' | 'ACTIONED' | 'DISMISSED';
   createdAt: string;
   /** How many still-pending complaints exist against this same player —

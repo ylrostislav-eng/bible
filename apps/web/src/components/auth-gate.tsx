@@ -4,13 +4,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { ActiveGameProvider } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
-import { ChatProvider } from '@/lib/chat-context';
 import { DeclineNoticesProvider } from '@/lib/decline-notices-context';
 import { ImmersiveProvider, useImmersive } from '@/lib/immersive-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
-import { ChatWidget } from './chat-widget';
 import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
 import { BottomNav } from './navigation/bottom-nav';
@@ -95,11 +93,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         <IncomingChallengesProvider>
           <IncomingRoomInvitesProvider>
             <DeclineNoticesProvider>
-              <ChatProvider>
-                <ImmersiveProvider>
-                  <AppChrome>{children}</AppChrome>
-                </ImmersiveProvider>
-              </ChatProvider>
+              <ImmersiveProvider>
+                <AppChrome>{children}</AppChrome>
+              </ImmersiveProvider>
             </DeclineNoticesProvider>
           </IncomingRoomInvitesProvider>
         </IncomingChallengesProvider>
@@ -131,8 +127,8 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   return (
     <>
       {/* Отступ снизу закрывает не только навигацию, но и плавающие кнопки:
-          чат и приглашения стоят в 6rem от низа и сами высотой 3.5rem, то
-          есть занимают до 9.5rem. _С прежними 6rem последняя карточка на
+          музыка и приглашения стоят в 6rem от низа и сами высотой 3.5rem,
+          то есть занимают до 9.5rem. _С прежними 6rem последняя карточка на
           прокрученной до конца странице оказывалась под ними, с обрезанным
           текстом._
 
@@ -143,7 +139,6 @@ function AppChrome({ children }: { children: React.ReactNode }) {
       <IncomingNotifications />
       <DeclineNoticeToast />
       <PendingInvitesWidget />
-      <ChatWidget />
       <MusicWidget />
       <BottomNav />
     </>

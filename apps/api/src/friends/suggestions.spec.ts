@@ -1,5 +1,6 @@
 import { FriendsService } from './friends.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { ModerationService } from '../moderation/moderation.service';
 import type { PresenceService } from '../presence/presence.service';
 import type { TelegramBotService } from '../notifications/telegram-bot.service';
 
@@ -107,6 +108,7 @@ describe('FriendsService.getSuggestions', () => {
       prisma,
       presence,
       {} as TelegramBotService,
+      {} as ModerationService,
     );
     return { service, captured };
   }

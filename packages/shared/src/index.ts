@@ -9,7 +9,6 @@ export * from './titles';
 export * from './streak';
 export * from './friends';
 export * from './room';
-export * from './chat';
 export * from './decline-notices';
 export * from './moderation';
 export * from './nickname';

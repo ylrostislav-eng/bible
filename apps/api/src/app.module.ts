@@ -6,7 +6,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { BibleModule } from './bible/bible.module';
-import { ChatModule } from './chat/chat.module';
 import { validateEnv } from './config/env.validation';
 import { FriendsModule } from './friends/friends.module';
 import { GameModule } from './game/game.module';
@@ -48,7 +47,6 @@ import { UsersModule } from './users/users.module';
     LearnModule,
     PresenceModule,
     FriendsModule,
-    ChatModule,
     NotificationsModule,
     ModerationModule,
     AchievementsModule,

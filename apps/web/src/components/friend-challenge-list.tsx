@@ -14,7 +14,6 @@ import {
 } from '@bible-arena/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiClient } from '@/lib/api';
-import { useChat } from '@/lib/chat-context';
 import { NO_NICKNAME_HINT, playerName } from '@/lib/player-name';
 import { Card } from './ui/card';
 import { QuestionCountSlider } from './ui/question-count-slider';
@@ -57,7 +56,6 @@ export function FriendChallengeList({
   renderFriendExtra,
   emptyMessage,
 }: FriendChallengeListProps) {
-  const { openThread } = useChat();
   const [overview, setOverview] = useState<FriendsListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -353,14 +351,6 @@ export function FriendChallengeList({
           isBanned={bannedIds.has(actionSheetFor.userId)}
           busy={actionBusy}
           onClose={() => setActionSheetFor(null)}
-          onMessage={
-            actionSheetFor.isFriend
-              ? () => {
-                  openThread(actionSheetFor.userId, actionSheetFor.nickname);
-                  setActionSheetFor(null);
-                }
-              : undefined
-          }
           onAddFriend={
             actionSheetFor.isFriend
               ? undefined

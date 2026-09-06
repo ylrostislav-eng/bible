@@ -18,6 +18,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
+import { ModerationService } from '../moderation/moderation.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
@@ -80,6 +81,7 @@ export class DuelService {
     private readonly questionsService: QuestionsService,
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async create(
@@ -194,6 +196,9 @@ export class DuelService {
     if (dto.friendUserId === userId) {
       throw new BadRequestException('Нельзя бросить вызов самому себе');
     }
+    // Вызов приходит попапом и уведомлением — для ограниченного по жалобам
+    // это такой же способ дотянуться до человека, как заявка в друзья.
+    await this.moderation.assertNotMuted(userId);
     await this.assertEnoughQuestions(dto.questionCount);
     const friendship = await this.prisma.friendship.findUnique({
       where: {

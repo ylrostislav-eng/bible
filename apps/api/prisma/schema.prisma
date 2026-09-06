@@ -40,7 +40,9 @@ model User {
   /// нового аккаунта приглашение создаёт **взаимную** дружбу без спроса.
   /// То есть, взяв чужой `id` из списка лидеров, можно было завести
   /// свежий аккаунт и стать другом любого игрока — включая ребёнка, —
-  /// получив вместе с этим право писать ему в чат.
+  /// получив вместе с этим право звать его в игры и видеть, когда он в сети
+  /// (на момент находки — ещё и право писать ему в личную переписку,
+  /// которой в приложении больше нет).
   ///
   /// Токен случайный, поэтому подставить чужой нельзя: угадать его так же
   /// трудно, как пароль. Раздаёт его сам владелец вместе со ссылкой — это
@@ -161,9 +163,12 @@ model User {
   friendOf               Friendship[]    @relation("FriendshipTarget")
 
   /// Set by moderation when a complaint is upheld: until this moment the
-  /// user can still read and play, but can't send chat messages. A mute is
-  /// deliberately time-boxed rather than permanent — the common case is a
-  /// heated moment, not a malicious account.
+  /// user can still read and play, but can't reach anyone else — no friend
+  /// requests, no duel challenges, no room invites. It used to be a chat
+  /// mute; personal messaging is gone, so the sanction moved to every
+  /// remaining way of pestering someone. Deliberately time-boxed rather
+  /// than permanent — the common case is a heated moment, not a malicious
+  /// account.
   mutedUntil DateTime?
 
   achievements UserAchievement[]
@@ -181,8 +186,6 @@ model User {
   roomBansIssued   RoomBan[] @relation("RoomBansIssued")
   roomBansReceived RoomBan[] @relation("RoomBansReceived")
 
-  sentChatMessages     ChatMessage[] @relation("ChatMessagesSent")
-  receivedChatMessages ChatMessage[] @relation("ChatMessagesReceived")
 
   roomInvitesSent     RoomInvite[] @relation("RoomInvitesSent")
   roomInvitesReceived RoomInvite[] @relation("RoomInvitesReceived")
@@ -290,28 +293,6 @@ model Friendship {
 /// of who sent to whom, so a whole thread can be fetched with a single
 /// `where conversationKey = ...` instead of an OR-across-both-directions
 /// query. Messaging is friends-only (enforced in `ChatService`, not here).
-model ChatMessage {
-  id String @id @default(cuid())
-
-  conversationKey String
-
-  senderId String
-  sender   User   @relation("ChatMessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
-
-  recipientId String
-  recipient   User   @relation("ChatMessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
-
-  body String
-
-  createdAt DateTime  @default(now())
-  /// Set when the recipient has fetched/viewed this message — drives the
-  /// unread badge and the conversation list's unread counts.
-  readAt    DateTime?
-
-  @@index([conversationKey, createdAt])
-  @@index([recipientId, readAt])
-  @@map("chat_messages")
-}
 
 /// A quiz question checking comprehension of one specific Bible chapter
 /// (distinct from the free-form trivia bank used by solo/duel games).
@@ -731,11 +712,6 @@ model ErrorReport {
   @@map("error_reports")
 }
 
-enum AbuseReportKind {
-  USER
-  MESSAGE
-}
-
 enum AbuseReportReason {
   INSULT
   SPAM
@@ -757,13 +733,13 @@ enum AbuseReportStatus {
 /// them" and "someone can stop them", which matters most for the youngest
 /// players.
 ///
-/// `messageBody` deliberately copies the reported message's text instead of
-/// only pointing at it: the offender can delete the conversation, and a
-/// complaint whose evidence disappears is not reviewable.
+/// Жаловались раньше и на конкретное сообщение — тогда текст копировался
+/// в жалобу, чтобы улику нельзя было стереть вместе с перепиской. Личной
+/// переписки в приложении больше нет, поэтому осталась жалоба на человека:
+/// за поведение в комнате, за ник, за спам приглашениями.
 model AbuseReport {
   id String @id @default(cuid())
 
-  kind    AbuseReportKind
   reason  AbuseReportReason
   /// Optional free-text detail from the reporter.
   comment String?
@@ -773,10 +749,6 @@ model AbuseReport {
 
   targetUserId String
   targetUser   User   @relation("AbuseReportsAgainst", fields: [targetUserId], references: [id], onDelete: Cascade)
-
-  /// Set only for MESSAGE reports — the id and a frozen copy of the text.
-  messageId   String?
-  messageBody String?
 
   status     AbuseReportStatus @default(PENDING)
   reviewedAt DateTime?
@@ -788,7 +760,7 @@ model AbuseReport {
   /// One player can't file the same complaint about the same person twice —
   /// stops a brigade (or a misclick) from inflating the report count that
   /// moderation triage sorts by.
-  @@unique([reporterId, targetUserId, messageId])
+  @@unique([reporterId, targetUserId])
   @@index([status, createdAt])
   @@index([targetUserId, status])
   @@map("abuse_reports")

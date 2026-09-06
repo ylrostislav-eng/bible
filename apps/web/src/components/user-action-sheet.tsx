@@ -10,18 +10,18 @@ interface UserActionSheetProps {
   isBanned: boolean;
   busy?: boolean;
   onClose: () => void;
-  /** Omitted entirely (not just disabled) when messaging isn't possible —
-   * friends-only, so this is only passed when `isFriend` is true. */
-  onMessage?: () => void;
   /** Omitted when already friends — nothing to add. */
   onAddFriend?: () => void;
   onToggleBan: () => void;
 }
 
 /**
- * Bottom-sheet action menu for tapping a player's name/avatar anywhere in
- * the app — message / add friend / ban-unban, the three actions the user
- * asked for ("написать сообщение, добавить в друзья, забанить, разбанить").
+ * Меню действий по нажатию на имя игрока: добавить в друзья,
+ * заблокировать/разблокировать, пожаловаться.
+ *
+ * «Написать сообщение» отсюда убрано вместе с личной перепиской: писать
+ * друг другу произвольный текст в приложении больше нельзя, остались
+ * приглашения в игры и вызовы.
  * Deliberately takes the relation (`isFriend`/`isBanned`) as props instead of
  * fetching it itself — every caller embedding this already has that data
  * from its own friends/search list, so re-fetching per tap would just be
@@ -33,7 +33,6 @@ export function UserActionSheet({
   isBanned,
   busy,
   onClose,
-  onMessage,
   onAddFriend,
   onToggleBan,
 }: UserActionSheetProps) {
@@ -65,15 +64,6 @@ export function UserActionSheet({
           </button>
         </div>
         <div className="flex flex-col gap-2">
-          {onMessage && (
-            <button
-              onClick={onMessage}
-              disabled={busy}
-              className="h-12 rounded-xl bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
-            >
-              Написать сообщение
-            </button>
-          )}
           {onAddFriend && (
             <button
               onClick={onAddFriend}

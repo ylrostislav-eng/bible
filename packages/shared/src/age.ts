@@ -5,9 +5,10 @@
  *
  *  1. **Safety.** `CHILD` turns on a reduced-contact mode — no browsing or
  *     joining strangers' public rooms, and the account isn't discoverable by
- *     a partial nickname search. Chat was already friends-only, so with
- *     these two the only people who can reach a child are people the child
- *     (or their guardian) deliberately added.
+ *     a partial nickname search. Personal messaging was removed from the
+ *     app entirely, so with these three the only people who can reach a
+ *     child are people the child (or their guardian) deliberately added,
+ *     and even they can only invite to games.
  *
  *  2. **Tone, later.** Difficulty wording, reminder frequency and the
  *     harsher end of the title ladder should read differently for a nine-
