@@ -868,8 +868,13 @@ export class UsersService {
       take: LEADERBOARD_SIZE,
     });
 
+    const unavailable = await this.friendAlreadyImpossibleFor(
+      currentUserId,
+      top.map((user) => user.id),
+    );
+
     const entries = top.map((user, index) =>
-      this.toLeaderboardEntry(user, index + 1, currentUserId),
+      this.toLeaderboardEntry(user, index + 1, currentUserId, unavailable),
     );
 
     if (entries.some((entry) => entry.isMe)) {
@@ -896,14 +901,97 @@ export class UsersService {
 
     return {
       entries,
-      me: this.toLeaderboardEntry(currentUser, higherRanked + 1, currentUserId),
+      // Своей строке кнопка не нужна ни при каких обстоятельствах, поэтому
+      // и спрашивать про неё нечего.
+      me: this.toLeaderboardEntry(
+        currentUser,
+        higherRanked + 1,
+        currentUserId,
+        new Set([currentUserId]),
+      ),
     };
+  }
+
+  /**
+   * Кому из списка **нельзя** предложить дружбу — одним множеством.
+   *
+   * ## Почему это считает сервер, а не экран
+   *
+   * Причин отказа пять, и все они — чужие данные: вы уже друзья, заявка
+   * висит в одну из сторон, кто-то из вас в чёрном списке другого, это вы
+   * сами, аккаунт детский. Отдай мы их клиенту по отдельности — рейтинг
+   * начал бы рассказывать про чужие заявки и чужой возраст. Отсюда одно
+   * булево поле без причины.
+   *
+   * ## Про детские аккаунты
+   *
+   * В рейтинге они видны наравне со всеми, и это осознанно: ребёнок,
+   * попавший в десятку, должен себя там видеть. Но кнопка «добавить» рядом
+   * с его строкой превратила бы список лидеров в готовый перечень детей,
+   * которых можно позвать в друзья одним касанием, — ровно то, от чего
+   * оберегает правило поиска (там ребёнок находится только по точному
+   * нику). Поэтому детские строки в этот список тоже попадают.
+   *
+   * Дыра рядом остаётся и без этой кнопки: ник видно, и его можно вбить в
+   * поиск руками. Закрывать её — отдельное продуктовое решение, здесь
+   * важно её не расширить.
+   */
+  private async friendAlreadyImpossibleFor(
+    currentUserId: string,
+    candidateIds: string[],
+  ): Promise<Set<string>> {
+    const others = candidateIds.filter((id) => id !== currentUserId);
+    const blocked = new Set<string>([currentUserId]);
+    if (others.length === 0) return blocked;
+
+    const [friendships, requests, bans, children] = await Promise.all([
+      this.prisma.friendship.findMany({
+        where: { userId: currentUserId, friendId: { in: others } },
+        select: { friendId: true },
+      }),
+      this.prisma.friendRequest.findMany({
+        where: {
+          status: 'PENDING',
+          OR: [
+            { fromUserId: currentUserId, toUserId: { in: others } },
+            { toUserId: currentUserId, fromUserId: { in: others } },
+          ],
+        },
+        select: { fromUserId: true, toUserId: true },
+      }),
+      this.prisma.roomBan.findMany({
+        where: {
+          OR: [
+            { leaderId: currentUserId, bannedUserId: { in: others } },
+            { bannedUserId: currentUserId, leaderId: { in: others } },
+          ],
+        },
+        select: { leaderId: true, bannedUserId: true },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: others }, ageBand: 'CHILD' },
+        select: { id: true },
+      }),
+    ]);
+
+    for (const row of friendships) blocked.add(row.friendId);
+    for (const row of requests) {
+      blocked.add(row.fromUserId);
+      blocked.add(row.toUserId);
+    }
+    for (const row of bans) {
+      blocked.add(row.leaderId);
+      blocked.add(row.bannedUserId);
+    }
+    for (const row of children) blocked.add(row.id);
+    return blocked;
   }
 
   private toLeaderboardEntry(
     user: User,
     rank: number,
     currentUserId: string,
+    friendImpossible: Set<string>,
   ): LeaderboardEntry {
     return {
       rank,
@@ -917,6 +1005,7 @@ export class UsersService {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       isMe: user.id === currentUserId,
+      canAddFriend: !friendImpossible.has(user.id),
     };
   }
 
