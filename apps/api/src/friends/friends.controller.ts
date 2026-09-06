@@ -30,6 +30,12 @@ export class FriendsController {
     return { link: await this.friendsService.getInviteLink(user.sub) };
   }
 
+  /** Кого предложить в друзья: играли вместе или есть общие друзья. */
+  @Get('suggestions')
+  getSuggestions(@CurrentUser() user: JwtPayload) {
+    return this.friendsService.getSuggestions(user.sub);
+  }
+
   @Get('search')
   search(@CurrentUser() user: JwtPayload, @Query('q') q: string) {
     return this.friendsService.search(user.sub, q ?? '');

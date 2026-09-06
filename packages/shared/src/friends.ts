@@ -44,3 +44,25 @@ export interface FriendSearchResult {
 export interface SendFriendRequestInput {
   toUserId: string;
 }
+
+/**
+ * Откуда взялась подсказка. Показывается строкой под ником — без причины
+ * список незнакомых имён выглядит случайным, и его пролистывают.
+ *
+ * `played` — уже играли вместе; `mutual` — есть общие друзья.
+ */
+export type FriendSuggestionReason = 'played' | 'mutual';
+
+export interface FriendSuggestion {
+  userId: string;
+  nickname: string | null;
+  avatarUrl: string | null;
+  level: number;
+  rating: number;
+  title: string;
+  online: boolean;
+  reason: FriendSuggestionReason;
+  /** Для `played` — сколько партий вместе, для `mutual` — сколько общих
+   * друзей. Ноль сюда не попадает: подсказка без основания не подсказка. */
+  count: number;
+}

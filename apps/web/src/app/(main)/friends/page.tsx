@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FriendsListResponse } from '@bible-arena/shared';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { FriendChallengeList } from '@/components/friend-challenge-list';
+import { FriendSuggestionsCard } from '@/components/friend-suggestions-card';
 import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { Card } from '@/components/ui/card';
 import { ApiError, apiClient } from '@/lib/api';
@@ -92,6 +93,11 @@ export default function FriendsPage() {
           нуля», а вопрос «где брать людей», и ответ должен стоять там, где
           вопрос задаётся. */}
       <InviteFriendsCard />
+
+      {/* Ниже приглашения, но выше заявок и списка: «позвать своих» —
+          действие, а подсказки — просмотр, и предлагать просмотр раньше
+          действия значит увести человека листать незнакомые ники. */}
+      <FriendSuggestionsCard onAdded={() => setRefreshKey((k) => k + 1)} />
 
       {overview && overview.incomingRequests.length > 0 && (
         <Card className="flex-col gap-3">

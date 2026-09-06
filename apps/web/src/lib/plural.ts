@@ -51,6 +51,10 @@ export function pluralPoints(n: number): string {
   return pluralize(n, ['очко', 'очка', 'очков']);
 }
 
+export function pluralGames(n: number): string {
+  return pluralize(n, ['партия', 'партии', 'партий']);
+}
+
 export function pluralRounds(n: number): string {
   return pluralize(n, ['раунд', 'раунда', 'раундов']);
 }
