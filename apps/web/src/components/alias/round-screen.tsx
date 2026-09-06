@@ -8,10 +8,6 @@ import { aliasFeedback } from '@/lib/alias/feedback';
 /** С какой секунды таймер начинает щёлкать и краснеть. */
 const URGENT_FROM_SECONDS = 10;
 
-/** Насколько далеко нужно увести палец, чтобы это считалось жестом, а не
- * дрожанием руки. Пальцем в азарте промахиваются на десяток пикселей. */
-const SWIPE_THRESHOLD_PX = 60;
-
 interface RoundScreenProps {
   teamName: string;
   teamIndex: number;
@@ -102,27 +98,14 @@ export function AliasRoundScreen({
     [word, soundEnabled, onAnswer],
   );
 
-  // Свайп вверх — угадали, вниз — пропуск. Жест быстрее кнопки и не требует
-  // смотреть на экран, а кнопки остаются рядом для тех, кто про жест не
-  // знает: показывать одно и то же двумя способами здесь не избыточность, а
-  // разница между «понял сразу» и «затупил на весь раунд».
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-
-  const onTouchStart = (event: React.TouchEvent) => {
-    const touch = event.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-  };
-
-  const onTouchEnd = (event: React.TouchEvent) => {
-    const start = touchStartRef.current;
-    touchStartRef.current = null;
-    if (!start) return;
-    const touch = event.changedTouches[0];
-    const dy = touch.clientY - start.y;
-    const dx = touch.clientX - start.x;
-    if (Math.abs(dy) < SWIPE_THRESHOLD_PX || Math.abs(dy) < Math.abs(dx)) return;
-    answer(dy < 0);
-  };
+  // Ответ даётся только кнопками внизу.
+  //
+  // Раньше здесь был ещё свайп: вверх — угадали, вниз — пропуск. Отброшен
+  // не потому, что плох сам по себе, а потому что вертикальный свайп в
+  // мини-приложении принадлежит Telegram — им сворачивают окно, и до
+  // экрана жест доходит не всегда. Получалась вторая, ненадёжная дорога к
+  // тому же действию: подсказку про неё игрок читал, повторить не мог и
+  // решал, что сломано приложение.
 
   const urgent = !lastWord && secondsLeft <= URGENT_FROM_SECONDS;
   const progress = lastWord ? 0 : Math.max(0, secondsLeft / roundSeconds);
@@ -132,9 +115,11 @@ export function AliasRoundScreen({
       // Безопасная зона учитывается здесь, внутри экрана: высота считается
       // по `border-box`, поэтому отступ входит в эти 100dvh, а не
       // прибавляется к ним. Снаружи такой отступ срезал бы нижние кнопки.
+      //
+      // `touch-none` и `overscroll-none` остались и после отказа от свайпа:
+      // экран в окно не прокручивается, а вот утянуть его пальцем в азарте
+      // легко — и вместе с ним свернуть мини-приложение.
       className="pt-safe flex min-h-[100dvh] touch-none flex-col overscroll-none"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
     >
       <div className="h-1.5 w-full bg-surface">
         <div
@@ -217,8 +202,11 @@ export function AliasRoundScreen({
           onClick={() => answer(false)}
           className="flex h-20 flex-col items-center justify-center gap-1 rounded-2xl bg-surface text-text-secondary transition active:scale-[0.98]"
         >
+          {/* Крест, а не стрелка вниз: стрелки показывали направление
+              свайпа, а свайпа больше нет — направление стало ложным
+              намёком. */}
           <span className="text-2xl leading-none" aria-hidden>
-            ↓
+            ✕
           </span>
           <span className="text-sm font-semibold">Пропустить</span>
         </button>
@@ -230,7 +218,7 @@ export function AliasRoundScreen({
           className="flex h-20 flex-col items-center justify-center gap-1 rounded-2xl bg-success text-bg transition active:scale-[0.98]"
         >
           <span className="text-2xl leading-none" aria-hidden>
-            ↑
+            ✓
           </span>
           <span className="text-sm font-semibold">Угадали</span>
         </button>
