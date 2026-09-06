@@ -143,9 +143,12 @@ export function AliasRoundScreen({
           />
           {teamName}
         </span>
+        {/* `round-timer` — не оформление, а место: в полноэкранном режиме
+            это правило уводит таймер в полосу кнопок Telegram, между
+            «Закрыть» и «⌄ •••». Само правило в `globals.css`. */}
         <span
           className={clsx(
-            'text-2xl font-bold tabular-nums',
+            'round-timer text-2xl font-bold tabular-nums',
             urgent ? 'text-danger' : 'text-text-primary',
           )}
           aria-live="off"

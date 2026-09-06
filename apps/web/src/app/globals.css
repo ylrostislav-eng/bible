@@ -71,10 +71,18 @@ a {
  *
  * С переменной складывается явно: `pt-[calc(var(--safe-top)+2rem)]`. */
 :root {
-  --safe-top: calc(
-    max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px)) +
-      var(--tg-viewport-content-safe-area-inset-top, 0px)
-  );
+  /* Железо: чёлка и часы. `max` потому, что внутри Telegram `env()` иногда
+   * отдаёт ноль — у веб-вью свои представления о безопасной зоне. */
+  --safe-top-device: max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px));
+
+  /* Полоса кнопок Telegram («Закрыть» слева, «⌄ •••» справа). Вне
+   * полноэкранного режима их нет на нашем экране — они в родной шапке. */
+  --tg-controls: 0px;
+
+  /* Полный безопасный отступ сверху: сначала железо, потом кнопки поверх
+   * него. Именно сложение, а не `max`: это два слоя друг над другом. */
+  --safe-top: calc(var(--safe-top-device) + var(--tg-controls));
+
   --safe-bottom: max(env(safe-area-inset-bottom), var(--tg-viewport-safe-area-inset-bottom, 0px));
 
   /* Высота окна, а не экрана. В полноэкранном режиме `100dvh` больше того,
@@ -84,22 +92,42 @@ a {
   --app-height: var(--tg-viewport-stable-height, 100dvh);
 }
 
-/* Место под кнопки Telegram («Закрыть» слева, «⌄ •••» справа).
+/* Высота полосы кнопок Telegram.
  *
- * По уму его должна сообщать `--tg-viewport-content-safe-area-inset-top`,
+ * По уму её должна сообщать `--tg-viewport-content-safe-area-inset-top`,
  * но живая проверка показала ноль: складывать оказалось не с чем, и шапка
- * экрана легла прямо под кнопки. Поэтому здесь нижняя граница — 3.5rem,
- * измеренные по скриншоту с iPhone. Настоящее значение, если Telegram его
- * однажды пришлёт, победит: берётся большее из двух.
+ * экрана легла прямо под кнопки. Отсюда нижняя граница в 3.5rem, измеренная
+ * по скриншоту с iPhone. Настоящее значение, если Telegram его однажды
+ * пришлёт, победит: берётся большее из двух.
  *
- * Только для полноэкранного режима: в обычном эти кнопки живут в родной
- * шапке, за пределами нашего экрана, и резервировать под них нечего.
- * Класс ставит `lib/telegram-provider.tsx`. */
+ * Класс ставит `lib/telegram-provider.tsx` по сигналу SDK. */
 :root.tg-fullscreen {
-  --safe-top: calc(
-    max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px)) +
-      max(var(--tg-viewport-content-safe-area-inset-top, 0px), 3.5rem)
-  );
+  --tg-controls: max(var(--tg-viewport-content-safe-area-inset-top, 0px), 3.5rem);
+}
+
+/* Таймер раунда живёт в этой же полосе, между кнопками Telegram.
+ *
+ * Середина полосы пустует: «Закрыть» прижат влево, «⌄ •••» вправо. Отдавать
+ * под двузначное число отдельную строку ниже — терять высоту на экране, где
+ * важно только слово. Поэтому в полноэкранном режиме таймер уходит из
+ * потока шапки наверх, а название команды и счёт остаются под ним.
+ *
+ * Вне полноэкранного режима правило не действует, и таймер остаётся в шапке
+ * как обычный элемент: полосы кнопок там нет, вставать некуда.
+ *
+ * `pointer-events: none` — чтобы прозрачная строка поверх экрана не
+ * перехватывала касания у кнопок Telegram по краям. */
+:root.tg-fullscreen .round-timer {
+  position: fixed;
+  top: var(--safe-top-device);
+  left: 0;
+  right: 0;
+  height: var(--tg-controls);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
 }
 
 @layer utilities {
