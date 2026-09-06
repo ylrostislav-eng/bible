@@ -66,9 +66,20 @@ export interface SoundSettings {
   musicVolume: number;
 }
 
+/**
+ * Значения по умолчанию. Держать согласованными со схемой базы
+ * (`apps/api/prisma/schema.prisma`): здесь они нужны на клиенте до того,
+ * как приедет профиль, и расхождение выглядит как мигание настроек.
+ *
+ * Музыка включена. Сначала было наоборот — боялись, что незапрошенный
+ * звук в транспорте прочтётся как поломка; отброшено, потому что
+ * выключенная по умолчанию музыка означает, что её не слышит никто: за
+ * настройками не ходят. Выключить её можно в одно касание — плавающая
+ * кнопка с нотой есть на каждом экране.
+ */
 export const SOUND_SETTINGS_DEFAULT: SoundSettings = {
   soundEnabled: true,
-  musicEnabled: false,
+  musicEnabled: true,
   hapticsEnabled: true,
   soundVolume: SOUND_VOLUME_DEFAULT,
   musicVolume: MUSIC_VOLUME_DEFAULT,
