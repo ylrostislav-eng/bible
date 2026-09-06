@@ -9,7 +9,7 @@ export class AuthController {
 
   @Post('telegram')
   login(@Body() dto: TelegramLoginDto) {
-    return this.authService.loginWithTelegram(dto.initData);
+    return this.authService.loginWithTelegram(dto.initData, dto.startParam);
   }
 
   /** Local-development-only login bypass — see AuthService.devLogin. */

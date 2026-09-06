@@ -1,7 +1,7 @@
 'use client';
 
 import type { AuthResponse, UpdateProfileInput, UserProfile } from '@bible-arena/shared';
-import { retrieveRawInitData } from '@telegram-apps/sdk-react';
+import { retrieveLaunchParams, retrieveRawInitData } from '@telegram-apps/sdk-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiClient, setAccessToken, setSessionRecovery } from './api';
 
@@ -58,7 +58,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       initData = undefined;
     }
     if (!initData) return null;
-    return apiClient.post<AuthResponse>('/auth/telegram', { initData });
+
+    // Параметр запуска ссылки-приглашения (`?startapp=ref_<id>`). Читается
+    // на каждом входе, а не только на первом: связь создаёт сервер и он же
+    // решает, что с ней делать — новичка сразу дружит с пригласившим, у
+    // остальных заводит обычную заявку. Отсутствие параметра — обычное
+    // дело, приложение чаще открывают кнопкой бота.
+    let startParam: string | undefined;
+    try {
+      startParam = retrieveLaunchParams(true).tgWebAppStartParam;
+    } catch {
+      startParam = undefined;
+    }
+
+    return apiClient.post<AuthResponse>('/auth/telegram', {
+      initData,
+      startParam,
+    });
   }, [useDevLogin]);
 
   useEffect(() => {

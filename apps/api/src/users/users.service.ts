@@ -134,32 +134,43 @@ export class UsersService {
     });
   }
 
+  /**
+   * Возвращает `created` вместе с пользователем, а не только его самого.
+   *
+   * Это нужно приглашениям по ссылке: пришедшего впервые можно сразу
+   * подружить с тем, кто позвал (оба действия осознанны — один отправил
+   * ссылку, другой её открыл), а вернувшемуся навязывать дружбу нельзя,
+   * ему полагается обычная заявка. Отличить одно от другого снаружи
+   * нечем: по самой записи не видно, создана она секунду назад или год.
+   */
   async findOrCreateByTelegramId(params: {
     telegramId: bigint;
     telegramUsername: string | null;
     telegramAvatarUrl: string | null;
-  }): Promise<User> {
+  }): Promise<{ user: User; created: boolean }> {
     const existing = await this.prisma.user.findUnique({
       where: { telegramId: params.telegramId },
     });
 
     if (existing) {
       if (params.telegramUsername !== existing.telegramUsername) {
-        return this.prisma.user.update({
+        const user = await this.prisma.user.update({
           where: { id: existing.id },
           data: { telegramUsername: params.telegramUsername },
         });
+        return { user, created: false };
       }
-      return existing;
+      return { user: existing, created: false };
     }
 
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         telegramId: params.telegramId,
         avatarUrl: params.telegramAvatarUrl,
         telegramUsername: params.telegramUsername,
       },
     });
+    return { user, created: true };
   }
 
   async findById(id: string): Promise<User> {

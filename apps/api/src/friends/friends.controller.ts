@@ -24,6 +24,12 @@ export class FriendsController {
     return this.friendsService.getOverview(user.sub);
   }
 
+  /** Личная ссылка-приглашение. `null`, если бот ещё не настроен. */
+  @Get('invite-link')
+  async getInviteLink(@CurrentUser() user: JwtPayload) {
+    return { link: await this.friendsService.getInviteLink(user.sub) };
+  }
+
   @Get('search')
   search(@CurrentUser() user: JwtPayload, @Query('q') q: string) {
     return this.friendsService.search(user.sub, q ?? '');

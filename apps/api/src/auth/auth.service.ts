@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { AuthResponse } from '@bible-arena/shared';
+import { FriendsService } from '../friends/friends.service';
 import { PresenceService } from '../presence/presence.service';
 import { UsersService } from '../users/users.service';
 import type { JwtPayload } from './jwt-payload.interface';
@@ -10,6 +11,24 @@ import { TelegramAuthService } from './telegram-auth.service';
 /** Reserved range, never issued by Telegram (real IDs are always positive). */
 const DEV_USER_TELEGRAM_ID_BASE = -1n;
 
+/**
+ * Разбирает параметр запуска мини-приложения в идентификатор пригласившего.
+ *
+ * Telegram передаёт в `startapp` произвольную строку, и приходит она от
+ * клиента, то есть подделать её может кто угодно. Проверка формы здесь — не
+ * защита: подставить чужой идентификатор ничего не даёт, потому что связь
+ * создаётся **с** тем, кто в ссылке, а не от его имени. Форма проверяется
+ * ради другого — чтобы мусор из ссылки не уходил в запрос к базе.
+ *
+ * Формат `ref_<id>`: префикс оставляет место другим видам ссылок (позвать в
+ * конкретную комнату, открыть главу), не ломая уже разосланные.
+ */
+function parseInviteParam(startParam?: string): string | null {
+  if (!startParam) return null;
+  const match = /^ref_([a-z0-9]{20,32})$/.exec(startParam);
+  return match ? match[1] : null;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -17,17 +36,26 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly presenceService: PresenceService,
+    private readonly friendsService: FriendsService,
     private readonly configService: ConfigService,
   ) {}
 
-  async loginWithTelegram(initData: string): Promise<AuthResponse> {
+  async loginWithTelegram(
+    initData: string,
+    startParam?: string,
+  ): Promise<AuthResponse> {
     const telegramUser = this.telegramAuthService.validate(initData);
 
-    const user = await this.usersService.findOrCreateByTelegramId({
+    const { user, created } = await this.usersService.findOrCreateByTelegramId({
       telegramId: BigInt(telegramUser.id),
       telegramUsername: telegramUser.username ?? null,
       telegramAvatarUrl: telegramUser.photo_url ?? null,
     });
+
+    const inviterId = parseInviteParam(startParam);
+    if (inviterId) {
+      await this.friendsService.linkFromInvite(inviterId, user.id, created);
+    }
 
     return this.issueSession(user.id, user.telegramId);
   }
@@ -50,7 +78,7 @@ export class AuthService {
       throw new ForbiddenException('Dev login is disabled');
     }
 
-    const user = await this.usersService.findOrCreateByTelegramId({
+    const { user } = await this.usersService.findOrCreateByTelegramId({
       telegramId: DEV_USER_TELEGRAM_ID_BASE - BigInt(slot - 1),
       telegramUsername: `dev_user_${slot}`,
       telegramAvatarUrl: null,

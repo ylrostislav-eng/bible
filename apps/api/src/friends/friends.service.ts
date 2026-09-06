@@ -14,6 +14,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
+import { TelegramBotService } from '../notifications/telegram-bot.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -24,6 +25,7 @@ export class FriendsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly presenceService: PresenceService,
+    private readonly telegramBot: TelegramBotService,
   ) {}
 
   async search(
@@ -194,6 +196,93 @@ export class FriendsService {
    * request between these two takes, so both directions serialize. */
   private pairKey(a: string, b: string): string {
     return [a, b].sort().join('_');
+  }
+
+  /**
+   * Личная ссылка-приглашение или `null`, если бот ещё не настроен.
+   *
+   * Собирается на сервере, а не на клиенте, по одной причине: имя бота знает
+   * только сервер — он спрашивает его у самого Telegram по токену. Вынести
+   * это на клиент значило бы завести переменную сборки, которую надо не
+   * забыть выставить, а забытую заметить только по неработающим ссылкам у
+   * игроков.
+   *
+   * `null` — не ошибка, а состояние «бот не настроен»: кнопка приглашения
+   * тогда просто не показывается.
+   */
+  async getInviteLink(currentUserId: string): Promise<string | null> {
+    const botUsername = await this.telegramBot.getBotUsername();
+    if (!botUsername) return null;
+    return `https://t.me/${botUsername}/app?startapp=ref_${currentUserId}`;
+  }
+
+  /**
+   * Связывает того, кто позвал, с тем, кто пришёл по его ссылке.
+   *
+   * ## Почему для новичка сразу дружба, а для остальных заявка
+   *
+   * Новичок оказался в приложении **только** потому, что открыл чью-то
+   * ссылку: оба действия осознанны — один отправил, другой открыл. Просить
+   * его после этого ещё и подтвердить заявку значит уронить ровно тот шаг,
+   * ради которого приглашение и существует: человек заходит и не видит
+   * никого, потому что заявка висит у пригласившего.
+   *
+   * Уже существующему аккаунту дружбу навязывать нельзя: ссылку можно
+   * разослать веером или выложить в открытый чат, и тогда «пригласил» — это
+   * не знакомство, а рассылка. Ему полагается обычная заявка, которую можно
+   * отклонить.
+   *
+   * ## Почему ошибки не поднимаются наверх
+   *
+   * Это побочная часть входа, а не его цель. Ссылка может оказаться старой,
+   * пригласивший — удалённым, заявка — уже существующей. Ни одно из этого не
+   * повод не пустить человека в приложение.
+   */
+  async linkFromInvite(
+    inviterId: string,
+    inviteeId: string,
+    inviteeIsNew: boolean,
+  ): Promise<void> {
+    if (inviterId === inviteeId) return;
+
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: inviterId },
+      select: { id: true },
+    });
+    if (!inviter) return;
+
+    if (!inviteeIsNew) {
+      await this.sendRequest(inviterId, inviteeId).catch(() => undefined);
+      return;
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Тот же замок на пару, что и у обычной заявки: иначе приглашение и
+        // встречная заявка, пришедшие одновременно, оставят половину связи.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${this.pairKey(inviterId, inviteeId)}))`;
+
+        // Дружба хранится двумя строками — по одной с каждой стороны;
+        // `upsert` на обе, чтобы повторный переход по ссылке ничего не
+        // ломал.
+        await tx.friendship.upsert({
+          where: {
+            userId_friendId: { userId: inviterId, friendId: inviteeId },
+          },
+          create: { userId: inviterId, friendId: inviteeId },
+          update: {},
+        });
+        await tx.friendship.upsert({
+          where: {
+            userId_friendId: { userId: inviteeId, friendId: inviterId },
+          },
+          create: { userId: inviteeId, friendId: inviterId },
+          update: {},
+        });
+      });
+    } catch {
+      // См. выше: вход важнее связи.
+    }
   }
 
   async listRequests(currentUserId: string): Promise<{

@@ -41,6 +41,51 @@ export class TelegramBotService {
     );
   }
 
+  /**
+   * Имя бота — то, из чего собирается ссылка-приглашение
+   * (`t.me/<имя>/app?startapp=...`).
+   *
+   * Спрашивается у самого Telegram, а не берётся из переменной окружения:
+   * токен у нас уже есть, а лишняя переменная — это ещё одно место, где
+   * можно опечататься и обнаружить это только по неработающим ссылкам у
+   * игроков.
+   *
+   * Кешируется только удача. Неудача не запоминается намеренно: сеть могла
+   * моргнуть на старте, и запомненный `null` означал бы, что приглашения не
+   * работают до перезапуска сервера.
+   */
+  private cachedUsername: string | null = null;
+
+  async getBotUsername(): Promise<string | null> {
+    if (this.cachedUsername) return this.cachedUsername;
+
+    const token = this.token;
+    if (!token) return null;
+
+    try {
+      const response = await fetch(`${this.apiBase}/bot${token}/getMe`);
+      if (!response.ok) return null;
+
+      const body: unknown = await response.json();
+      const username =
+        body &&
+        typeof body === 'object' &&
+        'result' in body &&
+        body.result &&
+        typeof body.result === 'object' &&
+        'username' in body.result &&
+        typeof body.result.username === 'string'
+          ? body.result.username
+          : null;
+
+      if (username) this.cachedUsername = username;
+      return username;
+    } catch (error) {
+      this.logger.warn(`Не удалось узнать имя бота: ${String(error)}`);
+      return null;
+    }
+  }
+
   async sendMessage(
     telegramId: bigint,
     text: string,

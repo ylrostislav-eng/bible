@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FriendsListResponse } from '@bible-arena/shared';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { FriendChallengeList } from '@/components/friend-challenge-list';
+import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { Card } from '@/components/ui/card';
 import { ApiError, apiClient } from '@/lib/api';
 import { pluralFriends } from '@/lib/plural';
@@ -86,6 +87,11 @@ export default function FriendsPage() {
       </div>
 
       {loadError && <p className="text-sm text-danger">{loadError}</p>}
+
+      {/* Выше списка намеренно: пустой экран друзей — это не «список из
+          нуля», а вопрос «где брать людей», и ответ должен стоять там, где
+          вопрос задаётся. */}
+      <InviteFriendsCard />
 
       {overview && overview.incomingRequests.length > 0 && (
         <Card className="flex-col gap-3">

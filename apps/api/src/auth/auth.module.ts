@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { FriendsModule } from '../friends/friends.module';
 import { PresenceModule } from '../presence/presence.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
@@ -11,6 +12,7 @@ import { TelegramAuthService } from './telegram-auth.service';
   imports: [
     UsersModule,
     PresenceModule,
+    FriendsModule,
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],
