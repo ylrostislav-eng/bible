@@ -27,7 +27,7 @@ export function ChatWidget() {
     return (
       <button
         onClick={openList}
-        className="fixed right-4 bottom-24 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg"
+        className="fixed right-4 bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg"
         aria-label="Чаты"
       >
         <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6">
@@ -48,7 +48,7 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-20 z-30 mx-auto flex max-h-[70vh] max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+    <div className="fixed inset-x-3 bottom-[calc(var(--safe-bottom)+5rem)] z-30 mx-auto flex max-h-[calc(var(--app-height)*0.7)] max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
       {panelState === 'list' ? (
         <ConversationList
           conversations={conversations}

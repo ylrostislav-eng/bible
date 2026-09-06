@@ -134,7 +134,7 @@ export function AliasBetweenRoundsScreen({
   onContinue: () => void;
 }) {
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pb-28 pt-8">
+    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pb-[calc(var(--safe-bottom)+7rem)] pt-[calc(var(--safe-top)+2rem)]">
       <h1 className="text-xl font-bold">Счёт</h1>
       <AliasScoreboard teams={teams} targetScore={targetScore} highlightIndex={turnIndex} />
       <div className="pb-safe fixed inset-x-0 bottom-0 border-t border-border bg-bg/95 backdrop-blur">
@@ -168,7 +168,7 @@ export function AliasFinishedScreen({
   const winners = teams.filter((team) => team.score === best);
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-6 px-4 pb-8 pt-10">
+    <div className="mx-auto flex max-w-md flex-col gap-6 px-4 pb-[calc(var(--safe-bottom)+2rem)] pt-[calc(var(--safe-top)+2.5rem)]">
       <div className="text-center">
         <p className="text-sm uppercase tracking-wide text-text-muted">
           {roundsPlayed} {pluralRounds(roundsPlayed)}

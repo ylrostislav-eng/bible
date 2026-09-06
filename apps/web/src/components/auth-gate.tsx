@@ -45,7 +45,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (status === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-[var(--app-height)] items-center justify-center">
         <Spinner className="h-8 w-8" />
       </div>
     );
@@ -53,7 +53,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (status === 'no-telegram') {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-2 px-6 text-center">
+      <div className="flex min-h-[var(--app-height)] flex-col items-center justify-center gap-2 px-6 text-center">
         <p className="text-lg font-semibold">Откройте Bible Arena в Telegram</p>
         <p className="text-sm text-text-secondary">
           Это приложение работает только внутри Telegram Mini Apps.
@@ -69,7 +69,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (status === 'error') {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex min-h-[var(--app-height)] flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-lg font-semibold">Не удалось войти</p>
         <p className="text-sm text-text-secondary">{errorMessage}</p>
         <Button onClick={retry} className="max-w-xs">
@@ -118,7 +118,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
 
   // Погружённый экран не оборачивается ничем — и это важно, а не лень.
   //
-  // Такие экраны высотой ровно в окно (`min-h-[100dvh]`), и отступ снаружи
+  // Такие экраны высотой ровно в окно (`--app-height`), и отступ снаружи
   // прибавляется к этой высоте, а не входит в неё: низ уезжает за край.
   // Живой баг: обёртка `pt-safe` здесь срезала кнопки «Пропустить» и
   // «Угадали» в раунде Alias.
@@ -130,12 +130,16 @@ function AppChrome({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* Bottom padding has to clear the floating widgets, not just the
-        nav bar: the chat and room-invite buttons sit at bottom-24 and
-        are 56px tall, so they occupy up to 152px from the bottom.
-        With the old pb-24 (96px) the last card on a fully scrolled
-        page ended up underneath them, with its text cut off. */}
-      <div className="pt-safe pb-40">{children}</div>
+      {/* Отступ снизу закрывает не только навигацию, но и плавающие кнопки:
+          чат и приглашения стоят в 6rem от низа и сами высотой 3.5rem, то
+          есть занимают до 9.5rem. _С прежними 6rem последняя карточка на
+          прокрученной до конца странице оказывалась под ними, с обрезанным
+          текстом._
+
+          К этому добавляется безопасная зона: сами кнопки от неё уже
+          отодвинуты, и без такой же прибавки здесь отступ снова стал бы
+          коротким ровно на высоту домашней полоски. */}
+      <div className="pt-safe pb-[calc(var(--safe-bottom)+10rem)]">{children}</div>
       <IncomingNotifications />
       <DeclineNoticeToast />
       <PendingInvitesWidget />

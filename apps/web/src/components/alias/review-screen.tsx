@@ -35,7 +35,7 @@ export function AliasReviewScreen({
   const guessed = items.filter((item) => item.guessed).length;
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-28 pt-[calc(var(--safe-top)+1.5rem)]">
+    <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-[calc(var(--safe-bottom)+7rem)] pt-[calc(var(--safe-top)+1.5rem)]">
       <header className="flex flex-col gap-1">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <span

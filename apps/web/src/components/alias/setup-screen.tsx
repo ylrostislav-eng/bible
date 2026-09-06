@@ -95,7 +95,7 @@ export function AliasSetupScreen({
     settings.testaments.length === ALIAS_TESTAMENTS.length;
 
   return (
-    <div className="pt-safe mx-auto flex max-w-md flex-col gap-6 px-4 pb-36">
+    <div className="mx-auto flex max-w-md flex-col gap-6 px-4 pb-[calc(var(--safe-bottom)+9rem)] pt-[calc(var(--safe-top)+0.5rem)]">
       <header className="pt-3">
         <Link
           href="/play"

@@ -608,7 +608,7 @@ export default function RoomPage() {
     // gameplay the instant the leader hits "Начать игру".
     if (roomState.status === 'IN_PROGRESS' && introStep !== null) {
       return (
-        <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
+        <div className="mx-auto flex min-h-[calc(var(--app-height)*0.7)] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
           <p className="w-full truncate text-sm text-text-secondary">
             {roomState.roomName ?? 'Комната'} · {roomState.participants.length} игроков
           </p>

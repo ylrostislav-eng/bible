@@ -607,7 +607,7 @@ export default function DuelPage() {
     // gameplay the instant the opponent accepts/joins.
     if (duelState.status === 'IN_PROGRESS' && introStep !== null) {
       return (
-        <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
+        <div className="mx-auto flex min-h-[calc(var(--app-height)*0.7)] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
           <p className="text-sm text-text-secondary">
             Вы против {duelState.opponent?.nickname ?? 'соперника'}
           </p>

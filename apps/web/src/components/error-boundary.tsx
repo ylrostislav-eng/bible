@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="flex min-h-[var(--app-height)] flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="text-lg font-semibold">Что-то пошло не так</p>
           <p className="text-sm text-text-secondary">
             Мы уже знаем об этой ошибке. Попробуйте перезагрузить приложение.

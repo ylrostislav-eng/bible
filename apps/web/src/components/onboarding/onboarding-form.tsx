@@ -65,7 +65,7 @@ export function OnboardingForm() {
 
   if (step === 'age') {
     return (
-      <div className="pt-safe flex min-h-screen flex-col justify-center px-6 py-10">
+      <div className="pt-safe flex min-h-[var(--app-height)] flex-col justify-center px-6 py-10">
         <AgeBandStep
           heading="Сколько вам лет?"
           subtitle="От этого зависит, с кем можно играть и переписываться."
@@ -80,7 +80,7 @@ export function OnboardingForm() {
   }
 
   return (
-    <div className="pt-safe flex min-h-screen flex-col justify-center px-6 py-10">
+    <div className="pt-safe flex min-h-[var(--app-height)] flex-col justify-center px-6 py-10">
       <div className="mx-auto w-full max-w-sm">
         <h1 className="text-2xl font-bold">Добро пожаловать!</h1>
         <p className="mt-1 text-sm text-text-secondary">

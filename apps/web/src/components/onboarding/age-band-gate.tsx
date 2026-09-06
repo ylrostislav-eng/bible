@@ -32,7 +32,7 @@ export function AgeBandGate() {
   }
 
   return (
-    <div className="pt-safe flex min-h-screen flex-col justify-center px-6 py-10">
+    <div className="pt-safe flex min-h-[var(--app-height)] flex-col justify-center px-6 py-10">
       <AgeBandStep
         heading="Один вопрос перед игрой"
         subtitle="Мы добавили настройки безопасности. Укажите возраст — от него зависит, с кем можно играть и переписываться."

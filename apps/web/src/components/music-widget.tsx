@@ -71,7 +71,7 @@ export function MusicWidget() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Громкость музыки"
-        className="fixed bottom-24 left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-text-primary shadow-lg ring-1 ring-border"
+        className="fixed bottom-[calc(var(--safe-bottom)+6rem)] left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-text-primary shadow-lg ring-1 ring-border"
       >
         <NoteIcon muted={muted} />
       </button>
@@ -79,7 +79,7 @@ export function MusicWidget() {
   }
 
   return (
-    <div className="fixed bottom-24 left-4 z-30 w-64 rounded-2xl border border-border bg-surface p-4 shadow-2xl">
+    <div className="fixed bottom-[calc(var(--safe-bottom)+6rem)] left-4 z-30 w-64 rounded-2xl border border-border bg-surface p-4 shadow-2xl">
       <div className="flex items-center justify-between">
         <p className="font-semibold">Музыка</p>
         <button

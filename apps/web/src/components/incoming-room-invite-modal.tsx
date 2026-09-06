@@ -94,7 +94,7 @@ export function InvitePopup({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 pb-28 sm:items-center sm:pb-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 pb-[calc(var(--safe-bottom)+7rem)] sm:items-center sm:pb-4"
       onClick={onDismiss}
     >
       <div
