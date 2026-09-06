@@ -8,6 +8,11 @@
 -- момент правки музыка была выключена у всех и ни у кого не могла быть
 -- выбором: включить её было нечем, кроме настроек, куда не ходят.
 -- Повторять такое обновление при следующих сменах умолчаний нельзя.
-ALTER TABLE "User" ALTER COLUMN "musicEnabled" SET DEFAULT true;
+--
+-- Таблица называется `users`, а не `User`: у модели стоит `@@map`.
+-- Первая версия этой миграции обращалась к `"User"` и упала на боевой
+-- базе, а вместе с ней перестал подниматься и сервер — миграции идут
+-- перед запуском и связаны через `&&`.
+ALTER TABLE "users" ALTER COLUMN "musicEnabled" SET DEFAULT true;
 
-UPDATE "User" SET "musicEnabled" = true WHERE "musicEnabled" = false;
+UPDATE "users" SET "musicEnabled" = true WHERE "musicEnabled" = false;
