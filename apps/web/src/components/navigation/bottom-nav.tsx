@@ -54,16 +54,40 @@ export function BottomNav() {
             <li key={href} className="flex-1">
               <Link
                 href={targetHref}
+                aria-current={active ? 'page' : undefined}
                 className={clsx(
                   'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors',
                   active ? 'text-primary' : 'text-text-muted hover:text-text-secondary',
                 )}
               >
-                <span className="relative">
-                  <Icon className="h-6 w-6" strokeWidth={active ? 2.1 : 1.8} />
-                  {isPlayTab && activeGame && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-danger" />
-                  )}
+                <span className="relative flex h-8 w-14 items-center justify-center">
+                  {/* Подложка под иконкой — и есть ответ на вопрос «где я
+                      сейчас». До неё активную вкладку отличал только цвет
+                      значка, а пять одинаковых по форме значков в ряд
+                      глазом сравниваются плохо: чтобы понять, какой из
+                      них янтарный, приходится смотреть на все пять.
+                      Заливка меняет форму, а форма видна боковым зрением.
+
+                      Она всегда в разметке и всегда одного размера, а
+                      переключается прозрачностью и масштабом: так
+                      появление получается плавным, а ширина вкладки не
+                      скачет при переходе. */}
+                  <span
+                    className={clsx(
+                      // Свечение — не украшение ради украшения: нижняя
+                      // панель размывает фон под собой, и на размытом
+                      // подложка без отрыва от фона читается пятном
+                      // грязи. Тонкий ореол отделяет её от панели.
+                      'absolute inset-0 rounded-2xl bg-primary/15 shadow-[0_0_14px_-3px_rgba(232,176,75,0.45)] ring-1 ring-primary/30 transition duration-200',
+                      active ? 'scale-100 opacity-100' : 'scale-90 opacity-0',
+                    )}
+                  />
+                  <span className="relative">
+                    <Icon className="h-6 w-6" strokeWidth={active ? 2.1 : 1.8} />
+                    {isPlayTab && activeGame && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-danger" />
+                    )}
+                  </span>
                 </span>
                 {label}
               </Link>

@@ -78,3 +78,15 @@ export function screenBackground(pathname: string | null): ScreenBackground {
   const match = BACKGROUNDS.find(({ prefix }) => pathname.startsWith(prefix));
   return match ?? DEFAULT_BACKGROUND;
 }
+
+/** Адрес файла обоев. В одном месте, чтобы разметка и предзагрузка не
+ * разошлись в написании пути. */
+export function backgroundUrl(file: string): string {
+  return `/backgrounds/${file}.webp`;
+}
+
+/** Все обои приложения — для тихой предзагрузки в простое. */
+export const ALL_BACKGROUNDS: readonly string[] = [
+  DEFAULT_BACKGROUND.file,
+  ...BACKGROUNDS.map(({ file }) => file),
+];
