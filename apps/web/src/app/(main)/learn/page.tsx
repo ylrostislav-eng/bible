@@ -234,13 +234,17 @@ function ReaderView({
         </Button>
       )}
 
+      {/* Недоступная кнопка гасится цветом текста, а не прозрачностью:
+          под экраном лежат обои (`ScreenBackground`), и полупрозрачная
+          кнопка показывала бы картинку вместо своего фона. То же решение,
+          что в общем `Button`. */}
       <div className="flex gap-3">
         <button
           onClick={goPrev}
           disabled={isVeryFirst}
           className={clsx(
             'h-11 flex-1 rounded-xl border border-border bg-surface text-sm font-semibold',
-            isVeryFirst ? 'opacity-40' : 'hover:bg-surface-hover',
+            isVeryFirst ? 'text-text-muted' : 'hover:bg-surface-hover',
           )}
         >
           ← Пред. глава
@@ -250,7 +254,7 @@ function ReaderView({
           disabled={isVeryLast}
           className={clsx(
             'h-11 flex-1 rounded-xl border border-border bg-surface text-sm font-semibold',
-            isVeryLast ? 'opacity-40' : 'hover:bg-surface-hover',
+            isVeryLast ? 'text-text-muted' : 'hover:bg-surface-hover',
           )}
         >
           След. глава →

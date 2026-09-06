@@ -17,7 +17,7 @@ import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ScreenArt } from '@/components/ui/screen-art';
+import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { Spinner } from '@/components/ui/spinner';
 import { useActiveGame } from '@/lib/active-game-context';
@@ -839,7 +839,7 @@ export default function RoomPage() {
             className="h-12 rounded-xl border border-border bg-surface px-4 text-center text-lg font-bold tracking-[0.3em] outline-none focus:border-primary"
           />
         </label>
-        <ScreenArt />
+        <ScreenSpacer />
 
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button
@@ -946,7 +946,7 @@ export default function RoomPage() {
         )}
       </Card>
 
-      <ScreenArt />
+      <ScreenSpacer />
 
       {/* Кнопки стоят под списком, а не над ним, и по двум причинам сразу.
           Во-первых, здесь так честнее по смыслу: сначала смотришь, куда

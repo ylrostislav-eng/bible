@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DuelCountdown } from '@/components/duel-countdown';
 import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
-import { ScreenArt } from '@/components/ui/screen-art';
+import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { useActiveGame } from '@/lib/active-game-context';
@@ -397,9 +397,9 @@ function Lobby({
           коду упирается в то, есть ли кому его отправить прямо сейчас, а
           сыграть хочется сразу. Названия кнопок те же, что в дуэли по
           вопросам, — режимы разные, а действия одни и те же. */}
-      {/* Картинка вместо пустоты, кнопки под ней — у большого пальца
-          (см. `ScreenArt` и `.screen-fill`). */}
-      <ScreenArt />
+      {/* Пустое место отдано обоям, кнопки под ним — у большого пальца
+          (см. `ScreenSpacer` и `.screen-fill`). */}
+      <ScreenSpacer />
 
       <Button onClick={onFind} disabled={busy}>
         {busy ? <Spinner /> : 'Найти соперника'}
@@ -409,7 +409,9 @@ function Lobby({
         type="button"
         onClick={onStart}
         disabled={busy}
-        className="rounded-xl bg-surface-hover px-5 py-3 text-sm font-semibold transition hover:bg-border disabled:opacity-40"
+        // Гасим цветом текста, а не прозрачностью: кнопка лежит прямо на
+        // обоях экрана, и полупрозрачной сквозь неё видно картинку.
+        className="rounded-xl bg-surface-hover px-5 py-3 text-sm font-semibold transition hover:bg-border disabled:text-text-muted"
       >
         Пригласить
       </button>

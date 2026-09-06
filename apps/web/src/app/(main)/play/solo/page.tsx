@@ -17,7 +17,7 @@ import { useCallback, useState } from 'react';
 import { PlayIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ScreenArt } from '@/components/ui/screen-art';
+import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { CompletionHero } from '@/components/ui/completion-hero';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ApiError, apiClient } from '@/lib/api';
@@ -161,7 +161,7 @@ export default function PlayPage() {
           </div>
         </div>
 
-        <ScreenArt />
+        <ScreenSpacer />
 
         <Card className="flex-col gap-3">
           <p className="text-sm font-medium text-text-secondary">Количество вопросов</p>

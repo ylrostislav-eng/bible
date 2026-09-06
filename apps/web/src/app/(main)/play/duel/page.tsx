@@ -22,7 +22,7 @@ import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ScreenArt } from '@/components/ui/screen-art';
+import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { useActiveGame } from '@/lib/active-game-context';
@@ -787,7 +787,7 @@ export default function DuelPage() {
             onChange={setQuestionCount}
           />
         </Card>
-        <ScreenArt />
+        <ScreenSpacer />
 
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={findOpponent} disabled={loading}>
@@ -813,7 +813,7 @@ export default function DuelPage() {
             onChange={setQuestionCount}
           />
         </Card>
-        <ScreenArt />
+        <ScreenSpacer />
 
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={createDuel} disabled={loading}>
@@ -883,7 +883,7 @@ export default function DuelPage() {
             className="h-12 rounded-xl border border-border bg-surface px-4 text-center text-lg font-bold tracking-[0.3em] outline-none focus:border-primary"
           />
         </label>
-        <ScreenArt />
+        <ScreenSpacer />
 
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={fetchJoinPreview} disabled={loading || inviteCodeInput.length !== 6}>
@@ -961,9 +961,9 @@ export default function DuelPage() {
         </Card>
       )}
 
-      {/* Картинка занимает то место, которое иначе осталось бы пустым: см.
-          `ScreenArt`. Кнопки под ней — у большого пальца. */}
-      <ScreenArt />
+      {/* Распорка съедает место, которое иначе осталось бы пустым сверху:
+          см. `ScreenSpacer`. Кнопки под ней — у большого пальца. */}
+      <ScreenSpacer />
 
       {/* Первым — поиск соперника: игра с друзьями упирается в то, есть ли
           друг под рукой прямо сейчас, а сыграть хочется сразу. */}

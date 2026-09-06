@@ -7,14 +7,32 @@ interface ComingSoonProps {
   description: string;
 }
 
+/**
+ * Заглушка режима, до которого ещё не дошли руки.
+ *
+ * ## Почему текст лежит на подложке, а не прямо на фоне
+ *
+ * Раньше лежал прямо на фоне, и это было безопасно, пока фон был ровным
+ * и почти чёрным. С обоями (`ScreenBackground`) середина экрана —
+ * единственная полоса, которую затемнение почти не трогает: там у кадра
+ * сюжет. На «Турнирах» подпись легла ровно на подсвеченные листья венка
+ * и стала едва читаемой.
+ *
+ * Общее правило после этой находки: текст, который лежит прямо на обоях
+ * в средней полосе экрана, обязан иметь свою непрозрачную подложку.
+ * Поднимать затемнение вместо этого нельзя — оно гасит все девять
+ * картинок ради одного экрана.
+ */
 export function ComingSoon({ icon: Icon, title, description }: ComingSoonProps) {
   return (
     <div className="flex min-h-[calc(var(--app-height)*0.7)] flex-col items-center justify-center gap-3 px-6 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
         <Icon className="h-8 w-8 text-primary" />
       </div>
-      <h1 className="text-xl font-bold">{title}</h1>
-      <p className="max-w-xs text-sm text-text-secondary">{description}</p>
+      <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface/95 px-5 py-4">
+        <h1 className="text-xl font-bold">{title}</h1>
+        <p className="max-w-xs text-sm text-text-secondary">{description}</p>
+      </div>
       <span className="mt-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-text-muted">
         В разработке
       </span>
