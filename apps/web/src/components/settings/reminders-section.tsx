@@ -34,7 +34,7 @@ export function RemindersSection() {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4">
+    <section className="flex flex-col gap-3 glass-card rounded-2xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-semibold">Напоминания в Telegram</h2>

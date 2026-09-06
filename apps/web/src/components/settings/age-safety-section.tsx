@@ -87,7 +87,7 @@ export function AgeSafetySection() {
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-4">
+    <section className="flex flex-col gap-4 glass-card rounded-2xl p-4">
       <div>
         <h2 className="font-semibold">Возраст и безопасность</h2>
         <p className="mt-0.5 text-sm text-text-secondary">

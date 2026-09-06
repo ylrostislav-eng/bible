@@ -80,7 +80,7 @@ function ReviewRow({ item, onToggle }: { item: AliasRoundItem; onToggle: () => v
   const { word } = item;
 
   return (
-    <li className="overflow-hidden rounded-2xl border border-border bg-surface">
+    <li className="overflow-hidden glass-card rounded-2xl">
       <div className="flex items-stretch">
         <button
           type="button"

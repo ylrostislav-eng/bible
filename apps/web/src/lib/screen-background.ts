@@ -55,9 +55,13 @@ const BACKGROUNDS: ({ prefix: string } & ScreenBackground)[] = [
   { prefix: '/play/alias', file: 'alias', topFade: 0.6, midFade: MID_FADE_BUSY },
   { prefix: '/hot-cold', file: 'hot-cold', topFade: 0.6, midFade: MID_FADE_BUSY },
   { prefix: '/learn', file: 'learn', topFade: 0.6, midFade: MID_FADE_OPEN },
-  // Столб света упирается в самый верх кадра — как раз туда, где
-  // заголовок. Затемняем сильнее остальных.
-  { prefix: '/daily', file: 'daily', topFade: 0.82, midFade: MID_FADE_OPEN },
+  // Единственный кадр, который затемнён и сверху, и в середине. Столб
+  // света упирается в самый верх — туда, где заголовок, — и проходит
+  // насквозь через центр экрана, где лежат карточки. Стеклянная карточка
+  // над ним теряла контраст: приглушённый текст падал до 3.6:1 при
+  // пороге 4.5:1. Одно число здесь дешевле, чем гасить подложку у всех
+  // восьми картинок ради одной (см. `.glass-card` в `globals.css`).
+  { prefix: '/daily', file: 'daily', topFade: 0.82, midFade: MID_FADE_BUSY },
   { prefix: '/tournaments', file: 'tournaments', topFade: 0.62, midFade: MID_FADE_OPEN },
 ];
 

@@ -236,7 +236,7 @@ export default function HotColdDuelPage() {
               надо даже больше: помимо «слово загадано» нужно объяснить,
               почему у соперника видно числа и не видно слов. */}
           {!duelOver && state.guesses.length === 0 && (
-            <section className="rounded-2xl border border-border bg-surface p-4">
+            <section className="glass-card rounded-2xl p-4">
               <p className="text-sm font-semibold">Слово загадано — кто найдёт первым</p>
               <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
                 Пишите русские слова: на каждое игра ответит, какое место оно занимает по близости к
@@ -384,7 +384,7 @@ function Lobby({
         </div>
       </header>
 
-      <section className="rounded-2xl border border-border bg-surface p-4">
+      <section className="glass-card rounded-2xl p-4">
         <p className="text-sm leading-relaxed text-text-secondary">
           Двое ищут одно и то же слово. Вы видите, на каком месте стоят слова соперника, но не сами
           слова — так что подсмотреть не выйдет, а вот понервничать придётся.
@@ -491,7 +491,7 @@ function WordLookup({
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-2xl border border-border bg-surface p-3">
+    <section className="flex flex-col gap-2 glass-card rounded-2xl p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold">Словарь · осталось {state.lookupsLeft}</p>
         <button
@@ -639,7 +639,7 @@ function ReadyCard({
   const opponent = state.opponent;
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-2xl border border-border bg-surface p-4">
+      <section className="glass-card rounded-2xl p-4">
         <p className="text-sm font-semibold">Соперник найден</p>
         <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
           Одно слово на двоих. Пишите русские слова — игра ответит, какое место каждое занимает по
@@ -655,7 +655,7 @@ function ReadyCard({
         {state.riddle}
       </p>
 
-      <section className="flex flex-col gap-2 rounded-2xl border border-border bg-surface p-4">
+      <section className="flex flex-col gap-2 glass-card rounded-2xl p-4">
         <ReadyRow name="Вы" ready={state.youReady} />
         <ReadyRow name={opponent?.nickname ?? 'Соперник'} ready={opponent?.ready ?? false} />
       </section>
@@ -771,7 +771,7 @@ function WaitingCard({
     <div className="flex flex-col gap-4">
       {open ? (
         <>
-          <section className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface p-6 text-center">
+          <section className="flex flex-col items-center gap-2 glass-card rounded-2xl p-6 text-center">
             <Spinner />
             <p className="text-base font-semibold">Ищем соперника…</p>
             <p className="text-sm text-text-secondary">
@@ -780,7 +780,7 @@ function WaitingCard({
           </section>
           {/* Код и в подборе остаётся рабочим, но уходит вниз мелким: он
               здесь не то, чего человек ждёт. */}
-          <section className="rounded-2xl border border-border bg-surface p-4 text-center">
+          <section className="glass-card rounded-2xl p-4 text-center">
             <p className="text-xs text-text-muted">Код приглашения</p>
             <p className="mt-1 text-2xl font-bold tracking-[0.3em]">{code}</p>
             {copyButton}
@@ -788,7 +788,7 @@ function WaitingCard({
         </>
       ) : (
         <>
-          <section className="rounded-2xl border border-border bg-surface p-5 text-center">
+          <section className="glass-card rounded-2xl p-5 text-center">
             <p className="text-sm text-text-secondary">Код приглашения</p>
             <p className="mt-2 text-4xl font-bold tracking-[0.3em]">{code}</p>
             {copyButton}
@@ -867,7 +867,7 @@ function Side({
   return (
     <div
       className={clsx(
-        'relative overflow-hidden rounded-2xl border border-border bg-surface px-3 py-3',
+        'relative overflow-hidden glass-card rounded-2xl px-3 py-3',
         flash && 'hot-cold-rival-flash',
       )}
     >

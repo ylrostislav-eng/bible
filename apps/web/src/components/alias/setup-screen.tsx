@@ -324,7 +324,7 @@ function TeamRow({
   const color = ALIAS_TEAM_COLORS[index % ALIAS_TEAM_COLORS.length];
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2">
+    <div className="flex items-center gap-3 glass-card rounded-2xl px-3 py-2">
       <span
         className="h-3 w-3 shrink-0 rounded-full"
         style={{ backgroundColor: color }}
@@ -402,7 +402,7 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-3 py-3 text-left transition hover:border-text-muted"
+      className="flex items-center justify-between gap-4 glass-card rounded-2xl px-3 py-3 text-left transition hover:border-text-muted"
     >
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-text-primary">{label}</span>

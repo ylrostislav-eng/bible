@@ -272,7 +272,7 @@ export default function HotColdPage() {
             </Button>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-3">
+          <div className="flex items-center justify-between gap-3 glass-card rounded-2xl px-3 py-3">
             <div className="min-w-0">
               {/* Не «осталось N»: подсказки не кончаются, а счётчик остатка
                   говорил бы обратное — и человек берёг бы последнюю вместо
@@ -371,7 +371,7 @@ export default function HotColdPage() {
  */
 function HowItWorks({ state }: { state: HotColdState }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4">
+    <section className="glass-card rounded-2xl p-4">
       <p className="text-sm font-semibold">Слово загадано — его надо найти</p>
       <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
         Пишите любые русские слова. На каждое игра ответит, какое место оно занимает по близости к

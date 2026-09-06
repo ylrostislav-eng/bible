@@ -34,7 +34,7 @@ export function ComingSoon({ icon: Icon, title, description }: ComingSoonProps) 
           экрана большому пальцу тянуться. */}
       <div className="my-auto flex flex-col items-center gap-3">
         <ScreenIcon icon={Icon} size="lg" />
-        <div className="glass-edge flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface px-5 py-4">
+        <div className="glass-card flex flex-col items-center gap-2 rounded-2xl px-5 py-4">
           <h1 className="text-xl font-bold">{title}</h1>
           <p className="max-w-xs text-sm text-text-secondary">{description}</p>
           <span className="mt-1 rounded-full bg-surface-hover px-3 py-1 text-xs font-medium text-text-secondary">

@@ -124,7 +124,7 @@ export default function DailyWordPage() {
         </div>
       </header>
 
-      <section className="rounded-2xl border border-border bg-surface p-4">
+      <section className="glass-card rounded-2xl p-4">
         <p className="text-lg leading-snug">{state.gloss}</p>
       </section>
 
@@ -192,7 +192,7 @@ export default function DailyWordPage() {
             </Button>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-3">
+          <div className="flex items-center justify-between gap-3 glass-card rounded-2xl px-3 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold">
                 {state.hintsLeft > 0 ? 'Взять подсказку' : 'Подсказок больше нет'}
