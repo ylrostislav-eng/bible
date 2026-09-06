@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import {
   type FriendSuggestionReason,
   type FriendView,
 } from '@bible-arena/shared';
+import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { TelegramBotService } from '../notifications/telegram-bot.service';
@@ -173,6 +175,31 @@ export class FriendsService {
     });
     if (!recipientExists) {
       throw new NotFoundException('Пользователь не найден');
+    }
+
+    // Чёрный список действует в обе стороны и проверяется здесь, на
+    // сервере, а не только кнопкой в интерфейсе.
+    //
+    // Интерфейс кнопку прячет (см. `canAddFriend` в списке лидеров и
+    // `relation` в поиске), но прятать — не значит запрещать: запрос к
+    // `/friends/requests` отправляется в две строки без всякого
+    // интерфейса. То есть заблокированный мог и дальше слать заявки тому,
+    // кто его заблокировал, — а заявка приходит уведомлением, и блокировка
+    // переставала защищать ровно от того, ради чего её и нажимают.
+    const ban = await this.prisma.roomBan.findFirst({
+      where: {
+        OR: [
+          { leaderId: currentUserId, bannedUserId: toUserId },
+          { leaderId: toUserId, bannedUserId: currentUserId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (ban) {
+      // Одна и та же формулировка в обе стороны намеренно: сообщение «вас
+      // заблокировали» рассказало бы отправителю про чужое решение,
+      // которое его не касается.
+      throw new ForbiddenException('Заявку отправить нельзя');
     }
 
     // Everything runs under an advisory lock keyed on the *pair* of users
@@ -380,10 +407,56 @@ export class FriendsService {
    * `null` — не ошибка, а состояние «бот не настроен»: кнопка приглашения
    * тогда просто не показывается.
    */
+  /**
+   * Ссылка-приглашение.
+   *
+   * ## Почему в ссылке случайный токен, а не `id` пользователя
+   *
+   * Раньше стоял `id`, и это была дыра. Параметр запуска
+   * (`?startapp=...`) приходит от клиента и ничем не подписан: подставить
+   * туда можно что угодно. А `linkFromInvite` для **нового** аккаунта
+   * создаёт не заявку, а сразу взаимную дружбу — и правильно, потому что
+   * ссылку раздаёт сам владелец, и это его согласие.
+   *
+   * Вместе эти два свойства давали следующее: `id` любого игрока виден в
+   * списке лидеров, значит достаточно было завести свежий аккаунт и
+   * открыть приложение с `ref_<чужой id>`, чтобы стать другом кого угодно
+   * без его ведома — включая ребёнка. А дружба открывает личный чат: он
+   * разрешён только друзьям, и это единственная преграда между взрослым и
+   * чужим ребёнком в этом приложении.
+   *
+   * Случайный токен закрывает дыру целиком: подставить чужой нельзя,
+   * угадать — тоже. Знание токена и есть согласие пригласившего, потому
+   * что узнать его можно только от него самого.
+   *
+   * ## Почему лениво
+   *
+   * Ссылка нужна не всем и не всегда, а колонка с уникальным индексом
+   * дешевле, когда она заполнена у десятка человек, а не у всех.
+   */
   async getInviteLink(currentUserId: string): Promise<string | null> {
     const botUsername = await this.telegramBot.getBotUsername();
     if (!botUsername) return null;
-    return `https://t.me/${botUsername}/app?startapp=ref_${currentUserId}`;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { inviteToken: true },
+    });
+    if (!user) return null;
+
+    let token = user.inviteToken;
+    if (!token) {
+      // 24 байта в base64url — 32 символа, столько же энтропии, сколько у
+      // хорошего пароля. Меньше брать нельзя: токен раздаётся открыто и
+      // живёт вечно, то есть время на подбор у нападающего не ограничено.
+      token = randomBytes(24).toString('base64url');
+      await this.prisma.user.update({
+        where: { id: currentUserId },
+        data: { inviteToken: token },
+      });
+    }
+
+    return `https://t.me/${botUsername}/app?startapp=ref_${token}`;
   }
 
   /**
@@ -409,17 +482,21 @@ export class FriendsService {
    * повод не пустить человека в приложение.
    */
   async linkFromInvite(
-    inviterId: string,
+    inviteToken: string,
     inviteeId: string,
     inviteeIsNew: boolean,
   ): Promise<void> {
-    if (inviterId === inviteeId) return;
-
+    // Ищем по токену, а не по `id`: `id` виден в списке лидеров и потому
+    // подставляется кем угодно, а токен знает только тот, кому его дали.
+    // См. `getInviteLink` — там вся история этой правки.
     const inviter = await this.prisma.user.findUnique({
-      where: { id: inviterId },
+      where: { inviteToken },
       select: { id: true },
     });
     if (!inviter) return;
+
+    const inviterId = inviter.id;
+    if (inviterId === inviteeId) return;
 
     if (!inviteeIsNew) {
       await this.sendRequest(inviterId, inviteeId).catch(() => undefined);

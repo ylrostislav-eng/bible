@@ -12,20 +12,30 @@ import { TelegramAuthService } from './telegram-auth.service';
 const DEV_USER_TELEGRAM_ID_BASE = -1n;
 
 /**
- * Разбирает параметр запуска мини-приложения в идентификатор пригласившего.
+ * Разбирает параметр запуска мини-приложения в токен приглашения.
  *
  * Telegram передаёт в `startapp` произвольную строку, и приходит она от
- * клиента, то есть подделать её может кто угодно. Проверка формы здесь — не
- * защита: подставить чужой идентификатор ничего не даёт, потому что связь
- * создаётся **с** тем, кто в ссылке, а не от его имени. Форма проверяется
- * ради другого — чтобы мусор из ссылки не уходил в запрос к базе.
+ * клиента, то есть подделать её может кто угодно.
  *
- * Формат `ref_<id>`: префикс оставляет место другим видам ссылок (позвать в
- * конкретную комнату, открыть главу), не ломая уже разосланные.
+ * Раньше здесь стоял `id` пригласившего, а рядом — рассуждение, что
+ * подставить чужой идентификатор ничего не даёт, «потому что связь
+ * создаётся с тем, кто в ссылке, а не от его имени». Рассуждение было
+ * неверным: связь **взаимная**, и для нового аккаунта она создаётся сразу,
+ * без спроса. То есть, взяв чужой `id` из списка лидеров, можно было
+ * завести свежий аккаунт и стать другом любого игрока — а дружба
+ * открывает личный чат. Теперь в ссылке случайный токен (см.
+ * `FriendsService.getInviteLink`), подставить чужой нельзя.
+ *
+ * Проверка формы — по-прежнему не защита, а фильтр мусора: чтобы всё
+ * подряд из ссылки не уходило в запрос к базе.
+ *
+ * Формат `ref_<токен>`: префикс оставляет место другим видам ссылок
+ * (позвать в конкретную комнату, открыть главу), не ломая уже разосланные.
  */
 function parseInviteParam(startParam?: string): string | null {
   if (!startParam) return null;
-  const match = /^ref_([a-z0-9]{20,32})$/.exec(startParam);
+  // base64url: буквы обоих регистров, цифры, `-` и `_`.
+  const match = /^ref_([A-Za-z0-9_-]{16,64})$/.exec(startParam);
   return match ? match[1] : null;
 }
 
@@ -52,9 +62,9 @@ export class AuthService {
       telegramAvatarUrl: telegramUser.photo_url ?? null,
     });
 
-    const inviterId = parseInviteParam(startParam);
-    if (inviterId) {
-      await this.friendsService.linkFromInvite(inviterId, user.id, created);
+    const inviteToken = parseInviteParam(startParam);
+    if (inviteToken) {
+      await this.friendsService.linkFromInvite(inviteToken, user.id, created);
     }
 
     return this.issueSession(user.id, user.telegramId);

@@ -31,6 +31,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isAllowedAvatarUrl } from './avatar-url';
 import { RedisService } from '../redis/redis.service';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 
@@ -204,6 +205,15 @@ export class UsersService {
       if (existing && existing.id !== id) {
         throw new ConflictException('Этот никнейм уже занят');
       }
+    }
+
+    // Аватар — только с адресов Telegram. Подробности и причина в
+    // `avatar-url.ts`: чужая ссылка в аватаре собирает IP-адреса всех, кто
+    // открыл список лидеров.
+    if (dto.avatarUrl !== undefined && !isAllowedAvatarUrl(dto.avatarUrl)) {
+      throw new BadRequestException(
+        'Ссылка на аватар должна вести на изображение из Telegram',
+      );
     }
 
     // Age band changes can be gated by the guardian PIN, so they need the
@@ -862,8 +872,30 @@ export class UsersService {
   async getLeaderboard(
     currentUserId: string,
   ): Promise<{ entries: LeaderboardEntry[]; me: LeaderboardEntry | null }> {
+    // Детских аккаунтов в общем списке нет, и это не про приватность
+    // рейтинга, а про то, что список раздаёт ники.
+    //
+    // Защита ребёнка в этом приложении держится на одном: найти его можно
+    // только по **точному** нику (см. `FriendsService.search`), то есть
+    // нужно его уже знать. Список лидеров эту защиту обходил целиком —
+    // он показывал ники сам, любому и без спроса. Дальше цепочка
+    // достраивалась в два шага: увидел ник в рейтинге, вбил его в поиск,
+    // отправил заявку.
+    //
+    // Скрывать кнопку «Добавить» у детской строки (`canAddFriend`) было
+    // недостаточно ровно поэтому: она закрывала последний шаг, оставляя
+    // открытым первый — раскрытие ника.
+    //
+    // Своё место ребёнок по-прежнему видит: оно считается ниже, отдельно.
     const top = await this.prisma.user.findMany({
-      where: { nickname: { not: null } },
+      where: {
+        nickname: { not: null },
+        // Именно так, а не `ageBand: { not: 'CHILD' }`: последнее
+        // компилируется в `ageBand <> 'CHILD'`, что для NULL даёт NULL, а
+        // не true, и молча выбрасывает из рейтинга всех, кто ещё не
+        // отвечал на вопрос о возрасте. Тот же случай уже ловили в поиске.
+        OR: [{ ageBand: null }, { ageBand: { not: 'CHILD' } }],
+      },
       orderBy: [{ rating: 'desc' }, { createdAt: 'asc' }],
       take: LEADERBOARD_SIZE,
     });

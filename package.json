@@ -25,7 +25,15 @@
       "@prisma/client",
       "@prisma/engines",
       "prisma"
-    ]
+    ],
+    "overrides": {
+      "qs": ">=6.16.0",
+      "postcss": ">=8.5.6",
+      "nanoid": ">=5.0.9",
+      "valibot": ">=1.4.2",
+      "sharp": ">=0.35.4",
+      "deepmerge-ts": ">=8.0.2"
+    }
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [

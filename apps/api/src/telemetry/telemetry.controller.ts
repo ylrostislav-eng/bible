@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Throttle } from '@nestjs/throttler';
 import type { ErrorReportSource } from '@prisma/client';
 import type { Request } from 'express';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -31,7 +32,16 @@ export class TelemetryController {
    * must never itself require a working auth flow to succeed. Attaches a
    * `userId` best-effort by verifying the bearer token if one is present,
    * without ever throwing on a missing/invalid one.
+   *
+   * Раз пускаем без токена — лимит здесь строже общего.
+   *
+   * Общий бюджет (120 запросов в минуту) для эндпоинта, который **пишет в
+   * базу** и не требует входа, слишком щедр: это готовый способ раздуть
+   * таблицу отчётов чужими данными, а вместе с ней и счёт за базу.
+   * Двадцать в минуту с адреса хватает даже приложению, которое сыплет
+   * ошибками, — сверх этого поток уже не диагностика, а поток.
    */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('client-error')
   async reportClientError(
     @Body() dto: ReportClientErrorDto,

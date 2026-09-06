@@ -22,7 +22,19 @@ import { TelegramAuthService } from './telegram-auth.service';
         // value is already validated as a string by env.validation.ts.
         signOptions: {
           expiresIn: config.get<string>('JWT_EXPIRES_IN') as never,
+          algorithm: 'HS256',
         },
+        /**
+         * Алгоритм проверки задан явно, а не «какой окажется в токене».
+         *
+         * Заголовок токена присылает клиент, и разбор «по заголовку» —
+         * классическая дыра: подпись проверяется тем способом, который
+         * выбрал нападающий. Наш секрет симметричный, поэтому подстановка
+         * `none` или `RS256` тут и так не сработала бы, но полагаться на
+         * это — значит держать защиту на побочном свойстве библиотеки, а
+         * не на своём решении.
+         */
+        verifyOptions: { algorithms: ['HS256'] },
       }),
     }),
   ],

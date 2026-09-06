@@ -46,6 +46,46 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
     if (this.cleanupInterval) clearInterval(this.cleanupInterval);
   }
 
+  /**
+   * Обрезает `extra` до вменяемого размера.
+   *
+   * У всех остальных полей отчёта предел был, а у этого — нет: он
+   * `@IsObject()` без ограничений, и в него влезало всё, что помещалось в
+   * тело запроса. На эндпоинте, который **не требует входа**, это готовый
+   * способ надувать таблицу отчётов чужими данными.
+   *
+   * Отдельная причина отрезать хвост — не размер, а содержимое. `extra`
+   * приходит с клиента и попадает в базу как есть; в аварийной ситуации
+   * туда легко уедет что-нибудь лишнее — кусок ответа сервера, состояние
+   * экрана. Чем меньше этого сохраняется, тем меньше нам потом принадлежит
+   * чужих данных.
+   *
+   * 4 КБ — это несколько десятков полей: для «что было на экране в момент
+   * сбоя» с запасом, для склада — нет.
+   */
+  private static readonly EXTRA_MAX_BYTES = 4096;
+
+  private capExtra(
+    extra: Record<string, unknown> | undefined,
+  ): Prisma.InputJsonValue | undefined {
+    if (!extra) return undefined;
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(extra);
+    } catch {
+      // Циклическая ссылка или BigInt — сохранять нечего, но и ронять
+      // запись отчёта из-за этого нельзя.
+      return undefined;
+    }
+    if (Buffer.byteLength(serialized) <= TelemetryService.EXTRA_MAX_BYTES) {
+      return extra as Prisma.InputJsonValue;
+    }
+    return {
+      truncated: true,
+      preview: serialized.slice(0, TelemetryService.EXTRA_MAX_BYTES),
+    };
+  }
+
   async record(params: RecordErrorParams): Promise<void> {
     try {
       await this.prisma.errorReport.create({
@@ -58,7 +98,7 @@ export class TelemetryService implements OnModuleInit, OnModuleDestroy {
           path: params.path ? params.path.slice(0, 500) : null,
           method: params.method ?? null,
           userId: params.userId ?? null,
-          extra: params.extra as Prisma.InputJsonValue | undefined,
+          extra: this.capExtra(params.extra),
         },
       });
     } catch (err) {
