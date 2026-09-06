@@ -17,6 +17,7 @@ import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ScreenArt } from '@/components/ui/screen-art';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { Spinner } from '@/components/ui/spinner';
 import { useActiveGame } from '@/lib/active-game-context';
@@ -816,7 +817,7 @@ export default function RoomPage() {
 
   if (menu === 'join') {
     return (
-      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Присоединиться по коду</h1>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">Код комнаты</span>
@@ -838,6 +839,8 @@ export default function RoomPage() {
             className="h-12 rounded-xl border border-border bg-surface px-4 text-center text-lg font-bold tracking-[0.3em] outline-none focus:border-primary"
           />
         </label>
+        <ScreenArt />
+
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button
           onClick={() => void joinRoom(joinCode, joinPassword)}
@@ -942,6 +945,8 @@ export default function RoomPage() {
           ))
         )}
       </Card>
+
+      <ScreenArt />
 
       {/* Кнопки стоят под списком, а не над ним, и по двум причинам сразу.
           Во-первых, здесь так честнее по смыслу: сначала смотришь, куда

@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DuelCountdown } from '@/components/duel-countdown';
 import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
+import { ScreenArt } from '@/components/ui/screen-art';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { useActiveGame } from '@/lib/active-game-context';
@@ -396,8 +397,11 @@ function Lobby({
           коду упирается в то, есть ли кому его отправить прямо сейчас, а
           сыграть хочется сразу. Названия кнопок те же, что в дуэли по
           вопросам, — режимы разные, а действия одни и те же. */}
-      {/* `mt-auto` опускает действия к большому пальцу — см. `.screen-fill`. */}
-      <Button className="mt-auto" onClick={onFind} disabled={busy}>
+      {/* Картинка вместо пустоты, кнопки под ней — у большого пальца
+          (см. `ScreenArt` и `.screen-fill`). */}
+      <ScreenArt />
+
+      <Button onClick={onFind} disabled={busy}>
         {busy ? <Spinner /> : 'Найти соперника'}
       </Button>
 

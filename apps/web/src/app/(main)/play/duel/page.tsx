@@ -22,6 +22,7 @@ import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ScreenArt } from '@/components/ui/screen-art';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { useActiveGame } from '@/lib/active-game-context';
@@ -771,7 +772,7 @@ export default function DuelPage() {
 
   if (menu === 'find') {
     return (
-      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Найти соперника</h1>
         <p className="text-sm text-text-secondary">
           Игра посадит вас к тому, кто уже ждёт партию на столько же вопросов. Если сейчас никто не
@@ -786,6 +787,8 @@ export default function DuelPage() {
             onChange={setQuestionCount}
           />
         </Card>
+        <ScreenArt />
+
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={findOpponent} disabled={loading}>
           {loading ? 'Ищем…' : 'Найти соперника'}
@@ -799,7 +802,7 @@ export default function DuelPage() {
 
   if (menu === 'createByCode') {
     return (
-      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Создать дуэль по коду</h1>
         <Card className="flex-col gap-3">
           <QuestionCountSlider
@@ -810,6 +813,8 @@ export default function DuelPage() {
             onChange={setQuestionCount}
           />
         </Card>
+        <ScreenArt />
+
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={createDuel} disabled={loading}>
           {loading ? 'Создание…' : 'Создать дуэль'}
@@ -867,7 +872,7 @@ export default function DuelPage() {
 
     // Step 1: enter the code.
     return (
-      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Присоединиться к дуэли</h1>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">Код приглашения</span>
@@ -878,6 +883,8 @@ export default function DuelPage() {
             className="h-12 rounded-xl border border-border bg-surface px-4 text-center text-lg font-bold tracking-[0.3em] outline-none focus:border-primary"
           />
         </label>
+        <ScreenArt />
+
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={fetchJoinPreview} disabled={loading || inviteCodeInput.length !== 6}>
           {loading ? 'Проверка…' : 'Далее'}
@@ -954,12 +961,13 @@ export default function DuelPage() {
         </Card>
       )}
 
+      {/* Картинка занимает то место, которое иначе осталось бы пустым: см.
+          `ScreenArt`. Кнопки под ней — у большого пальца. */}
+      <ScreenArt />
+
       {/* Первым — поиск соперника: игра с друзьями упирается в то, есть ли
-          друг под рукой прямо сейчас, а сыграть хочется сразу.
-          `mt-auto` опускает кнопки к большому пальцу — см. `.screen-fill`. */}
-      <Button className="mt-auto" onClick={() => setMenu('find')}>
-        Найти соперника
-      </Button>
+          друг под рукой прямо сейчас, а сыграть хочется сразу. */}
+      <Button onClick={() => setMenu('find')}>Найти соперника</Button>
       <Button onClick={() => setMenu('create')} variant="secondary">
         Пригласить
       </Button>
