@@ -116,7 +116,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 function AppChrome({ children }: { children: React.ReactNode }) {
   const { immersive } = useImmersive();
 
-  if (immersive) return <>{children}</>;
+  // Погружение снимает хром приложения, но не отменяет физику экрана:
+  // в полноэкранном режиме сверху всё равно висят часы устройства и
+  // кнопки Telegram, и без отступа карточка Alias уезжает под них.
+  if (immersive) return <div className="pt-safe">{children}</div>;
 
   return (
     <>

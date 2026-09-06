@@ -62,11 +62,33 @@ a {
 }
 
 @layer utilities {
+  /* Отступ сверху складывается из двух разных вещей, и обе нужны.
+   *
+   * `safe-area-inset-top` — железо: чёлка и часы устройства.
+   * `--tg-viewport-content-safe-area-inset-top` — интерфейс Telegram: в
+   * полноэкранном режиме родной шапки нет, а кнопки «закрыть» и «…»
+   * висят поверх нашего экрана, и их высоту сообщает только эта
+   * переменная. Отсюда сложение, а не `max`: это два слоя друг над
+   * другом, а не два измерения одного.
+   *
+   * Переменные публикует `bindViewportCssVars` (см.
+   * `lib/telegram-provider.tsx`) и обновляет сам при повороте экрана.
+   * Вне Telegram их нет — работают запасные значения, и получается
+   * прежнее поведение.
+   *
+   * `max` в первом слагаемом потому, что внутри Telegram `env()` иногда
+   * отдаёт ноль: у веб-вью свои представления о безопасной зоне. */
   .pt-safe {
-    padding-top: env(safe-area-inset-top);
+    padding-top: calc(
+      max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px)) +
+        var(--tg-viewport-content-safe-area-inset-top, 0px)
+    );
   }
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: max(
+      env(safe-area-inset-bottom),
+      var(--tg-viewport-safe-area-inset-bottom, 0px)
+    );
   }
 }
 
