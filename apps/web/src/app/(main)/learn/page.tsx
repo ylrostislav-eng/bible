@@ -13,6 +13,7 @@ import clsx from 'clsx';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LearnIcon } from '@/components/icons/nav-icons';
+import { BookPicker } from '@/components/learn/book-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CompletionHero } from '@/components/ui/completion-hero';
@@ -172,6 +173,7 @@ function ReaderView({
     chapter === BOOKS_BY_ORDER[BOOKS_BY_ORDER.length - 1].chapters;
 
   const [checking, setChecking] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   if (checking) {
     return (
@@ -194,7 +196,19 @@ function ReaderView({
         >
           ←
         </button>
-        <h1 className="text-lg font-bold">{data ? `${data.bookName} ${data.chapter}` : '…'}</h1>
+        {/* Название — кнопка, а не подпись. Через стрелку «назад» до
+            других книг тоже можно дойти, но это два неочевидных шага, и
+            читалка, открытая на закладке, выглядела как тупик. */}
+        <button
+          onClick={() => setPicking(true)}
+          className="flex min-w-0 items-center gap-1.5 text-left"
+          aria-label="Выбрать другую книгу или главу"
+        >
+          <h1 className="truncate text-lg font-bold">
+            {data ? `${data.bookName} ${data.chapter}` : '…'}
+          </h1>
+          <span className="shrink-0 text-xs text-text-muted">▾</span>
+        </button>
       </div>
 
       {loading && <p className="text-center text-sm text-text-secondary">Загрузка…</p>}
@@ -241,6 +255,18 @@ function ReaderView({
           След. глава →
         </button>
       </div>
+
+      {picking && (
+        <BookPicker
+          bookId={bookId}
+          chapter={chapter}
+          onSelect={(nextBookId, nextChapter) => {
+            setPicking(false);
+            onNavigate(nextBookId, nextChapter);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </div>
   );
 }
