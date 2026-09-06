@@ -61,6 +61,23 @@ a {
   text-decoration: none;
 }
 
+/* Безопасные отступы вынесены в переменные, а не спрятаны в утилитах.
+ *
+ * Причина: экрану часто нужен не «отступ по безопасной зоне», а «своё поле
+ * плюс безопасная зона». Двумя классами это не делается — `pt-safe` и
+ * `pt-8` оба задают `padding-top`, и побеждает не тот, что стоит позже в
+ * разметке, а тот, что позже в собранном CSS. Так уже было в кнопках
+ * раунда Alias: `pb-safe pb-4` молча теряли одно из двух.
+ *
+ * С переменной складывается явно: `pt-[calc(var(--safe-top)+2rem)]`. */
+:root {
+  --safe-top: calc(
+    max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px)) +
+      var(--tg-viewport-content-safe-area-inset-top, 0px)
+  );
+  --safe-bottom: max(env(safe-area-inset-bottom), var(--tg-viewport-safe-area-inset-bottom, 0px));
+}
+
 @layer utilities {
   /* Отступ сверху складывается из двух разных вещей, и обе нужны.
    *
@@ -79,16 +96,10 @@ a {
    * `max` в первом слагаемом потому, что внутри Telegram `env()` иногда
    * отдаёт ноль: у веб-вью свои представления о безопасной зоне. */
   .pt-safe {
-    padding-top: calc(
-      max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px)) +
-        var(--tg-viewport-content-safe-area-inset-top, 0px)
-    );
+    padding-top: var(--safe-top);
   }
   .pb-safe {
-    padding-bottom: max(
-      env(safe-area-inset-bottom),
-      var(--tg-viewport-safe-area-inset-bottom, 0px)
-    );
+    padding-bottom: var(--safe-bottom);
   }
 }
 

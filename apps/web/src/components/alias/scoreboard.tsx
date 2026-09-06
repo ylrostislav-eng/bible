@@ -84,7 +84,7 @@ export function AliasHandoffScreen({
   const color = ALIAS_TEAM_COLORS[turnIndex % ALIAS_TEAM_COLORS.length];
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-6 px-4 pb-6 pt-8">
+    <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-6 px-4 pb-[calc(var(--safe-bottom)+1.5rem)] pt-[calc(var(--safe-top)+2rem)]">
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
         <p className="text-sm uppercase tracking-wide text-text-muted">
           {roundsPlayed === 0 ? 'Начинает' : 'Телефон переходит'}

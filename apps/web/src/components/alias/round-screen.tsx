@@ -129,7 +129,10 @@ export function AliasRoundScreen({
 
   return (
     <div
-      className="flex min-h-[100dvh] touch-none flex-col overscroll-none"
+      // Безопасная зона учитывается здесь, внутри экрана: высота считается
+      // по `border-box`, поэтому отступ входит в эти 100dvh, а не
+      // прибавляется к ним. Снаружи такой отступ срезал бы нижние кнопки.
+      className="pt-safe flex min-h-[100dvh] touch-none flex-col overscroll-none"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -203,7 +206,10 @@ export function AliasRoundScreen({
         )}
       </main>
 
-      <div className="pb-safe grid grid-cols-2 gap-3 px-4 pb-4">
+      {/* Одно значение, а не `pb-safe pb-4`: оба класса задают
+          `padding-bottom`, и побеждал тот, что оказался позже в собранном
+          CSS, — то есть одно из двух молча терялось. */}
+      <div className="grid grid-cols-2 gap-3 px-4 pb-[calc(var(--safe-bottom)+1rem)]">
         <button
           type="button"
           // Свой звук: за нажатием сразу идёт «пропустили».

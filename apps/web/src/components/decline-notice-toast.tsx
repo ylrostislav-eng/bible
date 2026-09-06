@@ -32,7 +32,7 @@ export function DeclineNoticeToast() {
       : `Приглашение в «${notice.roomName ?? 'комнату'}» для ${nickname} отклонено`;
 
   return (
-    <div className="pt-safe fixed inset-x-0 top-0 z-40 flex justify-center px-4 pt-3">
+    <div className="fixed inset-x-0 top-0 z-40 flex justify-center px-4 pt-[calc(var(--safe-top)+0.75rem)]">
       <button
         onClick={() => dismiss(notice.id)}
         className="w-full max-w-sm rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm shadow-lg"
