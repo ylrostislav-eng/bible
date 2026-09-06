@@ -12,7 +12,7 @@ import { BIBLE_BOOKS } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LearnIcon } from '@/components/icons/nav-icons';
+import { ChevronDownIcon, LearnIcon } from '@/components/icons/nav-icons';
 import { BookPicker } from '@/components/learn/book-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -196,18 +196,19 @@ function ReaderView({
         >
           ←
         </button>
-        {/* Название — кнопка, а не подпись. Через стрелку «назад» до
-            других книг тоже можно дойти, но это два неочевидных шага, и
-            читалка, открытая на закладке, выглядела как тупик. */}
+        {/* Название — кнопка, а не подпись, и выглядеть должно кнопкой.
+            Первая версия была просто жирным текстом со стрелочкой: нажать
+            можно, но догадаться нельзя — на текст в шапке не нажимают.
+            Фон, рамка и отклик на касание говорят это без слов. */}
         <button
           onClick={() => setPicking(true)}
-          className="flex min-w-0 items-center gap-1.5 text-left"
+          className="flex min-w-0 items-center gap-1.5 rounded-full border border-border bg-surface py-1.5 pr-2.5 pl-3.5 text-left transition active:scale-[0.98]"
           aria-label="Выбрать другую книгу или главу"
         >
-          <h1 className="truncate text-lg font-bold">
+          <h1 className="truncate text-base font-bold">
             {data ? `${data.bookName} ${data.chapter}` : '…'}
           </h1>
-          <span className="shrink-0 text-xs text-text-muted">▾</span>
+          <ChevronDownIcon className="h-4 w-4 shrink-0 text-text-muted" />
         </button>
       </div>
 

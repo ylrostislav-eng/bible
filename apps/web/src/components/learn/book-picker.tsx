@@ -4,6 +4,7 @@ import { BIBLE_BOOKS } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronDownIcon } from '@/components/icons/nav-icons';
 
 const BOOKS_BY_ORDER = [...BIBLE_BOOKS].sort((a, b) => a.order - b.order);
 
@@ -56,10 +57,17 @@ export function BookPicker({ bookId, chapter, onSelect, onClose }: BookPickerPro
 
   // Порталом в `body`, а не по месту в разметке.
   //
-  // Экран обёрнут в анимацию перехода, а любая трансформация создаёт свой
-  // слой: `z-50` внутри него не перебивает `z-30` снаружи, и плавающие
-  // кнопки музыки и чата проступали поверх панели. Живая проверка это и
-  // показала — по коду слои выглядели правильными.
+  // Сейчас работает и без него — проверено: панель поверх плавающих кнопок
+  // музыки и чата в обоих вариантах. Портал стоит на будущее: экран обёрнут
+  // в анимацию перехода, и стоит там появиться `transform` или `filter`,
+  // как обёртка станет своим слоем — тогда `z-50` внутри перестанет
+  // перебивать `z-30` снаружи, и панель окажется под кнопками. Ошибку эту
+  // не видно ни в коде, ни в типах, а всплывёт она от правки в совсем
+  // другом файле.
+  //
+  // (Первая версия этого комментария утверждала, что кнопки уже
+  // проступали. Это было не так: круглый значок на снимке оказался
+  // отладочной панелью Next.js.)
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-bg" role="dialog" aria-label="Выбор книги">
       <div className="flex items-center gap-3 border-b border-border px-4 pt-safe pb-3">
@@ -89,14 +97,20 @@ export function BookPicker({ bookId, chapter, onSelect, onClose }: BookPickerPro
                     onClick={() => setOpenBookId(isOpen ? null : book.id)}
                     aria-expanded={isOpen}
                     className={clsx(
-                      'flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm',
+                      // Разделитель снизу, а не рамка вокруг: шестьдесят
+                      // шесть обведённых карточек превращают список в
+                      // рябь, а линия оставляет его списком.
+                      'flex w-full items-center justify-between border-b border-border/60 px-3 py-3.5 text-left text-sm transition active:bg-surface-hover',
                       isCurrent ? 'font-bold text-primary' : 'font-medium',
-                      isOpen && 'bg-surface',
+                      isOpen && 'border-transparent bg-surface',
                     )}
                   >
                     <span className="min-w-0 truncate">{book.name}</span>
-                    <span className="ml-3 shrink-0 text-xs text-text-muted">
-                      {isOpen ? '▲' : `${book.chapters} гл.`}
+                    <span className="ml-3 flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
+                      {book.chapters} гл.
+                      <ChevronDownIcon
+                        className={clsx('h-3.5 w-3.5 transition', isOpen && 'rotate-180')}
+                      />
                     </span>
                   </button>
 

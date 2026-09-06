@@ -78,6 +78,15 @@ export function LearnIcon(props: IconProps) {
   );
 }
 
+/** Шеврон вниз — знак «здесь раскрывается список». */
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m7 10 5 5 5-5" />
+    </svg>
+  );
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
