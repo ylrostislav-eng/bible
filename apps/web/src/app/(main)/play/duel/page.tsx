@@ -890,7 +890,7 @@ export default function DuelPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+    <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
       <div className="flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
           <FriendsIcon className="h-6 w-6 text-primary" />
@@ -955,8 +955,11 @@ export default function DuelPage() {
       )}
 
       {/* Первым — поиск соперника: игра с друзьями упирается в то, есть ли
-          друг под рукой прямо сейчас, а сыграть хочется сразу. */}
-      <Button onClick={() => setMenu('find')}>Найти соперника</Button>
+          друг под рукой прямо сейчас, а сыграть хочется сразу.
+          `mt-auto` опускает кнопки к большому пальцу — см. `.screen-fill`. */}
+      <Button className="mt-auto" onClick={() => setMenu('find')}>
+        Найти соперника
+      </Button>
       <Button onClick={() => setMenu('create')} variant="secondary">
         Пригласить
       </Button>

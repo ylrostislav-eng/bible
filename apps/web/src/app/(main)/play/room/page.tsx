@@ -853,7 +853,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+    <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
       <div className="flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
           <TournamentIcon className="h-6 w-6 text-primary" />
@@ -865,11 +865,6 @@ export default function RoomPage() {
           </p>
         </div>
       </div>
-
-      <Button onClick={() => setMenu('create')}>Создать комнату</Button>
-      <Button onClick={() => setMenu('join')} variant="secondary">
-        Присоединиться по коду
-      </Button>
 
       {/* Joining from this screen (a public room in the list, or an incoming
           invite) can fail for perfectly ordinary reasons — the room filled up
@@ -947,6 +942,18 @@ export default function RoomPage() {
           ))
         )}
       </Card>
+
+      {/* Кнопки стоят под списком, а не над ним, и по двум причинам сразу.
+          Во-первых, здесь так честнее по смыслу: сначала смотришь, куда
+          можно зайти, и только потом решаешь создавать своё. Во-вторых,
+          вместе с `mt-auto` это опускает их к большому пальцу — телефон
+          держат одной рукой (см. `.screen-fill`). */}
+      <div className="mt-auto flex flex-col gap-3">
+        <Button onClick={() => setMenu('create')}>Создать комнату</Button>
+        <Button onClick={() => setMenu('join')} variant="secondary">
+          Присоединиться по коду
+        </Button>
+      </div>
 
       <Link href="/play" className="text-center text-sm text-text-secondary">
         Назад

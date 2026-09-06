@@ -374,7 +374,7 @@ function Lobby({
   error: string | null;
 }) {
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+    <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
       <header className="flex items-start gap-3">
         <BackLink href="/play" label="Назад к играм" />
         <div className="min-w-0">
@@ -396,7 +396,8 @@ function Lobby({
           коду упирается в то, есть ли кому его отправить прямо сейчас, а
           сыграть хочется сразу. Названия кнопок те же, что в дуэли по
           вопросам, — режимы разные, а действия одни и те же. */}
-      <Button onClick={onFind} disabled={busy}>
+      {/* `mt-auto` опускает действия к большому пальцу — см. `.screen-fill`. */}
+      <Button className="mt-auto" onClick={onFind} disabled={busy}>
         {busy ? <Spinner /> : 'Найти соперника'}
       </Button>
 

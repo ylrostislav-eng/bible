@@ -145,8 +145,11 @@ export default function PlayPage() {
   }, []);
 
   if (phase === 'setup') {
+    // `screen-fill` + `mt-auto` ниже: заголовок остаётся наверху, а всё,
+    // что нажимают, опускается к большому пальцу. Телефон держат одной
+    // рукой, и до верхней трети экрана дотягиваться неудобно.
     return (
-      <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
             <PlayIcon className="h-6 w-6 text-primary" />
@@ -157,7 +160,7 @@ export default function PlayPage() {
           </div>
         </div>
 
-        <Card className="flex-col gap-3">
+        <Card className="mt-auto flex-col gap-3">
           <p className="text-sm font-medium text-text-secondary">Количество вопросов</p>
           <div className="grid grid-cols-4 gap-2">
             {SOLO_QUESTION_COUNT_OPTIONS.map((count) => (
