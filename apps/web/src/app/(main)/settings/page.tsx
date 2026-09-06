@@ -16,7 +16,7 @@ import { AgeSafetySection } from '@/components/settings/age-safety-section';
 import { ReadingComfortSection } from '@/components/settings/reading-comfort-section';
 import { RemindersSection } from '@/components/settings/reminders-section';
 import { SoundSection } from '@/components/settings/sound-section';
-import { BackLink } from '@/components/ui/back-link';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
@@ -61,7 +61,6 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
       <header className="flex items-center gap-3">
-        <BackLink href="/profile" label="Назад в профиль" />
         <h1 className="text-xl font-bold">Настройки</h1>
       </header>
 
@@ -135,6 +134,8 @@ export default function SettingsPage() {
       <AgeSafetySection />
 
       <RemindersSection />
+
+      <ScreenBack href="/profile" label="Назад в профиль" />
     </div>
   );
 }

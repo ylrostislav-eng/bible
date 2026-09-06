@@ -16,7 +16,7 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DuelCountdown } from '@/components/duel-countdown';
-import { BackLink } from '@/components/ui/back-link';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Button } from '@/components/ui/button';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { Spinner } from '@/components/ui/spinner';
@@ -214,7 +214,6 @@ export default function HotColdDuelPage() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-6">
       <header className="flex items-start gap-3">
-        <BackLink href="/play" label="Назад к играм" />
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-text-muted">Дуэль</p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
@@ -352,6 +351,8 @@ export default function HotColdDuelPage() {
           <MyGuesses guesses={state.guesses} />
         </>
       )}
+
+      <ScreenBack href="/play" label="Назад к играм" />
     </div>
   );
 }
@@ -377,7 +378,6 @@ function Lobby({
   return (
     <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
       <header className="flex items-start gap-3">
-        <BackLink href="/play" label="Назад к играм" />
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-text-muted">Дуэль</p>
           <h1 className="text-2xl font-bold">Горячо-холодно</h1>
@@ -443,6 +443,8 @@ function Lobby({
           </button>
         </div>
       </div>
+
+      <ScreenBack href="/play" label="Назад к играм" />
     </div>
   );
 }

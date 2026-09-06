@@ -11,7 +11,7 @@ import {
 import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackLink } from '@/components/ui/back-link';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
@@ -115,7 +115,6 @@ export default function DailyWordPage() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
       <header className="flex items-start gap-3">
-        <BackLink href="/" label="Назад на главную" />
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-text-muted">
             {formatDate(state.date)}
@@ -219,6 +218,8 @@ export default function DailyWordPage() {
           <AttemptDots used={state.attemptsUsed} />
         </>
       )}
+
+      <ScreenBack href="/" label="Назад на главную" />
     </div>
   );
 }

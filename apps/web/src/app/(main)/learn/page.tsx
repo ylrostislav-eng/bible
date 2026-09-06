@@ -16,6 +16,7 @@ import { ChevronDownIcon, LearnIcon } from '@/components/icons/nav-icons';
 import { BookPicker } from '@/components/learn/book-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { CompletionHero } from '@/components/ui/completion-hero';
 import { StreakSection } from '@/components/ui/streak-section';
 import { ApiError, apiClient } from '@/lib/api';
@@ -102,6 +103,12 @@ function ChaptersView({
           </button>
         ))}
       </div>
+
+      {/* «Изучение» — единственный раздел, где выход остался и в шапке
+          тоже: список глав и текст главы прокручиваются на несколько
+          экранов, и выход, до которого надо долистать, выходом быть
+          перестаёт. Нижний при этом такой же, как везде. */}
+      <ScreenBack onClick={onBack} label="Назад к книгам" />
     </div>
   );
 }
@@ -260,6 +267,8 @@ function ReaderView({
           След. глава →
         </button>
       </div>
+
+      <ScreenBack onClick={onBackToChapters} label="Назад к главам" />
 
       {picking && (
         <BookPicker

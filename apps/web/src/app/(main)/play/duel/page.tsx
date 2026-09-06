@@ -16,11 +16,11 @@ import {
   TESTAMENT_NAMES,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -41,6 +41,15 @@ const POLL_INTERVAL_MS = 1200;
 const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
 type Menu = 'menu' | 'find' | 'create' | 'createByCode' | 'join';
+
+/**
+ * Сколько вопросов в партии со случайным соперником — одинаково у всех и
+ * не настраивается (см. `findOpponent`). Отдельным именем, а не
+ * `DUEL_QUESTION_COUNT_DEFAULT` на месте: это не «значение по умолчанию,
+ * которое можно поменять», а условие режима, и подпись на экране обещает
+ * человеку именно его.
+ */
+const FIND_OPPONENT_QUESTION_COUNT = DUEL_QUESTION_COUNT_DEFAULT;
 
 export default function DuelPage() {
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
@@ -313,9 +322,21 @@ export default function DuelPage() {
   /**
    * «Найти соперника» — незнакомец вместо кода от друга.
    *
-   * Число вопросов входит в подбор и потому спрашивается заранее: посадить
-   * того, кто просил пять, к тому, кто просил двадцать, значит навязать
-   * одному из них чужие правила. Лучше подождать, чем начать не ту партию.
+   * ## Почему число вопросов здесь не спрашивается
+   *
+   * Сначала спрашивалось, и рассуждение было такое: число входит в подбор,
+   * а посадить того, кто просил пять, к тому, кто просил двадцать, значит
+   * навязать одному из них чужие правила.
+   *
+   * Рассуждение верное, а вывод из него был сделан неверный. Подбор ищет
+   * точное совпадение, и каждое лишнее значение дробит и без того
+   * небольшую очередь: два человека, готовые играть прямо сейчас, не
+   * встречались только потому, что один двинул ползунок. За настройку,
+   * которую почти никто не менял осознанно, платили ожиданием все.
+   *
+   * Поэтому у случайного соперника условия одни для всех и не
+   * настраиваются вовсе. Кому важно своё число вопросов — тот зовёт друга
+   * или создаёт партию по коду, там ползунок на месте.
    */
   const findOpponent = useCallback(async () => {
     setLoading(true);
@@ -323,7 +344,7 @@ export default function DuelPage() {
     try {
       const res = await apiClient.post<{ sessionId: string; matched: boolean }>(
         '/game/duel/find-opponent',
-        { questionCount },
+        { questionCount: FIND_OPPONENT_QUESTION_COUNT },
       );
       setSessionId(res.sessionId);
     } catch (err) {
@@ -331,7 +352,7 @@ export default function DuelPage() {
     } finally {
       setLoading(false);
     }
-  }, [questionCount]);
+  }, []);
 
   const fetchJoinPreview = useCallback(async () => {
     if (inviteCodeInput.length !== 6) return;
@@ -596,9 +617,7 @@ export default function DuelPage() {
           )}
 
           <Button onClick={reset}>Новая дуэль</Button>
-          <Link href="/" className="text-center text-sm text-text-secondary">
-            На главную
-          </Link>
+          <ScreenBack href="/play" label="Назад к режимам" />
         </div>
       );
     }
@@ -763,9 +782,7 @@ export default function DuelPage() {
         >
           …или создать по коду
         </button>
-        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
-          Назад
-        </button>
+        <ScreenBack onClick={() => setMenu('menu')} />
       </div>
     );
   }
@@ -775,27 +792,17 @@ export default function DuelPage() {
       <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Найти соперника</h1>
         <p className="text-sm text-text-secondary">
-          Игра посадит вас к тому, кто уже ждёт партию на столько же вопросов. Если сейчас никто не
-          ждёт — подождём вместе с вами.
+          Незнакомец, который прямо сейчас ищет партию. Настраивать нечего: у всех одинаковые{' '}
+          {FIND_OPPONENT_QUESTION_COUNT} вопросов. Если сейчас никто не ищет — встанете в очередь и
+          начнёте, как только кто-то придёт.
         </p>
-        <Card className="flex-col gap-3">
-          <QuestionCountSlider
-            label="Количество вопросов"
-            value={questionCount}
-            min={DUEL_QUESTION_COUNT_MIN}
-            max={DUEL_QUESTION_COUNT_MAX}
-            onChange={setQuestionCount}
-          />
-        </Card>
         <ScreenSpacer />
 
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={findOpponent} disabled={loading}>
           {loading ? 'Ищем…' : 'Найти соперника'}
         </Button>
-        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
-          Назад
-        </button>
+        <ScreenBack onClick={() => setMenu('menu')} />
       </div>
     );
   }
@@ -889,9 +896,7 @@ export default function DuelPage() {
         <Button onClick={fetchJoinPreview} disabled={loading || inviteCodeInput.length !== 6}>
           {loading ? 'Проверка…' : 'Далее'}
         </Button>
-        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
-          Назад
-        </button>
+        <ScreenBack onClick={() => setMenu('menu')} />
       </div>
     );
   }
@@ -975,9 +980,7 @@ export default function DuelPage() {
         Присоединиться по коду
       </Button>
 
-      <Link href="/play" className="text-center text-sm text-text-secondary">
-        Назад
-      </Link>
+      <ScreenBack href="/play" label="Назад к режимам" />
     </div>
   );
 }

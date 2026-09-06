@@ -21,9 +21,9 @@ import {
   type AliasTestament,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
-import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Spinner } from '@/components/ui/spinner';
 import { pluralTeams, pluralWords } from '@/lib/plural';
 
@@ -97,12 +97,6 @@ export function AliasSetupScreen({
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6 px-4 pb-[calc(var(--safe-bottom)+9rem)] pt-[calc(var(--safe-top)+0.5rem)]">
       <header className="pt-3">
-        <Link
-          href="/play"
-          className="-ml-1 inline-flex items-center gap-1 py-2 text-sm text-text-secondary transition hover:text-text-primary"
-        >
-          <span aria-hidden>←</span> К режимам
-        </Link>
         <h1 className="mt-1 text-2xl font-bold">Библейский Alias</h1>
         <p className="mt-1 text-sm text-text-secondary">
           Объясняйте слова, не называя их. Один телефон на всю компанию.
@@ -294,6 +288,10 @@ export function AliasSetupScreen({
           <Button onClick={onStart} disabled={starting || !namesFilled || available === 0}>
             {starting ? <Spinner /> : 'Начать игру'}
           </Button>
+          {/* Выход стоит в той же липкой полосе, что и «Начать игру», а не
+              в конце длинной страницы: настройка партии прокручивается, и
+              выход, до которого надо долистать, выходом быть перестаёт. */}
+          <ScreenBack href="/play" label="Назад к режимам" className="h-9" />
         </div>
       </div>
     </div>

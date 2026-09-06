@@ -1,9 +1,9 @@
 'use client';
 
 import type { BannedUserView, FriendSearchResult } from '@bible-arena/shared';
-import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { pluralPlayers } from '@/lib/plural';
@@ -193,9 +193,7 @@ export default function BlacklistPage() {
         </Card>
       )}
 
-      <Link href="/profile" className="text-center text-sm text-text-secondary">
-        Назад
-      </Link>
+      <ScreenBack href="/profile" label="Назад в профиль" />
     </div>
   );
 }

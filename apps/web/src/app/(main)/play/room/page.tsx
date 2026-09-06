@@ -11,11 +11,11 @@ import {
   TESTAMENT_NAMES,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
-import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
@@ -597,9 +597,7 @@ export default function RoomPage() {
           )}
 
           <Button onClick={reset}>Новая комната</Button>
-          <Link href="/" className="text-center text-sm text-text-secondary">
-            На главную
-          </Link>
+          <ScreenBack href="/play" label="Назад к режимам" />
         </div>
       );
     }
@@ -808,9 +806,7 @@ export default function RoomPage() {
         <Button onClick={createRoom} disabled={loading || roomName.trim().length === 0}>
           {loading ? 'Создание…' : 'Создать комнату'}
         </Button>
-        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
-          Назад
-        </button>
+        <ScreenBack onClick={() => setMenu('menu')} />
       </div>
     );
   }
@@ -848,9 +844,7 @@ export default function RoomPage() {
         >
           {loading ? 'Подключение…' : 'Присоединиться'}
         </Button>
-        <button onClick={() => setMenu('menu')} className="text-center text-sm text-text-secondary">
-          Назад
-        </button>
+        <ScreenBack onClick={() => setMenu('menu')} />
       </div>
     );
   }
@@ -960,9 +954,7 @@ export default function RoomPage() {
         </Button>
       </div>
 
-      <Link href="/play" className="text-center text-sm text-text-secondary">
-        Назад
-      </Link>
+      <ScreenBack href="/play" label="Назад к режимам" />
     </div>
   );
 }

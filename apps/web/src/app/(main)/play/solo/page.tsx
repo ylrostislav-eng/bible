@@ -12,10 +12,10 @@ import {
   TESTAMENT_NAMES,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
-import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import { PlayIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
+import { ScreenBack } from '@/components/ui/screen-back';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { CompletionHero } from '@/components/ui/completion-hero';
@@ -189,9 +189,7 @@ export default function PlayPage() {
           {loading ? 'Загрузка…' : 'Начать игру'}
         </Button>
 
-        <Link href="/" className="text-center text-sm text-text-secondary">
-          На главную
-        </Link>
+        <ScreenBack href="/play" label="Назад к режимам" />
       </div>
     );
   }
@@ -255,9 +253,7 @@ export default function PlayPage() {
         )}
 
         <Button onClick={playAgain}>Играть снова</Button>
-        <Link href="/" className="text-center text-sm text-text-secondary">
-          На главную
-        </Link>
+        <ScreenBack href="/play" label="Назад к режимам" />
       </div>
     );
   }
