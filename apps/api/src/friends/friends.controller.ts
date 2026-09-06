@@ -24,13 +24,10 @@ export class FriendsController {
     return this.friendsService.getOverview(user.sub);
   }
 
-  /**
-   * Личная ссылка-приглашение и подготовленное сообщение к ней. Оба поля
-   * `null`, если бот ещё не настроен.
-   */
+  /** Личная ссылка-приглашение. `null`, если бот ещё не настроен. */
   @Get('invite-link')
-  getInviteLink(@CurrentUser() user: JwtPayload) {
-    return this.friendsService.getInvite(user.sub, user.telegramId);
+  async getInviteLink(@CurrentUser() user: JwtPayload) {
+    return { link: await this.friendsService.getInviteLink(user.sub) };
   }
 
   /** Кого предложить в друзья: играли вместе или есть общие друзья. */

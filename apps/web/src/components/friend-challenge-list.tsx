@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiClient } from '@/lib/api';
 import { useChat } from '@/lib/chat-context';
+import { NO_NICKNAME_HINT, playerName } from '@/lib/player-name';
 import { Card } from './ui/card';
 import { QuestionCountSlider } from './ui/question-count-slider';
 import { Spinner } from './ui/spinner';
@@ -243,7 +244,7 @@ export function FriendChallengeList({
                   }
                   className="min-w-0 text-left"
                 >
-                  <p className="truncate text-sm font-semibold">{result.nickname}</p>
+                  <p className="truncate text-sm font-semibold">{playerName(result.nickname)}</p>
                   <p className="text-xs text-text-muted">
                     {result.title} · ур. {result.level}
                   </p>
@@ -293,9 +294,9 @@ export function FriendChallengeList({
                     aria-label={friend.online ? 'В сети' : 'Не в сети'}
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{friend.nickname}</p>
+                    <p className="truncate text-sm font-semibold">{playerName(friend.nickname)}</p>
                     <p className="text-xs text-text-muted">
-                      {friend.title} · ур. {friend.level}
+                      {friend.nickname ? `${friend.title} · ур. ${friend.level}` : NO_NICKNAME_HINT}
                     </p>
                   </div>
                 </button>

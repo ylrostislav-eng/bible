@@ -37,13 +37,6 @@ const SUGGESTION_LIMIT = 10;
  */
 const RECENT_SESSIONS_LIMIT = 50;
 
-/**
- * Текст приглашения. Живёт на сервере, потому что уходит в двух видах —
- * подписью к подготовленному сообщению и подписью к ссылке, — и разъехаться
- * они не должны.
- */
-const INVITE_TEXT = 'Играем вместе в Библейскую арену';
-
 /** Сколько раз каждое значение встретилось. */
 function countBy(values: string[]): Map<string, number> {
   const counts = new Map<string, number>();
@@ -386,27 +379,11 @@ export class FriendsService {
    *
    * `null` — не ошибка, а состояние «бот не настроен»: кнопка приглашения
    * тогда просто не показывается.
-   *
-   * Вместе со ссылкой отдаём `messageId` — подготовленное сообщение, через
-   * которое открывается экран выбора **только людей** (см.
-   * `TelegramBotService.prepareInviteMessage`). Он может быть `null` сам по
-   * себе; тогда клиент откроет обычный «поделиться ссылкой», где в списке
-   * будут и группы с каналами.
    */
-  async getInvite(
-    currentUserId: string,
-    telegramId: string,
-  ): Promise<{ link: string | null; messageId: string | null }> {
+  async getInviteLink(currentUserId: string): Promise<string | null> {
     const botUsername = await this.telegramBot.getBotUsername();
-    if (!botUsername) return { link: null, messageId: null };
-
-    const link = `https://t.me/${botUsername}/app?startapp=ref_${currentUserId}`;
-    const messageId = await this.telegramBot.prepareInviteMessage(
-      BigInt(telegramId),
-      link,
-      INVITE_TEXT,
-    );
-    return { link, messageId };
+    if (!botUsername) return null;
+    return `https://t.me/${botUsername}/app?startapp=ref_${currentUserId}`;
   }
 
   /**

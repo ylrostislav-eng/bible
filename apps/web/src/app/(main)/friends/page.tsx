@@ -9,6 +9,7 @@ import { FriendSuggestionsCard } from '@/components/friend-suggestions-card';
 import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { Card } from '@/components/ui/card';
 import { ApiError, apiClient } from '@/lib/api';
+import { playerName } from '@/lib/player-name';
 import { pluralFriends } from '@/lib/plural';
 
 /** Matches the key `/play/duel` reads on mount to pick up a
@@ -105,7 +106,7 @@ export default function FriendsPage() {
           {overview.incomingRequests.map((req) => (
             <div key={req.id} className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{req.nickname}</p>
+                <p className="truncate text-sm font-semibold">{playerName(req.nickname)}</p>
                 <p className="text-xs text-text-muted">
                   {req.title} · ур. {req.level}
                 </p>
@@ -136,7 +137,7 @@ export default function FriendsPage() {
           <p className="text-sm font-semibold text-text-secondary">Отправленные заявки</p>
           {overview.outgoingRequests.map((req) => (
             <div key={req.id} className="flex items-center justify-between gap-2">
-              <p className="truncate text-sm">{req.nickname}</p>
+              <p className="truncate text-sm">{playerName(req.nickname)}</p>
               <span className="shrink-0 text-xs text-text-muted">Ожидает ответа</span>
             </div>
           ))}
