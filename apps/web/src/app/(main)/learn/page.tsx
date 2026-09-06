@@ -592,14 +592,60 @@ function readChapterFromQuery(params: URLSearchParams): { bookId: number; chapte
   return { bookId, chapter };
 }
 
+/**
+ * Где человек читал в прошлый раз.
+ *
+ * Хранится у него в браузере, а не на сервере: чтение — не результат, за
+ * который отвечает сервер, а место закладки, и лишний запрос на каждое
+ * перелистывание ради неё не окупается. Плата — закладка не переезжает на
+ * другое устройство; если это когда-нибудь станет нужно, место ей в
+ * профиле.
+ *
+ * Хранилище может быть недоступно (приватный просмотр, запрет на данные
+ * сайтов) и тогда бросает на каждом обращении — отсюда `try` вокруг обеих
+ * половин: без закладки «Изучение» работает как раньше, а падать из-за неё
+ * не должно.
+ */
+const LAST_READ_KEY = 'bible-arena:last-read';
+
+function readLastRead(): { bookId: number; chapter: number } | null {
+  try {
+    const raw = window.localStorage.getItem(LAST_READ_KEY);
+    if (!raw) return null;
+    const saved: unknown = JSON.parse(raw);
+    if (!saved || typeof saved !== 'object') return null;
+    const { bookId, chapter } = saved as { bookId?: unknown; chapter?: unknown };
+    if (typeof bookId !== 'number' || typeof chapter !== 'number') return null;
+    // Проверяем так же, как ссылку из адреса: в хранилище могла остаться
+    // закладка от прежнего состава книг, и открывать по ней пустую читалку
+    // хуже, чем показать список.
+    const book = BIBLE_BOOKS.find((item) => item.id === bookId);
+    if (!book || chapter < 1 || chapter > book.chapters) return null;
+    return { bookId, chapter };
+  } catch {
+    return null;
+  }
+}
+
+function saveLastRead(bookId: number, chapter: number): void {
+  try {
+    window.localStorage.setItem(LAST_READ_KEY, JSON.stringify({ bookId, chapter }));
+  } catch {
+    // Закладка — удобство, а не обязательство.
+  }
+}
+
 export default function LearnPage() {
   const searchParams = useSearchParams();
   // Ссылка на главу приходит снаружи — из разбора раунда в Alias, из
   // будущих подсказок и уведомлений. Читаем её один раз при входе: дальше
   // читалка живёт своим состоянием, и переписывать его под адресную строку
   // на каждом перелистывании значило бы ломать кнопку «назад».
+  //
+  // Ссылка сильнее закладки: человек нажал на конкретную главу и ждёт
+  // именно её, а не то, что читал вчера.
   const initial = useMemo(
-    () => readChapterFromQuery(new URLSearchParams(searchParams.toString())),
+    () => readChapterFromQuery(new URLSearchParams(searchParams.toString())) ?? readLastRead(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -607,6 +653,29 @@ export default function LearnPage() {
   const [view, setView] = useState<View>(initial ? 'reader' : 'books');
   const [bookId, setBookId] = useState<number | null>(initial?.bookId ?? null);
   const [chapter, setChapter] = useState<number | null>(initial?.chapter ?? null);
+
+  // Закладка двигается на каждую открытую главу — и на перелистывание, и
+  // на выбор из списка. Отдельной кнопки «запомнить» нет намеренно: место,
+  // которое надо не забыть отметить, забывают отметить.
+  useEffect(() => {
+    if (view === 'reader' && bookId !== null && chapter !== null) {
+      saveLastRead(bookId, chapter);
+    }
+  }, [view, bookId, chapter]);
+
+  // Каждый экран «Изучения» открывается сверху.
+  //
+  // Списки книг и глав и сам текст живут в одном маршруте и меняются
+  // состоянием, а не переходом, — браузеру нечего сбрасывать, и прокрутка
+  // остаётся от предыдущего экрана. Заметнее всего это на перелистывании
+  // глав: нажал «След. глава», а новая открылась где-то с середины. То же
+  // самое, только тише, происходит при переходе от длинного списка глав к
+  // тексту.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    // Мгновенно, а не плавно: человек уже нажал «дальше» и ждёт текст, а
+    // не поездку по экрану.
+  }, [view, bookId, chapter]);
 
   if (view === 'chapters' && bookId !== null) {
     return (
