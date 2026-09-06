@@ -8,6 +8,7 @@ import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendSuggestionsCard } from '@/components/friend-suggestions-card';
 import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { Card } from '@/components/ui/card';
+import { ScreenIcon } from '@/components/ui/screen-icon';
 import { ApiError, apiClient } from '@/lib/api';
 import { playerName } from '@/lib/player-name';
 import { pluralFriends } from '@/lib/plural';
@@ -97,9 +98,7 @@ export default function FriendsPage() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
-          <FriendsIcon className="h-6 w-6 text-primary" />
-        </div>
+        <ScreenIcon icon={FriendsIcon} />
         <div>
           <h1 className="text-xl font-bold">Друзья</h1>
           {overview && (

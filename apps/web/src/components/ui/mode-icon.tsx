@@ -10,6 +10,14 @@ import clsx from 'clsx';
  * Цвет берётся из `lib/mode-theme.ts` и держится тихо: заливка в 12%,
  * кольцо в 35%. Сама иконка идёт полным цветом — она мелкая, и на
  * приглушённой заливке ей нужен контраст.
+ *
+ * ## Почему здесь не `.glass`, хотя выглядит похоже
+ *
+ * Медальон режима живёт внутри карточки меню, а карточка непрозрачная:
+ * `backdrop-filter` размывал бы её же, и вместо обоев вышел бы светлый
+ * прямоугольник. Поэтому стеклянность тут собрана без прозрачности —
+ * блик сверху, тёмная грань снизу и тень наружу. Снаружи язык тот же,
+ * что у `ScreenIcon` в шапках экранов, где стекло настоящее.
  */
 export function ModeIcon({
   accent,
@@ -22,10 +30,21 @@ export function ModeIcon({
 }) {
   return (
     <div
-      className={clsx('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl', className)}
+      className={clsx(
+        'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
+        // Тень по контуру значка: он мелкий и светлый, а под ним теперь
+        // блик — без тени края начинают теряться.
+        '[&>svg]:drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]',
+        className,
+      )}
       style={{
         backgroundColor: `${accent}1f`,
-        boxShadow: `inset 0 0 0 1px ${accent}59`,
+        boxShadow: [
+          `inset 0 0 0 1px ${accent}59`,
+          'inset 0 1px 0 rgba(255, 255, 255, 0.16)',
+          'inset 0 -1px 0 rgba(0, 0, 0, 0.25)',
+          '0 4px 12px rgba(0, 0, 0, 0.3)',
+        ].join(', '),
         color: accent,
       }}
     >

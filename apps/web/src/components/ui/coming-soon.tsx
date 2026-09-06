@@ -1,4 +1,5 @@
 import { ScreenBack } from './screen-back';
+import { ScreenIcon } from './screen-icon';
 import type { ComponentType } from 'react';
 
 interface ComingSoonProps {
@@ -25,21 +26,26 @@ interface ComingSoonProps {
  */
 export function ComingSoon({ icon: Icon, title, description }: ComingSoonProps) {
   return (
-    <div className="flex min-h-[calc(var(--app-height)*0.7)] flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
-        <Icon className="h-8 w-8 text-primary" />
+    <div className="screen-fill px-6 text-center">
+      {/* Сообщение висит по центру, а выход уходит вниз, как на всех
+          остальных экранах. Раньше выход стоял сразу под сообщением, то
+          есть в середине экрана: на «Турнирах» он попадал ровно на
+          подсвеченный венок обоев и терял контраст — да и до середины
+          экрана большому пальцу тянуться. */}
+      <div className="my-auto flex flex-col items-center gap-3">
+        <ScreenIcon icon={Icon} size="lg" />
+        <div className="glass-edge flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface px-5 py-4">
+          <h1 className="text-xl font-bold">{title}</h1>
+          <p className="max-w-xs text-sm text-text-secondary">{description}</p>
+          <span className="mt-1 rounded-full bg-surface-hover px-3 py-1 text-xs font-medium text-text-secondary">
+            В разработке
+          </span>
+        </div>
       </div>
-      <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface/95 px-5 py-4">
-        <h1 className="text-xl font-bold">{title}</h1>
-        <p className="max-w-xs text-sm text-text-secondary">{description}</p>
-      </div>
-      <span className="mt-2 rounded-full bg-surface px-3 py-1 text-xs font-medium text-text-muted">
-        В разработке
-      </span>
       {/* Экран, на котором нечего делать, обязан хотя бы выпускать. Здесь
           этого не было: человек заходил в «Турниры», видел «в разработке»
           и оставался с ним наедине. */}
-      <ScreenBack href="/" label="Назад на главную" className="mt-2" />
+      <ScreenBack href="/" label="Назад на главную" />
     </div>
   );
 }

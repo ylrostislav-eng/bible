@@ -17,6 +17,7 @@ import { BookPicker } from '@/components/learn/book-picker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScreenBack } from '@/components/ui/screen-back';
+import { ScreenIcon } from '@/components/ui/screen-icon';
 import { CompletionHero } from '@/components/ui/completion-hero';
 import { StreakSection } from '@/components/ui/streak-section';
 import { ApiError, apiClient } from '@/lib/api';
@@ -34,9 +35,7 @@ function BooksView({ onSelectBook }: { onSelectBook: (bookId: number) => void })
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
-          <LearnIcon className="h-6 w-6 text-primary" />
-        </div>
+        <ScreenIcon icon={LearnIcon} />
         <div>
           <h1 className="text-xl font-bold">Изучение</h1>
           <p className="text-sm text-text-secondary">Синодальный перевод</p>
@@ -84,7 +83,7 @@ function ChaptersView({
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-text-secondary"
+          className="glass flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"
           aria-label="Назад к книгам"
         >
           ←
@@ -198,7 +197,7 @@ function ReaderView({
       <div className="flex items-center gap-3">
         <button
           onClick={onBackToChapters}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-text-secondary"
+          className="glass flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"
           aria-label="Назад к главам"
         >
           ←
@@ -209,7 +208,7 @@ function ReaderView({
             Фон, рамка и отклик на касание говорят это без слов. */}
         <button
           onClick={() => setPicking(true)}
-          className="flex min-w-0 items-center gap-1.5 rounded-full border border-border bg-surface py-1.5 pr-2.5 pl-3.5 text-left transition active:scale-[0.98]"
+          className="glass flex min-w-0 items-center gap-1.5 rounded-full py-1.5 pr-2.5 pl-3.5 text-left transition active:scale-[0.98]"
           aria-label="Выбрать другую книгу или главу"
         >
           <h1 className="truncate text-base font-bold">

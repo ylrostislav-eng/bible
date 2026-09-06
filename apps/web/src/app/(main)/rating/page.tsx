@@ -5,6 +5,7 @@ import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { RatingIcon } from '@/components/icons/nav-icons';
 import { Card } from '@/components/ui/card';
+import { ScreenIcon } from '@/components/ui/screen-icon';
 import { UserActionSheet } from '@/components/user-action-sheet';
 import { ApiError, apiClient } from '@/lib/api';
 import { playerName } from '@/lib/player-name';
@@ -165,9 +166,7 @@ export default function RatingPage() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pt-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
-          <RatingIcon className="h-6 w-6 text-primary" />
-        </div>
+        <ScreenIcon icon={RatingIcon} />
         <div>
           <h1 className="text-xl font-bold">Знания</h1>
           <p className="text-sm text-text-secondary">Лучшие по знанию Библии</p>

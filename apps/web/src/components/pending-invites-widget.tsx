@@ -37,7 +37,7 @@ export function PendingInvitesWidget() {
     <>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed right-20 bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-text-primary shadow-lg ring-2 ring-primary"
+        className="glass fixed right-20 bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full text-text-primary ring-2 ring-primary"
         aria-label="Приглашения"
       >
         <TournamentIcon className="h-6 w-6" />

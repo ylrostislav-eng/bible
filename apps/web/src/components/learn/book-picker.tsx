@@ -73,7 +73,7 @@ export function BookPicker({ bookId, chapter, onSelect, onClose }: BookPickerPro
       <div className="flex items-center gap-3 border-b border-border px-4 pt-safe pb-3">
         <button
           onClick={onClose}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-text-secondary"
+          className="glass flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary"
           aria-label="Закрыть выбор книги"
         >
           ✕

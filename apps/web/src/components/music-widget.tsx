@@ -71,7 +71,7 @@ export function MusicWidget() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Громкость музыки"
-        className="fixed bottom-[calc(var(--safe-bottom)+6rem)] left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-surface text-text-primary shadow-lg ring-1 ring-border"
+        className="glass fixed bottom-[calc(var(--safe-bottom)+6rem)] left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-text-primary"
       >
         <NoteIcon muted={muted} />
       </button>

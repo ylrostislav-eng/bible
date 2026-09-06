@@ -32,7 +32,7 @@ export function BackArrow({
     <Link
       href={href}
       aria-label={label}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-text-secondary transition hover:bg-surface-hover hover:text-text-primary"
+      className="glass flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-secondary transition hover:text-text-primary"
     >
       ←
     </Link>

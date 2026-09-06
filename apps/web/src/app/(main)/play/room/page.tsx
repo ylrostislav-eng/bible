@@ -16,6 +16,7 @@ import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
+import { ScreenIcon } from '@/components/ui/screen-icon';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
@@ -377,9 +378,7 @@ export default function RoomPage() {
       return (
         <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
-              <TournamentIcon className="h-6 w-6 text-primary" />
-            </div>
+            <ScreenIcon icon={TournamentIcon} />
             <div className="min-w-0">
               <h1 className="truncate text-xl font-bold">{roomState.roomName ?? 'Комната'}</h1>
               <p className="text-sm text-text-secondary">
@@ -852,9 +851,7 @@ export default function RoomPage() {
   return (
     <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
-          <TournamentIcon className="h-6 w-6 text-primary" />
-        </div>
+        <ScreenIcon icon={TournamentIcon} />
         <div>
           <h1 className="text-xl font-bold">Комната</h1>
           <p className="text-sm text-text-secondary">

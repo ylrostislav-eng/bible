@@ -16,6 +16,7 @@ import { useCallback, useState } from 'react';
 import { PlayIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
+import { ScreenIcon } from '@/components/ui/screen-icon';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { CompletionHero } from '@/components/ui/completion-hero';
@@ -152,9 +153,7 @@ export default function PlayPage() {
     return (
       <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface">
-            <PlayIcon className="h-6 w-6 text-primary" />
-          </div>
+          <ScreenIcon icon={PlayIcon} />
           <div>
             <h1 className="text-xl font-bold">Одиночная игра</h1>
             <p className="text-sm text-text-secondary">Проверьте свои знания Библии</p>

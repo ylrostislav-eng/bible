@@ -27,7 +27,7 @@ export function ChatWidget() {
     return (
       <button
         onClick={openList}
-        className="fixed right-4 bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg"
+        className="glass-edge fixed right-4 bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary"
         aria-label="Чаты"
       >
         <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6">
