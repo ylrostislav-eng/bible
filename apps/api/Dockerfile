@@ -36,7 +36,12 @@ RUN pnpm --filter @bible-arena/api build
 # Здесь это ловится сразу, и в логе сборки видно, что на самом деле лежит
 # в `dist` — без этого причину приходится угадывать по одной строке
 # ошибки в контейнере, который уже мёртв.
-RUN ls -la apps/api/dist \
+RUN echo '--- что лежит в apps/api ---' \
+  && ls -la apps/api \
+  && echo '--- настройки сборки, как их видит контейнер ---' \
+  && cat apps/api/tsconfig.build.json \
+  && echo '--- где на самом деле оказался main.js ---' \
+  && find /app -maxdepth 5 -name 'main.js' -not -path '*/node_modules/*' \
   && test -f apps/api/dist/main.js
 
 ENV NODE_ENV=production
