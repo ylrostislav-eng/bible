@@ -4,6 +4,7 @@ import {
   bindViewportCssVars,
   expandViewport,
   init,
+  isFullscreen,
   isTMA,
   miniAppReady,
   mountMiniApp,
@@ -54,6 +55,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     expandViewport();
 
     let unbindCssVars: (() => void) | undefined;
+    let unsubFullscreen: (() => void) | undefined;
     let cancelled = false;
 
     void (async () => {
@@ -68,6 +70,17 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           unbindCssVars = bindViewportCssVars();
         }
         await requestFullscreen.ifAvailable();
+
+        // Класс на корне — единственный способ узнать в стилях, что режим
+        // включён. Нужен потому, что Telegram сообщает высоту собственных
+        // кнопок («Закрыть», «⌄ •••») нулём: складывать оказалось не с
+        // чем, и шапка экрана ложилась прямо под них. В полноэкранном
+        // режиме место под них резервируется явно — см. `globals.css`.
+        const syncFullscreenClass = () => {
+          document.documentElement.classList.toggle('tg-fullscreen', isFullscreen());
+        };
+        syncFullscreenClass();
+        unsubFullscreen = isFullscreen.sub(syncFullscreenClass);
       } catch {
         // Отказ в полноэкранном режиме не повод ронять приложение: оно
         // остаётся работоспособным в обычном, просто с шапкой Telegram.
@@ -76,7 +89,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      unsubFullscreen?.();
       unbindCssVars?.();
+      document.documentElement.classList.remove('tg-fullscreen');
       cleanup();
     };
   }, []);

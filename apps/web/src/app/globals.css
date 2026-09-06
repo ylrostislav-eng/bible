@@ -76,6 +76,30 @@ a {
       var(--tg-viewport-content-safe-area-inset-top, 0px)
   );
   --safe-bottom: max(env(safe-area-inset-bottom), var(--tg-viewport-safe-area-inset-bottom, 0px));
+
+  /* Высота окна, а не экрана. В полноэкранном режиме `100dvh` больше того,
+   * что видно: низ уезжает за край, и нижние кнопки раунда обрезались.
+   * Telegram сообщает свою высоту сам, `100dvh` остаётся запасом для
+   * обычного браузера. */
+  --app-height: var(--tg-viewport-stable-height, 100dvh);
+}
+
+/* Место под кнопки Telegram («Закрыть» слева, «⌄ •••» справа).
+ *
+ * По уму его должна сообщать `--tg-viewport-content-safe-area-inset-top`,
+ * но живая проверка показала ноль: складывать оказалось не с чем, и шапка
+ * экрана легла прямо под кнопки. Поэтому здесь нижняя граница — 3.5rem,
+ * измеренные по скриншоту с iPhone. Настоящее значение, если Telegram его
+ * однажды пришлёт, победит: берётся большее из двух.
+ *
+ * Только для полноэкранного режима: в обычном эти кнопки живут в родной
+ * шапке, за пределами нашего экрана, и резервировать под них нечего.
+ * Класс ставит `lib/telegram-provider.tsx`. */
+:root.tg-fullscreen {
+  --safe-top: calc(
+    max(env(safe-area-inset-top), var(--tg-viewport-safe-area-inset-top, 0px)) +
+      max(var(--tg-viewport-content-safe-area-inset-top, 0px), 3.5rem)
+  );
 }
 
 @layer utilities {
