@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import type { FriendsListResponse } from '@bible-arena/shared';
+import type { FriendSuggestion, FriendsListResponse } from '@bible-arena/shared';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { FriendChallengeList } from '@/components/friend-challenge-list';
 import { FriendSuggestionsCard } from '@/components/friend-suggestions-card';
@@ -20,6 +20,8 @@ export default function FriendsPage() {
   const router = useRouter();
 
   const [overview, setOverview] = useState<FriendsListResponse | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<FriendSuggestion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Bumped after accept/decline/unfriend to make FriendChallengeList refetch
@@ -30,7 +32,28 @@ export default function FriendsPage() {
     let cancelled = false;
     async function load() {
       try {
-        const data = await apiClient.get<FriendsListResponse>('/friends');
+        // Ссылка-приглашение берётся тем же заходом, что и список: своим
+        // запросом она приходила позже всего, и карточка «Позвать друзей»
+        // появлялась последней, сдвигая уже нарисованную страницу.
+        //
+        // `allSettled`, а не `all`: приглашение — необязательная часть
+        // экрана, и его неудача не должна утаскивать за собой список
+        // друзей, ради которого сюда и заходят.
+        const [list, invite, hints] = await Promise.allSettled([
+          apiClient.get<FriendsListResponse>('/friends'),
+          apiClient.get<{ link: string | null }>('/friends/invite-link'),
+          apiClient.get<FriendSuggestion[]>('/friends/suggestions'),
+        ]);
+        if (!cancelled && invite.status === 'fulfilled') {
+          setInviteLink(invite.value.link);
+        }
+        // Не удались подсказки — пустой список, а не вечная загрузка:
+        // карточка тогда просто не покажется.
+        if (!cancelled) {
+          setSuggestions(hints.status === 'fulfilled' ? hints.value : []);
+        }
+        if (list.status === 'rejected') throw list.reason;
+        const data = list.value;
         if (!cancelled) {
           setOverview(data);
           setLoadError(null);
@@ -93,12 +116,15 @@ export default function FriendsPage() {
       {/* Выше списка намеренно: пустой экран друзей — это не «список из
           нуля», а вопрос «где брать людей», и ответ должен стоять там, где
           вопрос задаётся. */}
-      <InviteFriendsCard />
+      <InviteFriendsCard link={inviteLink} />
 
       {/* Ниже приглашения, но выше заявок и списка: «позвать своих» —
           действие, а подсказки — просмотр, и предлагать просмотр раньше
           действия значит увести человека листать незнакомые ники. */}
-      <FriendSuggestionsCard onAdded={() => setRefreshKey((k) => k + 1)} />
+      <FriendSuggestionsCard
+        suggestions={suggestions}
+        onAdded={() => setRefreshKey((k) => k + 1)}
+      />
 
       {overview && overview.incomingRequests.length > 0 && (
         <Card className="flex-col gap-3">

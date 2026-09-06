@@ -1,9 +1,8 @@
 'use client';
 
 import { shareURL } from '@telegram-apps/sdk-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { apiClient } from '@/lib/api';
 
 /** Подпись к ссылке. Собирается на клиенте: `shareURL` уходит в Telegram
  * напрямую, до сервера этот путь не доходит. */
@@ -35,6 +34,13 @@ const INVITE_TEXT = 'Играем вместе в Библейскую арен�
  * Так что если снова захочется «показывать контакты» — способ известен и
  * дело не в том, что его не нашли.
  *
+ * ## Почему ссылка приходит пропсом, а не запрашивается здесь
+ *
+ * Карточка запрашивала её сама и оттого появлялась последней: список
+ * друзей уже нарисован, а она возникает поверх и сдвигает страницу.
+ * Теперь страница берёт ссылку тем же заходом, что и список, и обе
+ * карточки появляются разом.
+ *
  * ## Что происходит по ссылке
  *
  * Ссылка несёт `startapp=ref_<id>`, и сервер на входе связывает пришедшего
@@ -42,26 +48,8 @@ const INVITE_TEXT = 'Играем вместе в Библейскую арен�
  * (см. `FriendsService.linkFromInvite`). Поэтому позвавший видит человека
  * сразу после его первого входа, а не ищет потом по нику.
  */
-export function InviteFriendsCard() {
-  const [link, setLink] = useState<string | null>(null);
+export function InviteFriendsCard({ link }: { link: string | null }) {
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const data = await apiClient.get<{ link: string | null }>('/friends/invite-link');
-        if (!cancelled) setLink(data.link);
-      } catch {
-        // Молча: приглашение — не то, ради чего открывают экран друзей, и
-        // сообщение об ошибке здесь только мешало бы списку.
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Ссылки нет, пока у сервера нет токена бота. Тогда и кнопки нет: пустая
   // кнопка, которая ничего не делает, хуже её отсутствия.

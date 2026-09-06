@@ -141,19 +141,37 @@ const TRACK_LEVEL = 0.3;
 const TRACK_HEAD_SILENCE = 0.5;
 const TRACK_TAIL_SILENCE = 0.6;
 
+/**
+ * Плавный вход записи: сколько шагов и по сколько миллисекунд.
+ *
+ * Было четыре секунды. Задумано было верно — музыка, включающаяся рывком,
+ * звучит как случайно нажатая кнопка, — но на слух это читалось не как
+ * плавность, а как «музыка опаздывает»: приложение открыто, палец уже
+ * коснулся экрана, а тишина держится. Полторы секунды достаточно, чтобы
+ * вход не резал, и мало, чтобы его принять за задержку.
+ */
+const FADE_IN_STEPS = 30;
+const FADE_IN_STEP_MS = 50;
+
 /** Где остановились. Переход в чтение и обратно не должен начинать заново. */
 let trackPosition = 0;
 
 export function AmbientMusic() {
   const { settings, audioContext, unlocked } = useSound();
-  const on = settings.musicEnabled && settings.musicVolume > 0 && unlocked;
+  const wanted = settings.musicEnabled && settings.musicVolume > 0;
+  const on = wanted && unlocked;
 
   // Есть ли записанная тема. `null` — ещё не ответила.
   const [hasTrack, setHasTrack] = useState<boolean | null>(null);
   useEffect(() => {
-    if (!on || hasTrack !== null) return;
-    // Спрашиваем только когда музыка действительно нужна: тянуть
-    // мегабайты тому, кто музыку выключил, — расход чужого трафика.
+    // Спрашиваем, не дожидаясь первого касания: раньше проба шла после
+    // разблокировки, и к музыке добавлялся ещё один круг до сервера —
+    // человек уже нажал, а тишина держалась. Теперь к моменту касания
+    // ответ обычно уже есть.
+    //
+    // Условие всё то же «музыка нужна»: тянуть мегабайты тому, кто её
+    // выключил, — расход чужого трафика.
+    if (!wanted || hasTrack !== null) return;
     const probe = new Audio();
     probe.preload = 'metadata';
     const found = () => setHasTrack(true);
@@ -166,9 +184,13 @@ export function AmbientMusic() {
       probe.removeEventListener('error', missing);
       probe.src = '';
     };
-  }, [on, hasTrack]);
+  }, [wanted, hasTrack]);
 
-  useTrack(on && hasTrack === true, settings.musicVolume);
+  // Записи разблокировка не нужна так, как синтезу: `<audio>` живёт вне
+  // Web Audio, и браузер иногда пускает его сразу. Поэтому пробуем играть,
+  // не дожидаясь касания, а `unlocked` служит поводом попробовать ещё раз —
+  // там, где не пустили с первого раза.
+  useTrack(wanted && hasTrack === true, settings.musicVolume, unlocked);
   // Синтез играет, пока проба не сказала «есть запись», — а не пока она
   // не сказала «нет».
   //
@@ -196,7 +218,7 @@ export function AmbientMusic() {
  * 0.03, потому что вход ещё шёл. Ползунок меняет громкость на живом
  * элементе, ничего не пересоздавая.
  */
-function useTrack(active: boolean, volume: number) {
+function useTrack(active: boolean, volume: number, unlocked: boolean) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const targetRef = useRef(0);
   const fadingRef = useRef(false);
@@ -214,6 +236,16 @@ function useTrack(active: boolean, volume: number) {
     const audio = audioRef.current;
     if (audio && !fadingRef.current) audio.volume = targetRef.current;
   }, [volume]);
+
+  // Первый `play()` браузер обычно отклоняет: до жеста звук не пускают.
+  // Отклонение не ошибка и не повод сдаваться — на первом же касании
+  // пробуем снова. Так музыка начинается ровно тогда, когда её разрешили,
+  // а не кругом позже: элемент к этому моменту уже создан и прогружен.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!unlocked || !audio || !audio.paused) return;
+    void audio.play().catch(() => undefined);
+  }, [unlocked]);
 
   useEffect(() => {
     if (!active) return;
@@ -246,12 +278,12 @@ function useTrack(active: boolean, volume: number) {
       step += 1;
       // Цель берётся на каждом шаге: ползунок могли подвинуть прямо во
       // время входа, и доводить до устаревшего числа незачем.
-      audio.volume = Math.min(targetRef.current, (targetRef.current * step) / 40);
-      if (step >= 40) {
+      audio.volume = Math.min(targetRef.current, (targetRef.current * step) / FADE_IN_STEPS);
+      if (step >= FADE_IN_STEPS) {
         window.clearInterval(fadeIn);
         fadingRef.current = false;
       }
-    }, 100);
+    }, FADE_IN_STEP_MS);
 
     return () => {
       window.clearInterval(fadeIn);
@@ -382,9 +414,11 @@ function useHearth(active: boolean, audioContext: () => AudioContext | null, mus
     const level = (levelRef.current / 100) * 0.05;
     const now = ctx.currentTime;
     master.gain.setValueAtTime(0.0001, now);
-    // Вход через четыре секунды: музыка, включающаяся рывком, звучит как
-    // случайно нажатая кнопка.
-    master.gain.exponentialRampToValueAtTime(level, now + 4);
+    // Вход за полторы секунды. Было четыре — задумано против того, чтобы
+    // музыка включалась рывком, но на слух четыре секунды читались не как
+    // плавность, а как опоздание: приложение открыто, а звука нет. Та же
+    // правка, что и у записанной темы, и по той же причине.
+    master.gain.exponentialRampToValueAtTime(level, now + 1.5);
 
     let step = 0;
     let nextAt = now + 0.2;

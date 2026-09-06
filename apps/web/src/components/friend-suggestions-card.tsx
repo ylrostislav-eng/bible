@@ -1,7 +1,7 @@
 'use client';
 
 import type { FriendSuggestion } from '@bible-arena/shared';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { apiClient } from '@/lib/api';
 import { pluralFriends, pluralGames, pluralize } from '@/lib/plural';
 import { Card } from './ui/card';
@@ -24,29 +24,18 @@ import { Card } from './ui/card';
  * пролистывают не читая; с основанием это узнавание. Поэтому сервер и
  * возвращает причину вместе с человеком, а не просто список id.
  */
-export function FriendSuggestionsCard({ onAdded }: { onAdded?: () => void }) {
-  const [suggestions, setSuggestions] = useState<FriendSuggestion[] | null>(null);
+export function FriendSuggestionsCard({
+  suggestions,
+  onAdded,
+}: {
+  /** `null` — ещё грузится. Приходит пропсом, а не запрашивается здесь:
+   * своим запросом карточка появлялась отдельно от остального и сдвигала
+   * уже нарисованную страницу. */
+  suggestions: FriendSuggestion[] | null;
+  onAdded?: () => void;
+}) {
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const data = await apiClient.get<FriendSuggestion[]>('/friends/suggestions');
-        if (!cancelled) setSuggestions(data);
-      } catch {
-        // Молча и без карточки: подсказки — приятная добавка, а не то, ради
-        // чего открывают экран. Сообщение об ошибке здесь только сдвинуло бы
-        // вниз списки, которые человеку и нужны.
-        if (!cancelled) setSuggestions([]);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const add = async (userId: string) => {
     setBusyId(userId);
