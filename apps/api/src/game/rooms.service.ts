@@ -21,7 +21,7 @@ import {
   type RoomSummary,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
-import { ModerationService } from '../moderation/moderation.service';
+import { ContactPolicyService } from '../contact/contact-policy.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
@@ -76,7 +76,7 @@ export class RoomsService {
     private readonly questionsService: QuestionsService,
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
-    private readonly moderation: ModerationService,
+    private readonly contactPolicy: ContactPolicyService,
   ) {}
 
   async create(
@@ -461,29 +461,11 @@ export class RoomsService {
     if (session.participants.some((p) => p.userId === targetUserId)) {
       throw new ConflictException('Этот игрок уже в комнате');
     }
-    // Приглашение приходит попапом и уведомлением — тот же способ дотянуться
-    // до человека, что заявка в друзья и вызов на дуэль.
-    await this.moderation.assertNotMuted(leaderId);
-
-    const friendship = await this.prisma.friendship.findUnique({
-      where: { userId_friendId: { userId: leaderId, friendId: targetUserId } },
-    });
-    if (!friendship) {
-      throw new ConflictException('Приглашать можно только друзей');
-    }
-    // Same "don't let this person reach me" block as the duel challenge —
-    // the target having banned the leader blocks the invite outright.
-    const ban = await this.prisma.roomBan.findUnique({
-      where: {
-        leaderId_bannedUserId: {
-          leaderId: targetUserId,
-          bannedUserId: leaderId,
-        },
-      },
-    });
-    if (ban) {
-      throw new ForbiddenException('Этот игрок заблокировал вас');
-    }
+    // Дружба здесь больше не требуется — то же решение, что и у вызова на
+    // дуэль: пригласить можно любого игрока, а защищают от навязчивости
+    // чёрный список, ограничение по жалобам и детское правило. Всё это
+    // проверяет общее правило одной строкой.
+    await this.contactPolicy.assertCanReach(leaderId, targetUserId);
 
     await this.prisma.roomInvite.upsert({
       where: { sessionId_toUserId: { sessionId, toUserId: targetUserId } },

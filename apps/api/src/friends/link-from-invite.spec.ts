@@ -1,6 +1,6 @@
 import { FriendsService } from './friends.service';
 import type { PrismaService } from '../prisma/prisma.service';
-import type { ModerationService } from '../moderation/moderation.service';
+import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { PresenceService } from '../presence/presence.service';
 import type { TelegramBotService } from '../notifications/telegram-bot.service';
 
@@ -52,7 +52,7 @@ describe('FriendsService.linkFromInvite', () => {
       prisma,
       {} as PresenceService,
       {} as TelegramBotService,
-      {} as ModerationService,
+      {} as ContactPolicyService,
     );
     return { service, friendshipUpsert };
   }

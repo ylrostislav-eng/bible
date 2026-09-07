@@ -17,7 +17,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FriendChallengeList } from '@/components/friend-challenge-list';
+import { PlayerList } from '@/components/player-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
@@ -770,12 +770,11 @@ export default function DuelPage() {
       <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
         <h1 className="text-xl font-bold">Кого вызвать?</h1>
         <p className="-mt-3 text-sm text-text-secondary">
-          Выберите друга или найдите игрока по нику — вопрос о количестве вопросов появится сразу
-          после
+          Выберите любого игрока или найдите по нику — количество вопросов спросим сразу после
         </p>
-        <FriendChallengeList
+        <PlayerList
+          mode="challenge"
           onChallengeSent={(newSessionId) => setSessionId(newSessionId)}
-          emptyMessage="Пока нет друзей — найдите соперника по нику выше, или создайте дуэль по коду ниже."
         />
         <button
           onClick={() => setMenu('createByCode')}

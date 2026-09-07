@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ModerationModule } from '../moderation/moderation.module';
+import { ContactModule } from '../contact/contact.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
 import { AbandonedSweeper } from './abandoned.sweeper';
@@ -13,7 +13,7 @@ import { RoomsGateway } from './rooms.gateway';
 import { RoomsService } from './rooms.service';
 
 @Module({
-  imports: [UsersModule, NotificationsModule, ModerationModule],
+  imports: [UsersModule, NotificationsModule, ContactModule],
   controllers: [GameController, DuelController, RoomsController],
   providers: [
     GameService,

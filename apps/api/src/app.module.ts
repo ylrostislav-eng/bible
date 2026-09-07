@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { BibleModule } from './bible/bible.module';
 import { validateEnv } from './config/env.validation';
+import { ContactModule } from './contact/contact.module';
 import { FriendsModule } from './friends/friends.module';
 import { GameModule } from './game/game.module';
 import { HealthModule } from './health/health.module';
@@ -17,6 +18,7 @@ import { AliasModule } from './alias/alias.module';
 import { DailyWordModule } from './daily-word/daily-word.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PlayersModule } from './players/players.module';
 import { PresenceModule } from './presence/presence.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -46,7 +48,9 @@ import { UsersModule } from './users/users.module';
     BibleModule,
     LearnModule,
     PresenceModule,
+    ContactModule,
     FriendsModule,
+    PlayersModule,
     NotificationsModule,
     ModerationModule,
     AchievementsModule,

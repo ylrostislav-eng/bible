@@ -27,7 +27,7 @@ const TABS = [
   { href: '/', label: 'Главная', icon: HomeIcon },
   { href: '/play', label: 'Играть', icon: PlayIcon },
   { href: '/rating', label: 'Знания', icon: RatingIcon },
-  { href: '/friends', label: 'Друзья', icon: FriendsIcon },
+  { href: '/players', label: 'Игроки', icon: FriendsIcon },
   { href: '/profile', label: 'Профиль', icon: ProfileIcon },
 ] as const;
 

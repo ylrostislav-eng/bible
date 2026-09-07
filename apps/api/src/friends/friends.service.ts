@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,7 +17,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
-import { ModerationService } from '../moderation/moderation.service';
+import { ContactPolicyService } from '../contact/contact-policy.service';
 import { TelegramBotService } from '../notifications/telegram-bot.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,7 +54,7 @@ export class FriendsService {
     private readonly prisma: PrismaService,
     private readonly presenceService: PresenceService,
     private readonly telegramBot: TelegramBotService,
-    private readonly moderation: ModerationService,
+    private readonly contactPolicy: ContactPolicyService,
   ) {}
 
   async search(
@@ -167,10 +166,6 @@ export class FriendsService {
       throw new BadRequestException('Нельзя добавить себя в друзья');
     }
 
-    // Ограничение по жалобам действует и здесь: заявка приходит
-    // уведомлением, то есть это способ дотянуться до человека.
-    await this.moderation.assertNotMuted(currentUserId);
-
     // A stale client (search result for an account since deleted, say)
     // could otherwise reach the upsert below with an id that no longer
     // exists, which fails as a raw foreign-key violation rather than a
@@ -183,7 +178,8 @@ export class FriendsService {
       throw new NotFoundException('Пользователь не найден');
     }
 
-    // Чёрный список действует в обе стороны и проверяется здесь, на
+    // Общее правило «дотянуться до человека»: ограничение по жалобам,
+    // чёрный список в обе стороны, детское правило. Проверяется здесь, на
     // сервере, а не только кнопкой в интерфейсе.
     //
     // Интерфейс кнопку прячет (см. `canAddFriend` в списке лидеров и
@@ -192,21 +188,7 @@ export class FriendsService {
     // интерфейса. То есть заблокированный мог и дальше слать заявки тому,
     // кто его заблокировал, — а заявка приходит уведомлением, и блокировка
     // переставала защищать ровно от того, ради чего её и нажимают.
-    const ban = await this.prisma.roomBan.findFirst({
-      where: {
-        OR: [
-          { leaderId: currentUserId, bannedUserId: toUserId },
-          { leaderId: toUserId, bannedUserId: currentUserId },
-        ],
-      },
-      select: { id: true },
-    });
-    if (ban) {
-      // Одна и та же формулировка в обе стороны намеренно: сообщение «вас
-      // заблокировали» рассказало бы отправителю про чужое решение,
-      // которое его не касается.
-      throw new ForbiddenException('Заявку отправить нельзя');
-    }
+    await this.contactPolicy.assertCanReach(currentUserId, toUserId);
 
     // Everything runs under an advisory lock keyed on the *pair* of users
     // (same trick as the room-name uniqueness check in RoomsService). Two

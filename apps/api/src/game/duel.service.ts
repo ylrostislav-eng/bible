@@ -18,7 +18,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
-import { ModerationService } from '../moderation/moderation.service';
+import { ContactPolicyService } from '../contact/contact-policy.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
@@ -81,7 +81,7 @@ export class DuelService {
     private readonly questionsService: QuestionsService,
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
-    private readonly moderation: ModerationService,
+    private readonly contactPolicy: ContactPolicyService,
   ) {}
 
   async create(
@@ -196,33 +196,17 @@ export class DuelService {
     if (dto.friendUserId === userId) {
       throw new BadRequestException('Нельзя бросить вызов самому себе');
     }
-    // Вызов приходит попапом и уведомлением — для ограниченного по жалобам
-    // это такой же способ дотянуться до человека, как заявка в друзья.
-    await this.moderation.assertNotMuted(userId);
+    // Дружбы среди условий больше нет: вызвать можно любого игрока.
+    //
+    // Раньше требовалась взаимная дружба, и это стоило двух лишних шагов с
+    // ожиданием ответа — ради защиты, которую на деле держат другие вещи:
+    // вызов отклоняется одним тапом, назойливый уходит в чёрный список,
+    // злоупотребляющий — под ограничение по жалобам, а на пару разрешён
+    // только один невыполненный вызов (ниже). Всё это и проверяет общее
+    // правило; отдельно от него остаётся только детский случай, который
+    // внутри правила и живёт.
+    await this.contactPolicy.assertCanReach(userId, dto.friendUserId);
     await this.assertEnoughQuestions(dto.questionCount);
-    const friendship = await this.prisma.friendship.findUnique({
-      where: {
-        userId_friendId: { userId, friendId: dto.friendUserId },
-      },
-    });
-    if (!friendship) {
-      throw new ConflictException('Можно бросить вызов только другу');
-    }
-
-    // A room ban is a general "don't let this person reach me" block, not
-    // scoped to rooms alone — someone banned from the target's rooms can't
-    // sidestep that by challenging them to a 1v1 duel instead.
-    const ban = await this.prisma.roomBan.findUnique({
-      where: {
-        leaderId_bannedUserId: {
-          leaderId: dto.friendUserId,
-          bannedUserId: userId,
-        },
-      },
-    });
-    if (ban) {
-      throw new ForbiddenException('Этот игрок заблокировал вас');
-    }
 
     // One outstanding challenge per pair. Without this, a single player
     // could fire off any number of challenges at the same person — measured
