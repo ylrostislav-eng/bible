@@ -3,11 +3,16 @@
 import { useEffect } from 'react';
 import { apiClient, getAccessToken } from './api';
 
-/** Redis presence (`presence:<userId>`) has a 60s TTL and is only ever set
- * on login otherwise — without a periodic ping it looks like everyone signs
- * off a minute after opening the app. Mounted once, only while the user is
- * authenticated (see `AuthGate`). */
-const HEARTBEAT_INTERVAL_MS = 40_000;
+/**
+ * Такт сердцебиения. Присутствие в Redis живёт 35 секунд, так что этот
+ * такт должен укладываться в него с запасом на один пропуск.
+ *
+ * Чаще, чем прежние 40 секунд, и это осознанная плата: чем короче такт,
+ * тем короче окно, в котором закрытое приложение ещё числится в сети, —
+ * а на этом стоит отправка уведомлений о вызовах. Mounted once, only
+ * while the user is authenticated (see `AuthGate`).
+ */
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 

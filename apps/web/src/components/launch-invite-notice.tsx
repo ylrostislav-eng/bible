@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { parseLaunchInvite, type LaunchInvite } from '@/lib/launch-invite';
@@ -40,17 +40,54 @@ export function LaunchInviteNotice() {
   );
   const [dismissed, setDismissed] = useState(false);
 
-  if (!invite || dismissed) return null;
+  const loaded = invite?.kind === 'duel' ? challengesLoaded : invitesLoaded;
+  const present =
+    invite?.kind === 'duel'
+      ? challenges.some((c) => c.sessionId === invite.sessionId)
+      : invites.some((i) => invite && i.inviteId === invite.inviteId);
 
-  const gone =
-    invite.kind === 'duel'
-      ? challengesLoaded && !challenges.some((c) => c.sessionId === invite.sessionId)
-      : invitesLoaded && !invites.some((i) => i.inviteId === invite.inviteId);
+  /**
+   * Ответ даётся один раз, вскоре после запуска, — и больше не
+   * пересматривается.
+   *
+   * Иначе плашка вылезает ровно тогда, когда не надо: приглашение было
+   * живо, человек его увидел и сам с ним разобрался (принял или отменил),
+   * оно исчезло из списка — и «вызов уже неактуален, его отменили, пока вы
+   * не открывали приложение» появляется поверх экрана как ложь. _Живой
+   * случай владельца: отменил дуэль, и плашка повисла до перезагрузки._
+   *
+   * Вопрос, на который она отвечает, задаётся ровно в момент прихода по
+   * ссылке: «было ли ещё что открывать». Дальше состояние меняет уже сам
+   * человек, и к плашке это отношения не имеет.
+   *
+   * Отсчёт, а не «первый ответ сервера»: несколько секунд нужны, чтобы
+   * опрос успел ответить (он ходит каждые четыре), и решение принимается
+   * в колбэке таймера — установка состояния прямо в теле эффекта плодит
+   * лишние волны рендера, о чём React Compiler и предупреждает.
+   */
+  const [decided, setDecided] = useState(false);
+  useEffect(() => {
+    const timeout = setTimeout(() => setDecided(true), DECISION_DELAY_MS);
+    return () => clearTimeout(timeout);
+  }, []);
 
-  if (!gone) return null;
+  // Само исчезает: это сообщение вдогонку, а не разговор. Висящая
+  // навсегда плашка перекрывает шапку и заставляет искать «Закрыть».
+  useEffect(() => {
+    if (!decided) return undefined;
+    const timeout = setTimeout(() => setDismissed(true), AUTO_HIDE_MS);
+    return () => clearTimeout(timeout);
+  }, [decided]);
+
+  // `loaded` в условии — против ложного «нет» на несмолкнувшем опросе:
+  // если сервер за это время так и не ответил, промолчим.
+  if (!invite || dismissed || !decided || !loaded || present) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+    // `--safe-top`, а не `env(safe-area-inset-top)`: в полноэкранном
+    // режиме над экраном ещё и полоса кнопок Telegram («Закрыть», «⌄ •••»),
+    // и `env()` о ней ничего не знает — плашка залезала прямо под них.
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center px-4 pt-[calc(var(--safe-top)+0.75rem)]">
       <div className="glass-card pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">
@@ -72,6 +109,15 @@ export function LaunchInviteNotice() {
     </div>
   );
 }
+
+/** Сколько ждём, прежде чем ответить. Опрос приглашений ходит каждые
+ * четыре секунды — этого хватает, чтобы узнать правду, и не настолько
+ * много, чтобы ответ выглядел запоздалым. */
+const DECISION_DELAY_MS = 5000;
+
+/** Сколько плашка держится на экране. Хватает прочесть две строки и не
+ * настолько долго, чтобы мешать. */
+const AUTO_HIDE_MS = 8000;
 
 /** Ключ, которым помечается уже отработанный параметр запуска. */
 const HANDLED_KEY = 'bible-arena:launch-invite-handled';
