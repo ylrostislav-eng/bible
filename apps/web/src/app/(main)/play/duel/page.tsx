@@ -907,7 +907,7 @@ export default function DuelPage() {
         <ScreenIcon icon={FriendsIcon} />
         <div>
           <h1 className="text-xl font-bold">Дуэль</h1>
-          <p className="text-sm text-text-secondary">Сразитесь с другом в реальном времени</p>
+          <p className="text-sm text-text-secondary">Один на один в реальном времени</p>
         </div>
       </div>
 

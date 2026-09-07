@@ -68,7 +68,7 @@ export function OnboardingForm() {
       <div className="pt-safe flex min-h-[var(--app-height)] flex-col justify-center px-6 py-10">
         <AgeBandStep
           heading="Сколько вам лет?"
-          subtitle="От этого зависит, с кем можно играть и переписываться."
+          subtitle="От этого зависит, с кем можно играть."
           submitLabel="Начать играть"
           submitting={submitting}
           error={error}

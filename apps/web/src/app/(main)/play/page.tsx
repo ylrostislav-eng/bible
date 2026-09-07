@@ -31,7 +31,9 @@ export default function PlayModePage() {
           </ModeIcon>
           <div>
             <p className="font-semibold">Дуэль</p>
-            <p className="text-sm text-text-secondary">Сразитесь с другом по коду приглашения</p>
+            <p className="text-sm text-text-secondary">
+              Один на один: найдите соперника или позовите любого игрока
+            </p>
           </div>
         </Card>
       </Link>

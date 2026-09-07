@@ -351,7 +351,11 @@ model ChapterCheckSession {
 
   createdAt DateTime @default(now())
 
-  user    User                 @relation(fields: [userId], references: [id])
+  /// Каскад, как у всех остальных связей с `User`. Раньше здесь стоял
+  /// `RESTRICT` по умолчанию — единственный на всю схему, — и из-за него
+  /// удаление игрока падало на внешнем ключе: у всякого, кто хоть раз
+  /// проверил главу, аккаунт удалить было нельзя.
+  user    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   answers ChapterCheckAnswer[]
 
   @@index([userId])
