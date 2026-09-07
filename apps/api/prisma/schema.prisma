@@ -131,6 +131,19 @@ model User {
   /// though the sweep runs every few minutes.
   lastReminderAt   DateTime?
 
+  /// Сообщение в Telegram, когда игрока зовут в игру, а приложение у него
+  /// закрыто: «такой-то бросает вам вызов» со ссылкой внутрь.
+  ///
+  /// Отдельный переключатель от `remindersEnabled` намеренно. Это разные
+  /// вещи по смыслу: напоминание про серию человек может считать надоедой
+  /// и выключить, но остаться при этом доступным для друзей — и наоборот.
+  /// Одна кнопка на оба случая заставляла бы выбирать между «меня зовут» и
+  /// «мне напоминают».
+  ///
+  /// Выключается автоматически, если Telegram сообщил о блокировке бота, —
+  /// как и напоминания.
+  inviteNotificationsEnabled Boolean @default(true)
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.

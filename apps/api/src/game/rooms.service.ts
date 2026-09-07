@@ -22,6 +22,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { ContactPolicyService } from '../contact/contact-policy.service';
+import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
@@ -77,6 +78,7 @@ export class RoomsService {
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
     private readonly contactPolicy: ContactPolicyService,
+    private readonly inviteNotifier: InviteNotifierService,
   ) {}
 
   async create(
@@ -467,11 +469,32 @@ export class RoomsService {
     // проверяет общее правило одной строкой.
     await this.contactPolicy.assertCanReach(leaderId, targetUserId);
 
-    await this.prisma.roomInvite.upsert({
+    // Существовало ли приглашение до нас — важно для уведомления: повторное
+    // нажатие «Пригласить» само по себе безобидно (upsert), но писать
+    // человеку второй раз про то же самое — уже назойливость.
+    const existing = await this.prisma.roomInvite.findUnique({
+      where: { sessionId_toUserId: { sessionId, toUserId: targetUserId } },
+      select: { id: true },
+    });
+
+    const invite = await this.prisma.roomInvite.upsert({
       where: { sessionId_toUserId: { sessionId, toUserId: targetUserId } },
       create: { sessionId, fromUserId: leaderId, toUserId: targetUserId },
       update: {},
     });
+
+    if (!existing) {
+      // Вдогонку и без ожидания — приглашение уже создано, и падать из-за
+      // недоступного Telegram оно не должно.
+      void this.inviteNotifier.notifyRoomInvite({
+        toUserId: targetUserId,
+        fromNickname:
+          session.participants.find((p) => p.userId === leaderId)?.user
+            .nickname ?? null,
+        roomName: session.roomName,
+        inviteId: invite.id,
+      });
+    }
   }
 
   /** Every pending invite addressed to this user, for rooms still in

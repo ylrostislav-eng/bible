@@ -11,6 +11,7 @@ import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
+import { LaunchInviteNotice } from './launch-invite-notice';
 import { BottomNav } from './navigation/bottom-nav';
 import { TextScaleProvider } from './text-scale-provider';
 import { MusicWidget } from './music-widget';
@@ -137,6 +138,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
           коротким ровно на высоту домашней полоски. */}
       <div className="pt-safe pb-[calc(var(--safe-bottom)+10rem)]">{children}</div>
       <IncomingNotifications />
+      <LaunchInviteNotice />
       <DeclineNoticeToast />
       <PendingInvitesWidget />
       <MusicWidget />

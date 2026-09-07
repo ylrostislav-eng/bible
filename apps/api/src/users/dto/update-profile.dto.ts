@@ -66,6 +66,10 @@ export class UpdateProfileDto {
   remindersEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  inviteNotificationsEnabled?: boolean;
+
+  @IsOptional()
   @IsIn(QUESTION_PACES)
   questionPace?: QuestionPace;
 

@@ -9,6 +9,10 @@ const POLL_MS = 4000;
 
 interface IncomingChallengesContextValue {
   challenges: PendingChallenge[];
+  /** Прошёл ли хотя бы один опрос. Нужно тому, кто пришёл по ссылке из
+   * уведомления: до первого ответа сервера пустой список значит «ещё не
+   * знаем», а не «вызова нет», и сказать «вызов истёк» по нему нельзя. */
+  loaded: boolean;
   removeChallenge: (sessionId: string) => void;
 }
 
@@ -25,6 +29,7 @@ const IncomingChallengesContext = createContext<IncomingChallengesContextValue |
 export function IncomingChallengesProvider({ children }: { children: React.ReactNode }) {
   const { activeGame } = useActiveGame();
   const [challenges, setChallenges] = useState<PendingChallenge[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const busy = activeGame?.status === 'IN_PROGRESS';
 
   useEffect(() => {
@@ -34,7 +39,10 @@ export function IncomingChallengesProvider({ children }: { children: React.React
     const poll = async () => {
       try {
         const list = await apiClient.get<PendingChallenge[]>('/game/duel/pending-challenges');
-        if (!cancelled) setChallenges(list);
+        if (!cancelled) {
+          setChallenges(list);
+          setLoaded(true);
+        }
       } catch {
         // Transient poll failures are ignored — the next tick will retry.
       }
@@ -52,7 +60,10 @@ export function IncomingChallengesProvider({ children }: { children: React.React
     setChallenges((cs) => cs.filter((c) => c.sessionId !== sessionId));
   }, []);
 
-  const value = useMemo(() => ({ challenges, removeChallenge }), [challenges, removeChallenge]);
+  const value = useMemo(
+    () => ({ challenges, loaded, removeChallenge }),
+    [challenges, loaded, removeChallenge],
+  );
 
   return (
     <IncomingChallengesContext.Provider value={value}>

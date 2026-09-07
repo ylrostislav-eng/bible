@@ -9,6 +9,8 @@ const POLL_MS = 4000;
 
 interface IncomingRoomInvitesContextValue {
   invites: RoomInviteView[];
+  /** Прошёл ли хотя бы один опрос — см. тот же флаг у вызовов на дуэль. */
+  loaded: boolean;
   removeInvite: (inviteId: string) => void;
 }
 
@@ -24,6 +26,7 @@ const IncomingRoomInvitesContext = createContext<IncomingRoomInvitesContextValue
 export function IncomingRoomInvitesProvider({ children }: { children: React.ReactNode }) {
   const { activeGame } = useActiveGame();
   const [invites, setInvites] = useState<RoomInviteView[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const busy = activeGame?.status === 'IN_PROGRESS';
 
   useEffect(() => {
@@ -33,7 +36,10 @@ export function IncomingRoomInvitesProvider({ children }: { children: React.Reac
     const poll = async () => {
       try {
         const list = await apiClient.get<RoomInviteView[]>('/rooms/invites/pending');
-        if (!cancelled) setInvites(list);
+        if (!cancelled) {
+          setInvites(list);
+          setLoaded(true);
+        }
       } catch {
         // Transient poll failures are ignored — the next tick will retry.
       }
@@ -51,7 +57,7 @@ export function IncomingRoomInvitesProvider({ children }: { children: React.Reac
     setInvites((is) => is.filter((i) => i.inviteId !== inviteId));
   }, []);
 
-  const value = useMemo(() => ({ invites, removeInvite }), [invites, removeInvite]);
+  const value = useMemo(() => ({ invites, loaded, removeInvite }), [invites, loaded, removeInvite]);
 
   return (
     <IncomingRoomInvitesContext.Provider value={value}>

@@ -19,6 +19,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { ContactPolicyService } from '../contact/contact-policy.service';
+import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
@@ -82,6 +83,7 @@ export class DuelService {
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
     private readonly contactPolicy: ContactPolicyService,
+    private readonly inviteNotifier: InviteNotifierService,
   ) {}
 
   async create(
@@ -242,6 +244,17 @@ export class DuelService {
             participants: { create: { userId } },
           },
         });
+
+        // Уведомление вне приложения — вдогонку и без ожидания: вызов уже
+        // создан, и падать из-за недоступного Telegram он не должен.
+        // Сервис сам решает, писать ли (человек в сети — не пишем, ночь —
+        // не пишем, выключил — не пишем).
+        void this.inviteNotifier.notifyDuelChallenge({
+          toUserId: dto.friendUserId,
+          fromNickname: await this.nicknameOf(userId),
+          sessionId: session.id,
+        });
+
         return { sessionId: session.id, inviteCode };
       } catch (error) {
         if (
@@ -254,6 +267,16 @@ export class DuelService {
       }
     }
     throw new ConflictException('Не удалось создать вызов, попробуйте ещё раз');
+  }
+
+  /** Ник для текста уведомления. Отдельным запросом, а не из `include`:
+   * нужен он только здесь, а `challenge` и без того делает достаточно. */
+  private async nicknameOf(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { nickname: true },
+    });
+    return user?.nickname ?? null;
   }
 
   /** Challenges sent to `userId` that haven't been accepted/declined yet —

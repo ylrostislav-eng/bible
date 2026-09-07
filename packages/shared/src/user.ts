@@ -28,6 +28,9 @@ export interface UserProfile {
   guardianPinSet: boolean;
   /** Evening Telegram reminder when the daily streak is about to lapse. */
   remindersEnabled: boolean;
+  /** Сообщение в Telegram, когда игрока зовут в игру при закрытом
+   * приложении. Отдельно от напоминаний: это разные желания. */
+  inviteNotificationsEnabled: boolean;
   /** Timer for the solo chapter check-up — see `accessibility.ts`. */
   questionPace: QuestionPace;
   /** Звук и вибро — см. `sound.ts`. */
@@ -86,6 +89,7 @@ export interface UpdateProfileInput {
   /** Set when the guardian accepted the child-mode screen. */
   guardianConfirmed?: boolean;
   remindersEnabled?: boolean;
+  inviteNotificationsEnabled?: boolean;
   questionPace?: QuestionPace;
   soundEnabled?: boolean;
   musicEnabled?: boolean;

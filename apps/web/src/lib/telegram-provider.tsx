@@ -50,16 +50,37 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       return undefined;
     }
 
-    const cleanup = init();
+    // Подъём SDK — под перехватом целиком.
+    //
+    // `isTMA()` отвечает «похоже на Telegram» по наличию параметров
+    // запуска, а `init()` разбирает их всерьёз и может не согласиться:
+    // урезанное окружение, старый клиент, обрезанная ссылка. Раньше это
+    // исключение уходило наружу из эффекта, и вместо приложения человек
+    // получал экран «Что-то пошло не так» — целиком, не только без
+    // родных возможностей Telegram.
+    //
+    // _Поймано живой проверкой ссылки из уведомления: параметр запуска в
+    // адресе был, а остального окружения не было, и приложение упало
+    // ещё до входа._ Правильное поведение здесь — работать как обычный
+    // сайт: без полноэкранного режима и родных отступов, но работать.
+    let cleanup: (() => void) | undefined;
+    try {
+      cleanup = init();
 
-    // Класс ставится сразу и синхронно: `isTMA()` уже ответил, ждать нечего.
-    // Через него стили узнают, что отступы придётся считать самим — Telegram
-    // отдаёт и высоту часов, и высоту своих кнопок нулём (см. `globals.css`).
-    document.documentElement.classList.add('tg');
+      // Класс ставится сразу и синхронно: `isTMA()` уже ответил, ждать
+      // нечего. Через него стили узнают, что отступы придётся считать
+      // самим — Telegram отдаёт и высоту часов, и высоту своих кнопок
+      // нулём (см. `globals.css`).
+      document.documentElement.classList.add('tg');
 
-    mountMiniApp();
-    miniAppReady();
-    expandViewport();
+      mountMiniApp();
+      miniAppReady();
+      expandViewport();
+    } catch {
+      document.documentElement.classList.remove('tg');
+      cleanup?.();
+      return undefined;
+    }
 
     let unbindCssVars: (() => void) | undefined;
     let unsubFullscreen: (() => void) | undefined;
@@ -123,7 +144,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       unsubFullscreen?.();
       unbindCssVars?.();
       document.documentElement.classList.remove('tg', 'tg-fullscreen');
-      cleanup();
+      cleanup?.();
     };
   }, []);
 
