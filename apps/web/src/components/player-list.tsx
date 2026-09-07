@@ -11,8 +11,10 @@ import {
   DUEL_QUESTION_COUNT_MAX,
   DUEL_QUESTION_COUNT_MIN,
 } from '@bible-arena/shared';
+import { isChildBand } from '@bible-arena/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiClient } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { NO_NICKNAME_HINT, playerName } from '@/lib/player-name';
 import { Card } from './ui/card';
 import { QuestionCountSlider } from './ui/question-count-slider';
@@ -61,6 +63,13 @@ export function PlayerList({
   excludeUserIds,
   renderPlayerExtra,
 }: PlayerListProps) {
+  // Детский режим меняет не список, а объяснение к нему: сервер и так
+  // показывает ребёнку только своих, но без этой оговорки экран говорит
+  // ребёнку правила взрослого — «зовите любого» и «никто не найден,
+  // проверьте ник», хотя искать среди незнакомых ему нельзя вовсе.
+  const { user } = useAuth();
+  const child = isChildBand(user?.ageBand);
+
   const [data, setData] = useState<PlayersListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
@@ -330,7 +339,9 @@ export function PlayerList({
       ) : visible.length === 0 ? (
         <p className="pt-4 text-center text-sm text-text-secondary">
           {query.trim()
-            ? 'Никто не найден — проверьте, что ищете по игровому нику, а не по имени в Telegram'
+            ? child
+              ? 'Поиск ищет только среди своих. Чтобы добавить нового человека, отправьте ему ссылку-приглашение ниже.'
+              : 'Никто не найден — проверьте, что ищете по игровому нику, а не по имени в Telegram'
             : 'Пока никого нет. Позовите своих по ссылке ниже.'}
         </p>
       ) : (

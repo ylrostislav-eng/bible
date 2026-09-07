@@ -2,13 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import type { FriendsListResponse } from '@bible-arena/shared';
+import { isChildBand, type FriendsListResponse } from '@bible-arena/shared';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { PlayerList } from '@/components/player-list';
 import { Card } from '@/components/ui/card';
 import { ScreenIcon } from '@/components/ui/screen-icon';
 import { ApiError, apiClient } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { playerName } from '@/lib/player-name';
 
 /** Matches the key `/play/duel` reads on mount to pick up a
@@ -28,6 +29,8 @@ const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
  */
 export default function PlayersPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const child = isChildBand(user?.ageBand);
 
   const [overview, setOverview] = useState<FriendsListResponse | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -93,7 +96,14 @@ export default function PlayersPage() {
         <ScreenIcon icon={FriendsIcon} />
         <div>
           <h1 className="text-xl font-bold">Игроки</h1>
-          <p className="text-sm text-text-secondary">Позовите любого — дружба не нужна</p>
+          {/* Подпись читается как правило экрана, поэтому она разная: в
+              детском режиме «зовите любого» — прямая неправда, там видно
+              только своих. */}
+          <p className="text-sm text-text-secondary">
+            {child
+              ? 'Здесь только свои — те, кого вы добавили'
+              : 'Позовите любого — дружба не нужна'}
+          </p>
         </div>
       </div>
 
