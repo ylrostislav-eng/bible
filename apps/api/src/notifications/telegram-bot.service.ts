@@ -86,9 +86,23 @@ export class TelegramBotService {
     }
   }
 
+  /**
+   * @param openApp Кнопка под сообщением, открывающая мини-приложение по
+   * этому адресу.
+   *
+   * Именно кнопка, а не ссылка в тексте. Ссылка вида
+   * `t.me/<бот>/app?startapp=…` ведёт в **Main Mini App**, а он существует,
+   * только если назначен в BotFather. _Живой случай: сообщение приходило,
+   * ссылка нажималась, приложение не открывалось — и понять почему по
+   * приложению невозможно, потому что ошибки нет ни на одной стороне._
+   * Кнопка `web_app` открывает приложение по прямому адресу и от настроек
+   * бота не зависит; работает она в личной переписке, а именно туда бот и
+   * пишет.
+   */
   async sendMessage(
     telegramId: bigint,
     text: string,
+    openApp?: { label: string; url: string },
   ): Promise<TelegramSendResult> {
     const token = this.token;
     if (!token) {
@@ -113,6 +127,15 @@ export class TelegramBotService {
           // The reminder is one plain sentence; markup would only add ways
           // for it to render wrong on someone's client.
           disable_notification: false,
+          ...(openApp
+            ? {
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: openApp.label, web_app: { url: openApp.url } }],
+                  ],
+                },
+              }
+            : {}),
         }),
       });
 

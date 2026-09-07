@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -55,6 +56,7 @@ export class InviteNotifierService {
     private readonly presence: PresenceService,
     private readonly telegram: TelegramBotService,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
   /** «Такой-то бросает вам вызов». */
@@ -63,12 +65,16 @@ export class InviteNotifierService {
     fromNickname: string | null;
     sessionId: string;
   }): Promise<void> {
-    await this.notify(params.toUserId, `duel_${params.sessionId}`, (link) =>
-      [
-        `${playerLabel(params.fromNickname)} вызывает вас на дуэль.`,
-        link ? `Открыть: ${link}` : 'Откройте приложение, чтобы ответить.',
-      ].join('\n'),
-    );
+    await this.notify({
+      toUserId: params.toUserId,
+      invite: `duel_${params.sessionId}`,
+      buttonLabel: 'Открыть вызов',
+      text: (link) =>
+        [
+          `${playerLabel(params.fromNickname)} вызывает вас на дуэль.`,
+          link ? `Открыть: ${link}` : 'Откройте приложение, чтобы ответить.',
+        ].join('\n'),
+    });
   }
 
   /** «Такой-то зовёт вас в комнату». */
@@ -79,19 +85,29 @@ export class InviteNotifierService {
     inviteId: string;
   }): Promise<void> {
     const room = params.roomName ? ` «${params.roomName}»` : '';
-    await this.notify(params.toUserId, `room_${params.inviteId}`, (link) =>
-      [
-        `${playerLabel(params.fromNickname)} зовёт вас в комнату${room}.`,
-        link ? `Открыть: ${link}` : 'Откройте приложение, чтобы ответить.',
-      ].join('\n'),
-    );
+    await this.notify({
+      toUserId: params.toUserId,
+      invite: `room_${params.inviteId}`,
+      buttonLabel: 'Открыть приглашение',
+      text: (link) =>
+        [
+          `${playerLabel(params.fromNickname)} зовёт вас в комнату${room}.`,
+          link ? `Открыть: ${link}` : 'Откройте приложение, чтобы ответить.',
+        ].join('\n'),
+    });
   }
 
-  private async notify(
-    toUserId: string,
-    startParam: string,
-    text: (link: string | null) => string,
-  ): Promise<void> {
+  private async notify({
+    toUserId,
+    invite,
+    buttonLabel,
+    text,
+  }: {
+    toUserId: string;
+    invite: string;
+    buttonLabel: string;
+    text: (link: string | null) => string;
+  }): Promise<void> {
     try {
       const recipient = await this.prisma.user.findUnique({
         where: { id: toUserId },
@@ -109,10 +125,13 @@ export class InviteNotifierService {
       if (this.isQuietHour(recipient.timezoneOffsetMinutes)) return;
       if (!(await this.claimCooldown(toUserId))) return;
 
-      const link = await this.deepLink(startParam);
+      // Кнопка — основной способ открыть приглашение, ссылка в тексте —
+      // запасной на случай, когда адрес сайта не настроен.
+      const appUrl = this.appUrl(invite);
       const result = await this.telegram.sendMessage(
         recipient.telegramId,
-        text(link),
+        text(appUrl ? null : await this.deepLink(invite)),
+        appUrl ? { label: buttonLabel, url: appUrl } : undefined,
       );
 
       if (result.status === 'blocked') {
@@ -173,11 +192,45 @@ export class InviteNotifierService {
   }
 
   /**
-   * Ссылка, открывающая приложение сразу на этом приглашении.
+   * Адрес мини-приложения для кнопки под сообщением.
    *
-   * `null`, если бот ещё не настроен, — тогда в сообщении просто нет
-   * ссылки. Молчать целиком было бы хуже: человек всё равно узнает, что
-   * его зовут.
+   * Берётся из `WEB_APP_URL`, а если её нет — из `CORS_ORIGIN` (это и есть
+   * адрес сайта, просто заведённый для другой цели). Второе — чтобы
+   * работало на уже развёрнутом сервере без новой настройки.
+   *
+   * Приглашение уезжает обычным параметром адреса, а не `startapp`:
+   * `startapp` наполняет `tgWebAppStartParam` только при открытии по
+   * ссылке `t.me/...`, а кнопка открывает приложение по прямому адресу, и
+   * там его просто нет. Клиент читает оба (см. `launch-invite.ts`).
+   *
+   * `null`, если адрес не настроен, — тогда в сообщении остаётся текстовая
+   * ссылка.
+   */
+  private appUrl(invite: string): string | null {
+    const configured =
+      this.configService.get<string>('WEB_APP_URL') ||
+      this.configService.get<string>('CORS_ORIGIN');
+    if (!configured) return null;
+
+    // `CORS_ORIGIN` может перечислять несколько адресов через запятую —
+    // для кнопки нужен один, и первый из списка это основной сайт.
+    const base = configured.split(',')[0]?.trim();
+    if (!base?.startsWith('https://')) {
+      // Telegram открывает в кнопке только https. На локальной машине это
+      // `http://localhost`, и там кнопки просто не будет — сообщение
+      // останется с текстовой ссылкой.
+      return null;
+    }
+
+    return `${base.replace(/\/$/, '')}/?invite=${encodeURIComponent(invite)}`;
+  }
+
+  /**
+   * Запасная ссылка через бота — на случай, когда адрес сайта не настроен.
+   *
+   * Ведёт в Main Mini App, а он существует, только если назначен в
+   * BotFather; поэтому основной способ — кнопка выше, а это лишь чтобы
+   * человек хотя бы знал, куда идти.
    */
   private async deepLink(startParam: string): Promise<string | null> {
     const botUsername = await this.telegram.getBotUsername();

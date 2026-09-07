@@ -1,3 +1,4 @@
+import type { ConfigService } from '@nestjs/config';
 import { InviteNotifierService } from './invite-notifier.service';
 import type { PresenceService } from '../presence/presence.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +29,7 @@ describe('InviteNotifierService — когда писать, а когда мо�
       reason?: string;
     };
     now?: Date;
+    webAppUrl?: string;
   }
 
   function serviceWith({
@@ -37,6 +39,7 @@ describe('InviteNotifierService — когда писать, а когда мо�
     cooldownFree = true,
     sendResult = { status: 'sent' },
     now = NOON_UTC,
+    webAppUrl = 'https://arena.example.com',
   }: Stubs) {
     jest.useFakeTimers().setSystemTime(now);
 
@@ -68,12 +71,19 @@ describe('InviteNotifierService — когда писать, а когда мо�
       },
     } as unknown as RedisService;
 
+    const configService = {
+      get: jest.fn((key: string) =>
+        key === 'WEB_APP_URL' ? webAppUrl : undefined,
+      ),
+    } as unknown as ConfigService;
+
     return {
       service: new InviteNotifierService(
         prisma,
         presence,
         telegram,
         redisService,
+        configService,
       ),
       sendMessage,
       userUpdate,
@@ -96,14 +106,55 @@ describe('InviteNotifierService — когда писать, а когда мо�
     await challenge(service);
 
     expect(sendMessage).toHaveBeenCalledTimes(1);
-    const [telegramId, text] = sendMessage.mock.calls[0] as [bigint, string];
+    const [telegramId, text, openApp] = sendMessage.mock.calls[0] as [
+      bigint,
+      string,
+      { label: string; url: string } | undefined,
+    ];
     expect(telegramId).toBe(42n);
     expect(text).toContain('зовущий');
-    // Ссылка ведёт внутрь приложения, а не на страницу бота: иначе тап по
-    // уведомлению открывает переписку, а не приглашение.
+
+    // Кнопка, а не ссылка в тексте. Ссылка `t.me/<бот>/app?startapp=…`
+    // ведёт в Main Mini App, а он существует, только если назначен в
+    // BotFather, — без него нажатие молча ничего не делает. _Так и вышло
+    // на боевом сервере: сообщение приходило, ссылка нажималась,
+    // приложение не открывалось._
+    expect(openApp).toEqual({
+      label: 'Открыть вызов',
+      url: 'https://arena.example.com/?invite=duel_%D0%BF%D0%B0%D1%80%D1%82%D0%B8%D1%8F1',
+    });
+  });
+
+  it('без настроенного адреса сайта оставляет ссылку в тексте', async () => {
+    // Пустая строка, а не `undefined`: значение по умолчанию в
+    // деструктуризации подставляется именно на `undefined`, и «не настроен»
+    // превратилось бы в «настроен по умолчанию».
+    const { service, sendMessage } = serviceWith({ webAppUrl: '' });
+    await challenge(service);
+
+    const [, text, openApp] = sendMessage.mock.calls[0] as [
+      bigint,
+      string,
+      unknown,
+    ];
+    expect(openApp).toBeUndefined();
     expect(text).toContain(
       'https://t.me/bible_arena_bot/app?startapp=duel_партия1',
     );
+  });
+
+  it('не делает кнопку из адреса без https — Telegram её не примет', async () => {
+    const { service, sendMessage } = serviceWith({
+      webAppUrl: 'http://localhost:3000',
+    });
+    await challenge(service);
+
+    const [, , openApp] = sendMessage.mock.calls[0] as [
+      bigint,
+      string,
+      unknown,
+    ];
+    expect(openApp).toBeUndefined();
   });
 
   it('молчит, если человек в сети — он и так видит попап', async () => {
@@ -178,6 +229,7 @@ describe('InviteNotifierService — когда писать, а когда мо�
       {} as PresenceService,
       {} as TelegramBotService,
       {} as RedisService,
+      {} as ConfigService,
     );
 
     await expect(challenge(broken)).resolves.toBeUndefined();
@@ -193,8 +245,15 @@ describe('InviteNotifierService — когда писать, а когда мо�
       inviteId: 'приглашение1',
     });
 
-    const [, text] = sendMessage.mock.calls[0] as [bigint, string];
+    const [, text, openApp] = sendMessage.mock.calls[0] as [
+      bigint,
+      string,
+      { label: string; url: string },
+    ];
     expect(text).toContain('«Вечерняя»');
-    expect(text).toContain('startapp=room_приглашение1');
+    expect(openApp.label).toBe('Открыть приглашение');
+    expect(decodeURIComponent(openApp.url)).toContain(
+      '?invite=room_приглашение1',
+    );
   });
 });
