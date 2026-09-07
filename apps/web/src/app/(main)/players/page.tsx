@@ -2,8 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import type { FriendSuggestion, FriendsListResponse } from '@bible-arena/shared';
-import { FriendSuggestionsCard } from '@/components/friend-suggestions-card';
+import type { FriendsListResponse } from '@bible-arena/shared';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { PlayerList } from '@/components/player-list';
@@ -32,7 +31,6 @@ export default function PlayersPage() {
 
   const [overview, setOverview] = useState<FriendsListResponse | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<FriendSuggestion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Пересобирает список игроков после «Принять»/«Убрать»: сам он обновится
@@ -59,16 +57,12 @@ export default function PlayersPage() {
       //
       // `allSettled`, а не `all`: приглашение — необязательная часть экрана,
       // и его неудача не должна утаскивать за собой остальное.
-      const [list, invite, hints] = await Promise.allSettled([
+      const [list, invite] = await Promise.allSettled([
         apiClient.get<FriendsListResponse>('/friends'),
         apiClient.get<{ link: string | null }>('/friends/invite-link'),
-        apiClient.get<FriendSuggestion[]>('/friends/suggestions'),
       ]);
       if (cancelled) return;
       if (invite.status === 'fulfilled') setInviteLink(invite.value.link);
-      // Не удались подсказки — пустой список, а не вечная загрузка:
-      // карточка тогда просто не покажется.
-      setSuggestions(hints.status === 'fulfilled' ? hints.value : []);
       if (list.status === 'fulfilled') {
         setOverview(list.value);
         setLoadError(null);
@@ -144,11 +138,6 @@ export default function PlayersPage() {
           ))}
         </Card>
       )}
-
-      {/* Подсказки остались и после того, как дружба перестала быть
-          пропуском: «уже играли вместе» — по-прежнему лучший повод внести
-          человека в свои, просто теперь это про удобство, а не про доступ. */}
-      <FriendSuggestionsCard suggestions={suggestions} onAdded={() => void loadOverview()} />
 
       <PlayerList
         key={refreshKey}

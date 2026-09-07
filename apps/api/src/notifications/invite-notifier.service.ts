@@ -117,13 +117,27 @@ export class InviteNotifierService {
           timezoneOffsetMinutes: true,
         },
       });
-      if (!recipient?.inviteNotificationsEnabled) return;
+      // Причина молчания пишется в лог, и это не многословность.
+      //
+      // Решений здесь пять, и каждое кончается тем, что сообщения просто
+      // нет. Снаружи все пять выглядят одинаково — «уведомления не
+      // приходят», — а в логах не было ни строки, потому что отправка даже
+      // не начиналась. _Живой случай: разбирались вслепую, хотя ответ
+      // должен был занимать одну строку лога._
+      if (!recipient) return this.silent(toUserId, 'игрок не найден');
+      if (!recipient.inviteNotificationsEnabled) {
+        return this.silent(toUserId, 'уведомления выключены в настройках');
+      }
 
       const online = await this.presence.areOnline([toUserId]);
-      if (online[toUserId]) return;
+      if (online[toUserId]) return this.silent(toUserId, 'игрок в сети');
 
-      if (this.isQuietHour(recipient.timezoneOffsetMinutes)) return;
-      if (!(await this.claimCooldown(toUserId))) return;
+      if (this.isQuietHour(recipient.timezoneOffsetMinutes)) {
+        return this.silent(toUserId, 'ночь по его времени');
+      }
+      if (!(await this.claimCooldown(toUserId))) {
+        return this.silent(toUserId, 'не прошла пауза после прошлого');
+      }
 
       // Кнопка — основной способ открыть приглашение, ссылка в тексте —
       // запасной на случай, когда адрес сайта не настроен.
@@ -134,7 +148,9 @@ export class InviteNotifierService {
         appUrl ? { label: buttonLabel, url: appUrl } : undefined,
       );
 
-      if (result.status === 'blocked') {
+      if (result.status === 'sent') {
+        this.logger.log(`Уведомление отправлено ${toUserId}`);
+      } else if (result.status === 'blocked') {
         // То же решение, что у напоминаний: 403 от Telegram — это «я не
         // хочу ваших сообщений», и повторять бессмысленно и невежливо.
         await this.prisma.user.update({
@@ -156,6 +172,10 @@ export class InviteNotifierService {
         `Уведомление о приглашении не отправлено: ${String(error)}`,
       );
     }
+  }
+
+  private silent(toUserId: string, reason: string): void {
+    this.logger.log(`Уведомление для ${toUserId} не отправлено: ${reason}`);
   }
 
   /** Ночь по местному времени получателя. Зеркалит `localHour` из

@@ -10,8 +10,6 @@ import {
   type FriendRequestView,
   type FriendSearchResult,
   type FriendsListResponse,
-  type FriendSuggestion,
-  type FriendSuggestionReason,
   type FriendView,
 } from '@bible-arena/shared';
 import { randomBytes } from 'node:crypto';
@@ -23,30 +21,6 @@ import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const SEARCH_RESULT_LIMIT = 20;
-
-/**
- * Сколько подсказок показывать. Десять — это экран без прокрутки: список
- * незнакомых имён длиннее просто пролистывают, не читая.
- */
-const SUGGESTION_LIMIT = 10;
-
-/**
- * По скольким последним совместным играм ищем знакомых.
- *
- * Без предела список id сессий растёт вместе с историей игрока и целиком
- * уезжает в `IN (...)`. Пятьдесят — это ещё и про смысл: с кем играли
- * позавчера, помнишь, с кем полгода назад — нет.
- */
-const RECENT_SESSIONS_LIMIT = 50;
-
-/** Сколько раз каждое значение встретилось. */
-function countBy(values: string[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return counts;
-}
 
 @Injectable()
 export class FriendsService {
@@ -237,150 +211,6 @@ export class FriendsService {
    * request between these two takes, so both directions serialize. */
   private pairKey(a: string, b: string): string {
     return [a, b].sort().join('_');
-  }
-
-  /**
-   * Кого предложить в друзья.
-   *
-   * ## Зачем это вообще
-   *
-   * До сих пор нового человека можно было добавить только одним способом —
-   * узнать где-то его ник и вбить в поиск. Это работает ровно для тех, кто
-   * уже знаком вне приложения, то есть не помогает никому: экран друзей у
-   * нового игрока пуст, и остаётся он пустым.
-   *
-   * ## Откуда берутся кандидаты
-   *
-   * Два источника, и оба — то, что мы **имеем право** знать, в отличие от
-   * контактов Telegram (см. `InviteFriendsCard`):
-   *
-   * 1. **Уже играли вместе** — сидели в одной дуэли или комнате. Самый
-   *    сильный сигнал: человека видели в деле, а не просто рядом.
-   * 2. **Общие друзья** — второй круг знакомств.
-   *
-   * Первый источник бьёт второй: при совпадении показывается «играли
-   * вместе», потому что это ближе и понятнее.
-   *
-   * ## Кого не предлагаем
-   *
-   * Себя, уже друзей, тех, с кем висит заявка в любую сторону, и обе
-   * стороны чёрного списка. Отдельно — детские аккаунты: подсказка это
-   * ровно тот способ разглядывать незнакомых людей, от которого их
-   * защищает правило поиска, и обходить его через другую дверь нельзя.
-   */
-  async getSuggestions(currentUserId: string): Promise<FriendSuggestion[]> {
-    const [friendships, pendingRequests, bans, mySessions] = await Promise.all([
-      this.prisma.friendship.findMany({
-        where: { userId: currentUserId },
-        select: { friendId: true },
-      }),
-      this.prisma.friendRequest.findMany({
-        where: {
-          status: 'PENDING',
-          OR: [{ fromUserId: currentUserId }, { toUserId: currentUserId }],
-        },
-        select: { fromUserId: true, toUserId: true },
-      }),
-      this.prisma.roomBan.findMany({
-        where: {
-          OR: [{ leaderId: currentUserId }, { bannedUserId: currentUserId }],
-        },
-        select: { leaderId: true, bannedUserId: true },
-      }),
-      this.prisma.gameParticipant.findMany({
-        // Соло-игры отсеиваем здесь, а не потом: в них участник один — ты
-        // сам, знакомых оттуда взяться неоткуда, а место в лимите они
-        // занимают, и у любителя одиночной игры вытеснили бы все дуэли.
-        where: { userId: currentUserId, session: { mode: { not: 'SOLO' } } },
-        select: { sessionId: true },
-        orderBy: { joinedAt: 'desc' },
-        take: RECENT_SESSIONS_LIMIT,
-      }),
-    ]);
-
-    const friendIds = friendships.map((f) => f.friendId);
-    const excluded = new Set<string>([currentUserId, ...friendIds]);
-    for (const r of pendingRequests) {
-      excluded.add(r.fromUserId);
-      excluded.add(r.toUserId);
-    }
-    for (const b of bans) {
-      excluded.add(b.leaderId);
-      excluded.add(b.bannedUserId);
-    }
-
-    const [playedRows, secondCircle] = await Promise.all([
-      mySessions.length === 0
-        ? Promise.resolve([] as { userId: string }[])
-        : this.prisma.gameParticipant.findMany({
-            where: {
-              sessionId: { in: mySessions.map((s) => s.sessionId) },
-              userId: { notIn: [...excluded] },
-            },
-            select: { userId: true },
-          }),
-      friendIds.length === 0
-        ? Promise.resolve([] as { friendId: string }[])
-        : this.prisma.friendship.findMany({
-            where: {
-              userId: { in: friendIds },
-              friendId: { notIn: [...excluded] },
-            },
-            select: { friendId: true },
-          }),
-    ]);
-
-    const playedCounts = countBy(playedRows.map((r) => r.userId));
-    const mutualCounts = countBy(secondCircle.map((r) => r.friendId));
-
-    const candidateIds = [
-      ...new Set([...playedCounts.keys(), ...mutualCounts.keys()]),
-    ];
-    if (candidateIds.length === 0) return [];
-
-    const users = await this.prisma.user.findMany({
-      where: {
-        id: { in: candidateIds },
-        // Без ника человек ещё не игрок: он открыл приложение и бросил
-        // онбординг. В подсказках такой аккаунт выглядел безымянной
-        // строкой с кнопкой «Добавить» — нашли живой проверкой, по коду
-        // это не видно, потому что в поиске `contains` отсекает null сам.
-        nickname: { not: null },
-        // Та же защита, что и в поиске: детский аккаунт не должен
-        // всплывать у незнакомых людей сам по себе.
-        OR: [{ ageBand: null }, { ageBand: { not: 'CHILD' } }],
-      },
-    });
-    if (users.length === 0) return [];
-
-    const online = await this.presenceService.areOnline(users.map((u) => u.id));
-
-    return users
-      .map((user) => {
-        const played = playedCounts.get(user.id) ?? 0;
-        const mutual = mutualCounts.get(user.id) ?? 0;
-        const reason: FriendSuggestionReason = played > 0 ? 'played' : 'mutual';
-        return {
-          userId: user.id,
-          nickname: user.nickname,
-          avatarUrl: user.avatarUrl,
-          level: user.level,
-          rating: user.rating,
-          title: getTitleForRating(user.rating),
-          online: online[user.id] ?? false,
-          reason,
-          count: played > 0 ? played : mutual,
-        };
-      })
-      .sort((a, b) => {
-        // Играли вместе — выше общих друзей, потом по силе основания, потом
-        // по рейтингу: три уровня, чтобы порядок не «плавал» между
-        // запросами при равных счётчиках.
-        if (a.reason !== b.reason) return a.reason === 'played' ? -1 : 1;
-        if (a.count !== b.count) return b.count - a.count;
-        return b.rating - a.rating;
-      })
-      .slice(0, SUGGESTION_LIMIT);
   }
 
   /**
