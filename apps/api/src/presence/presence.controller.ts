@@ -16,4 +16,13 @@ export class PresenceController {
     await this.presenceService.markOnline(user.sub);
     return { ok: true };
   }
+
+  /** Called when the app goes out of sight — see `markOffline`. Without it
+   * the only way out of "online" is the TTL, and a whole minute of it is a
+   * minute of telling everyone the wrong thing. */
+  @Post('offline')
+  async offline(@CurrentUser() user: JwtPayload): Promise<{ ok: true }> {
+    await this.presenceService.markOffline(user.sub);
+    return { ok: true };
+  }
 }
