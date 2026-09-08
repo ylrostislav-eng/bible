@@ -20,6 +20,7 @@ import { ScreenBack } from '@/components/ui/screen-back';
 import { Button } from '@/components/ui/button';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { Spinner } from '@/components/ui/spinner';
+import { WaitingOpponents } from '@/components/ui/waiting-opponents';
 import { ApiError, apiClient } from '@/lib/api';
 import { useActiveGame } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
@@ -450,6 +451,11 @@ function Lobby({
       {/* Пустое место отдано обоям, кнопки под ним — у большого пальца
           (см. `ScreenSpacer` и `.screen-fill`). */}
       <ScreenSpacer />
+
+      {/* Над кнопкой: это то, что читают перед нажатием. Счётчик свой у
+          режима — подбор идёт внутри него, и очередь в дуэли по вопросам
+          партию здесь не приближает. */}
+      <WaitingOpponents endpoint="/hot-cold/duel/waiting" />
 
       <Button onClick={onFind} disabled={busy}>
         {busy ? <Spinner /> : 'Найти соперника'}

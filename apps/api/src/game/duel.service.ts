@@ -15,10 +15,12 @@ import {
   type DuelState,
   type DuelStateStatus,
   type PendingChallenge,
+  type WaitingOpponentsView,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { AdminRegistry } from '../auth/admin-registry.service';
+import { PresenceService } from '../presence/presence.service';
 import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
@@ -88,6 +90,7 @@ export class DuelService {
     private readonly inviteNotifier: InviteNotifierService,
     private readonly admins: AdminRegistry,
     private readonly staffNames: StaffNameMask,
+    private readonly presence: PresenceService,
   ) {}
 
   async create(
@@ -189,6 +192,53 @@ export class DuelService {
 
     const created = await this.create(userId, dto, true);
     return { sessionId: created.sessionId, matched: false };
+  }
+
+  /**
+   * Сколько человек сейчас стоят в очереди на случайного соперника.
+   *
+   * Очередь — это сами ожидающие дуэли, поэтому и считаются они. Но с
+   * поправкой: партия остаётся в базе и после того, как её владелец закрыл
+   * приложение, — до уборки. Такие не в счёт, иначе цифра обещает
+   * соперника, которого нет; берутся только те, кто на связи.
+   *
+   * Разбивка по числу вопросов, а не одно число: подбор сажает друг к
+   * другу только тех, кто просил одинаковое количество, — «ищут трое» при
+   * выбранных десяти неправда, если все трое ждут двадцати.
+   *
+   * Себя человек в этой цифре не видит: он на экране выбора, а не в
+   * очереди, и своя же партия в списке выглядела бы как чужая.
+   */
+  async waitingOpponents(userId: string): Promise<WaitingOpponentsView> {
+    const waiting = await this.prisma.gameSession.findMany({
+      where: {
+        mode: 'DUEL',
+        status: 'WAITING_FOR_OPPONENT',
+        openToMatchmaking: true,
+        targetUserId: null,
+        participants: { none: { userId } },
+      },
+      select: {
+        questionCount: true,
+        participants: { select: { userId: true }, take: 1 },
+      },
+    });
+    if (waiting.length === 0) return { total: 0, byQuestionCount: {} };
+
+    const online = await this.presence.areOnline(
+      waiting.map((session) => session.participants[0]?.userId ?? ''),
+    );
+
+    const byQuestionCount: Record<string, number> = {};
+    let total = 0;
+    for (const session of waiting) {
+      const owner = session.participants[0]?.userId;
+      if (!owner || !online[owner]) continue;
+      const key = String(session.questionCount);
+      byQuestionCount[key] = (byQuestionCount[key] ?? 0) + 1;
+      total += 1;
+    }
+    return { total, byQuestionCount };
   }
 
   /** Like `create`, but pre-targeted at a specific friend instead of an open

@@ -33,10 +33,12 @@ import {
   hotColdReward,
   type HotColdDuelGuess,
   type HotColdDuelState,
+  type WaitingOpponentsView,
 } from '@bible-arena/shared';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { generateInviteCode } from '../game/invite-code';
 import { StaffNameMask } from '../auth/staff-name-mask.service';
+import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SemanticsService,
@@ -107,6 +109,7 @@ export class HotColdDuelService {
     private readonly usersService: UsersService,
     private readonly semantics: SemanticsService,
     private readonly staffNames: StaffNameMask,
+    private readonly presence: PresenceService,
   ) {}
 
   private readonly rankings = new Map<string, SemanticRanking>();
@@ -352,6 +355,39 @@ export class HotColdDuelService {
       duelId: await this.create(userId, undefined, true),
       matched: false,
     };
+  }
+
+  /**
+   * Сколько человек сейчас ищут соперника в этом режиме.
+   *
+   * Та же мерка, что и в дуэли по вопросам: очередь — это сами ждущие
+   * партии, но считаются только те, чьи владельцы на связи. Партия
+   * переживает закрытое приложение и висит до уборки; посчитав такие,
+   * экран пообещал бы соперника, которого нет.
+   *
+   * Разбивки по правилам здесь нет и не нужно: в «горячо-холодно» партия
+   * у всех одинаковая — одно слово на двоих.
+   */
+  async waitingOpponents(userId: string): Promise<WaitingOpponentsView> {
+    const waiting = await this.prisma.hotColdDuel.findMany({
+      where: {
+        status: 'WAITING',
+        openToMatchmaking: true,
+        targetUserId: null,
+        players: { none: { userId } },
+      },
+      select: { players: { select: { userId: true }, take: 1 } },
+    });
+    if (waiting.length === 0) return { total: 0 };
+
+    const online = await this.presence.areOnline(
+      waiting.map((duel) => duel.players[0]?.userId ?? ''),
+    );
+    const total = waiting.filter((duel) => {
+      const owner = duel.players[0]?.userId;
+      return owner ? online[owner] : false;
+    }).length;
+    return { total };
   }
 
   /** Незакрытая дуэль игрока, если есть. */

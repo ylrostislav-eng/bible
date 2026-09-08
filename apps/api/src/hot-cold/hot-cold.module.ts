@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PresenceModule } from '../presence/presence.module';
 import { UsersModule } from '../users/users.module';
 import { HotColdDuelController } from './hot-cold-duel.controller';
 import { HotColdDuelGateway } from './hot-cold-duel.gateway';
@@ -7,7 +8,7 @@ import { HotColdController } from './hot-cold.controller';
 import { HotColdService } from './hot-cold.service';
 
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, PresenceModule],
   controllers: [HotColdController, HotColdDuelController],
   providers: [HotColdService, HotColdDuelService, HotColdDuelGateway],
 })

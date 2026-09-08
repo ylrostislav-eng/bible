@@ -54,6 +54,12 @@ export class HotColdDuelController {
     return this.duels.findOpponent(currentUser.sub);
   }
 
+  /** Сколько человек сейчас ищут соперника — рядом с кнопкой поиска. */
+  @Get('waiting')
+  async waiting(@CurrentUser() currentUser: JwtPayload) {
+    return this.duels.waitingOpponents(currentUser.sub);
+  }
+
   @Post('join')
   async join(
     @CurrentUser() currentUser: JwtPayload,

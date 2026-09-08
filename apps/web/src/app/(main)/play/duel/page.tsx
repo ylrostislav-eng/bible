@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PlayerList } from '@/components/player-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { PlayerLabel } from '@/components/ui/player-label';
+import { WaitingOpponents } from '@/components/ui/waiting-opponents';
 import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
@@ -822,6 +823,12 @@ export default function DuelPage() {
         <ScreenSpacer />
 
         {error && <p className="text-sm text-danger">{error}</p>}
+        {/* Над кнопкой, а не под: это то, что человек читает перед
+            нажатием, а не после. */}
+        <WaitingOpponents
+          endpoint="/game/duel/waiting"
+          questionCount={FIND_OPPONENT_QUESTION_COUNT}
+        />
         <Button onClick={findOpponent} disabled={loading}>
           {loading ? 'Ищем…' : 'Найти соперника'}
         </Button>

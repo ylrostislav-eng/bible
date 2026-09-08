@@ -47,6 +47,14 @@ export class DuelController {
     return this.duelService.findOpponent(currentUser.sub, dto);
   }
 
+  /** Сколько человек сейчас ищут соперника — рядом с кнопкой поиска.
+   * Экран спрашивает это периодически, поэтому запрос дешёвый и без
+   * побочных действий. */
+  @Get('waiting')
+  waiting(@CurrentUser() user: JwtPayload) {
+    return this.duelService.waitingOpponents(user.sub);
+  }
+
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Get('preview/:inviteCode')
   preview(@Param('inviteCode') inviteCode: string) {
