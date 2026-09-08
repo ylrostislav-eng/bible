@@ -7,9 +7,38 @@ import { SoundProvider } from '@/lib/sound';
 import { TelegramProvider } from '@/lib/telegram-provider';
 import './globals.css';
 
+/**
+ * Это видит не игрок, а тот, кому ссылку переслали.
+ *
+ * Telegram разворачивает адрес в карточку с заголовком, описанием и
+ * картинкой — и по ней человек решает, открывать ли вообще. Прежнее
+ * описание («Игровая платформа для изучения Библии») говорило, из чего
+ * приложение сделано, а не что в нём делать; карточки без картинки в
+ * ленте чата не видно вовсе.
+ *
+ * `metadataBase` нужен, чтобы `/og.png` превратился в полный адрес:
+ * относительный путь Telegram и остальные не разворачивают. Берётся из
+ * `NEXT_PUBLIC_APP_URL`, а без него — из адреса Railway, чтобы на
+ * развёрнутом сервере карточка работала без новой настройки.
+ */
+const siteUrl =
+  process.env.NEXT_PUBLIC_APP_URL ??
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined);
+
 export const metadata: Metadata = {
-  title: 'Bible Arena',
-  description: 'Игровая платформа для изучения Библии в Telegram',
+  ...(siteUrl ? { metadataBase: new URL(siteUrl) } : {}),
+  title: 'Библейская арена',
+  description:
+    'Викторина по Библии в Telegram: играйте один на один, собирайте комнату до десяти человек, объясняйте слова в Alias и угадывайте слово дня.',
+  openGraph: {
+    type: 'website',
+    locale: 'ru_RU',
+    siteName: 'Библейская арена',
+    title: 'Библейская арена',
+    description:
+      'Дуэли один на один, комнаты с друзьями, Alias за одним телефоном и слово дня. Викторина по Писанию прямо в Telegram.',
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Библейская арена' }],
+  },
 };
 
 export const viewport: Viewport = {
