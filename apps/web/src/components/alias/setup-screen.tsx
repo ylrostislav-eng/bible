@@ -252,7 +252,7 @@ export function AliasSetupScreen({
         </div>
       )}
 
-      <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg/95 backdrop-blur">
+      <div className="app-band pb-safe fixed bottom-0 z-30 border-t border-border bg-bg/95 backdrop-blur">
         <div className="mx-auto flex max-w-md flex-col gap-2 px-4 py-3">
           {/* Три разных случая, и путать их нельзя. Ноль слов при всех
               выбранных категориях — это не «сузьте фильтр», это пустая база

@@ -40,7 +40,7 @@ export function BottomNav() {
   const xpProgress = (xpIntoLevel / XP_PER_LEVEL) * 100;
 
   return (
-    <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-border bg-bg/95 backdrop-blur">
+    <nav className="app-band pb-safe fixed bottom-0 z-20 border-t border-border bg-bg/95 backdrop-blur">
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {TABS.map(({ href, label, icon: Icon }) => {
           // While a duel/room is in progress, "Играть" jumps straight back

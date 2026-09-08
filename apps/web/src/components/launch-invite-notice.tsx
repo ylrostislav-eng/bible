@@ -87,7 +87,7 @@ export function LaunchInviteNotice() {
     // `--safe-top`, а не `env(safe-area-inset-top)`: в полноэкранном
     // режиме над экраном ещё и полоса кнопок Telegram («Закрыть», «⌄ •••»),
     // и `env()` о ней ничего не знает — плашка залезала прямо под них.
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center px-4 pt-[calc(var(--safe-top)+0.75rem)]">
+    <div className="app-band pointer-events-none fixed top-0 z-40 flex justify-center px-4 pt-[calc(var(--safe-top)+0.75rem)]">
       <div className="glass-card pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">

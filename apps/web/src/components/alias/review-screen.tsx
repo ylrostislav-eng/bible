@@ -68,7 +68,7 @@ export function AliasReviewScreen({
         ))}
       </ul>
 
-      <div className="pb-safe fixed inset-x-0 bottom-0 border-t border-border bg-bg/95 backdrop-blur">
+      <div className="app-band pb-safe fixed bottom-0 border-t border-border bg-bg/95 backdrop-blur">
         <div className="mx-auto max-w-md px-4 py-3">
           <Button onClick={onConfirm}>Записать в счёт</Button>
         </div>

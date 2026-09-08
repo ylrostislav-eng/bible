@@ -37,7 +37,7 @@ export function PendingInvitesWidget() {
     <>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="glass fixed right-20 bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full text-text-primary ring-2 ring-primary"
+        className="app-edge-right-2 glass fixed bottom-[calc(var(--safe-bottom)+6rem)] z-30 flex h-14 w-14 items-center justify-center rounded-full text-text-primary ring-2 ring-primary"
         aria-label="Приглашения"
       >
         <TournamentIcon className="h-6 w-6" />
@@ -47,7 +47,7 @@ export function PendingInvitesWidget() {
       </button>
 
       {open && (
-        <div className="fixed right-4 bottom-[calc(var(--safe-bottom)+10rem)] z-30 flex max-h-[calc(var(--app-height)*0.6)] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+        <div className="app-edge-right fixed bottom-[calc(var(--safe-bottom)+10rem)] z-30 flex max-h-[calc(var(--app-height)*0.6)] w-[calc(100%-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
           <div className="flex items-center justify-between border-b border-border p-3">
             <p className="text-sm font-bold">Приглашения</p>
             <button onClick={() => setOpen(false)} className="text-sm text-text-secondary">
