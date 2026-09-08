@@ -4,10 +4,12 @@ import { PresenceModule } from '../presence/presence.module';
 import { UsersModule } from '../users/users.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { ContentController } from './content.controller';
+import { ContentService } from './content.service';
 
 @Module({
   imports: [PresenceModule, NotificationsModule, UsersModule],
-  controllers: [AdminController],
-  providers: [AdminService],
+  controllers: [AdminController, ContentController],
+  providers: [AdminService, ContentService],
 })
 export class AdminModule {}

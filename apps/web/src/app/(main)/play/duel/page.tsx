@@ -23,12 +23,14 @@ import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { ScreenIcon } from '@/components/ui/screen-icon';
+import { ContentEditButton } from '@/components/content/content-edit-button';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { pickEncouragement } from '@/lib/encouragement';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 import { useSound, useSoundWhen } from '@/lib/sound';
@@ -54,6 +56,7 @@ type Menu = 'menu' | 'find' | 'create' | 'createByCode' | 'join';
 const FIND_OPPONENT_QUESTION_COUNT = DUEL_QUESTION_COUNT_DEFAULT;
 
 export default function DuelPage() {
+  const { user } = useAuth();
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
   const { play } = useSound();
   const { activeGame, setActiveGame } = useActiveGame();
@@ -700,6 +703,8 @@ export default function DuelPage() {
             </span>
             <span>·</span>
             <span>{DIFFICULTY_NAMES[question.difficulty]}</span>
+            {/* Правка на месте — партия при этом не прерывается. */}
+            <ContentEditButton kind="GAME_QUESTION" id={question.id} role={user?.role} />
           </div>
           <p className="text-lg font-semibold">{question.text}</p>
         </Card>

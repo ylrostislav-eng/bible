@@ -17,11 +17,13 @@ import { PlayIcon } from '@/components/icons/nav-icons';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { ScreenIcon } from '@/components/ui/screen-icon';
+import { ContentEditButton } from '@/components/content/content-edit-button';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { CompletionHero } from '@/components/ui/completion-hero';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ApiError, apiClient } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { pluralCoins, pluralDays } from '@/lib/plural';
 import { useSound } from '@/lib/sound';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
@@ -38,6 +40,7 @@ interface Feedback {
 }
 
 export default function PlayPage() {
+  const { user } = useAuth();
   const { syncProfile, syncFailed: profileSyncFailed } = useSyncProfileOnce();
   const { play } = useSound();
 
@@ -285,6 +288,13 @@ export default function PlayPage() {
           </span>
           <span>·</span>
           <span>{DIFFICULTY_NAMES[question.difficulty]}</span>
+          {/* Правка на месте: тот, кто видит опечатку, видит её здесь. */}
+          <ContentEditButton
+            kind="GAME_QUESTION"
+            id={question.id}
+            role={user?.role}
+            label="Поправить"
+          />
         </div>
         <p className="text-lg font-semibold">{question.text}</p>
       </Card>

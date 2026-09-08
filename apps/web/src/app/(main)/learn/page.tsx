@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDownIcon, LearnIcon } from '@/components/icons/nav-icons';
 import { BookPicker } from '@/components/learn/book-picker';
 import { Button } from '@/components/ui/button';
+import { ContentEditButton } from '@/components/content/content-edit-button';
 import { Card } from '@/components/ui/card';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { ScreenIcon } from '@/components/ui/screen-icon';
@@ -572,6 +573,12 @@ function ChapterCheckView({
 
       <Card className="flex-col gap-2">
         <p className="text-lg font-semibold">{question.text}</p>
+        <ContentEditButton
+          kind="CHAPTER_QUESTION"
+          id={question.id}
+          role={user?.role}
+          label="Поправить вопрос"
+        />
       </Card>
 
       <div className="flex flex-col gap-3">

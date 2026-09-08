@@ -521,6 +521,21 @@ export class AdminService {
     return { sent, failed };
   }
 
+  /**
+   * Запись в журнал о правке содержимого.
+   *
+   * Отдельным методом, а не через приватный `record`, потому что цель тут
+   * не игрок, а вопрос или слово: в журнале у такой строки нет «над кем»,
+   * зато в описании есть что именно поменяли.
+   */
+  async logContent(
+    actor: AdminIdentity,
+    kind: 'EDIT_CONTENT' | 'CREATE_CONTENT' | 'DELETE_CONTENT',
+    summary: string,
+  ): Promise<void> {
+    await this.record(actor, kind, null, { summary });
+  }
+
   // ---- журнал ----
 
   /**

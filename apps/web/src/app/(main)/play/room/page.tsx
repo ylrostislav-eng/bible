@@ -18,6 +18,7 @@ import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { ScreenIcon } from '@/components/ui/screen-icon';
+import { ContentEditButton } from '@/components/content/content-edit-button';
 import { Card } from '@/components/ui/card';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
 import { QuestionCountSlider } from '@/components/ui/question-count-slider';
@@ -683,6 +684,8 @@ export default function RoomPage() {
             </span>
             <span>·</span>
             <span>{DIFFICULTY_NAMES[question.difficulty]}</span>
+            {/* Правка на месте — партия при этом не прерывается. */}
+            <ContentEditButton kind="GAME_QUESTION" id={question.id} role={user?.role} />
           </div>
           <p className="text-lg font-semibold">{question.text}</p>
         </Card>

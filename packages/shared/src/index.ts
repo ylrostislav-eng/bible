@@ -12,6 +12,7 @@ export * from './room';
 export * from './decline-notices';
 export * from './moderation';
 export * from './admin';
+export * from './admin-content';
 export * from './nickname';
 export * from './age';
 export * from './achievements';

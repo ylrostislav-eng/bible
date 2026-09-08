@@ -53,7 +53,7 @@ export const APP_ROLES = ['GAME_MASTER', 'ADMIN', 'PLAYER'] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
 export const APP_ROLE_LABELS: Record<AppRole, string> = {
-  GAME_MASTER: 'Гейм-мастер',
+  GAME_MASTER: 'Game-Master',
   ADMIN: 'Админ',
   PLAYER: 'Игрок',
 };
@@ -191,6 +191,9 @@ export const ADMIN_ACTION_KINDS = [
   'DELETE_ACCOUNT',
   'CLOSE_SESSION',
   'BROADCAST',
+  'EDIT_CONTENT',
+  'CREATE_CONTENT',
+  'DELETE_CONTENT',
 ] as const;
 export type AdminActionKind = (typeof ADMIN_ACTION_KINDS)[number];
 
@@ -202,6 +205,9 @@ export const ADMIN_ACTION_LABELS: Record<AdminActionKind, string> = {
   DELETE_ACCOUNT: 'Удаление аккаунта',
   CLOSE_SESSION: 'Закрытие партии',
   BROADCAST: 'Рассылка',
+  EDIT_CONTENT: 'Правка содержимого',
+  CREATE_CONTENT: 'Добавлено содержимое',
+  DELETE_CONTENT: 'Удалено содержимое',
 };
 
 export interface AdminActionView {

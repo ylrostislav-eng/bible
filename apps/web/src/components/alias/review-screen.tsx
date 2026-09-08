@@ -4,7 +4,9 @@ import { ALIAS_TEAM_COLORS } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
 import { useState } from 'react';
+import { ContentEditButton } from '@/components/content/content-edit-button';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
 import type { AliasRoundItem } from '@/lib/alias/match-state';
 import { pluralPoints } from '@/lib/plural';
 
@@ -77,6 +79,7 @@ export function AliasReviewScreen({
 
 function ReviewRow({ item, onToggle }: { item: AliasRoundItem; onToggle: () => void }) {
   const [open, setOpen] = useState(false);
+  const { user } = useAuth();
   const { word } = item;
 
   return (
@@ -142,6 +145,17 @@ function ReviewRow({ item, onToggle }: { item: AliasRoundItem; onToggle: () => v
               {word.reference.label} →
             </Link>
           )}
+          {/* Разбор раунда — то самое место, где спорное пояснение видно
+              всем и обсуждается вслух; здесь его и правят. В самом раунде
+              карандаша нет намеренно: там идёт время. */}
+          <div className="mt-2">
+            <ContentEditButton
+              kind="ALIAS_WORD"
+              id={word.id}
+              role={user?.role}
+              label="Поправить слово"
+            />
+          </div>
         </div>
       )}
     </li>

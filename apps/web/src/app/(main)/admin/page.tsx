@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AdminActionsPanel } from '@/components/admin/admin-actions-panel';
 import { AdminBroadcastPanel } from '@/components/admin/admin-broadcast-panel';
+import { AdminContentPanel } from '@/components/admin/admin-content-panel';
 import { AdminErrorsPanel } from '@/components/admin/admin-errors-panel';
 import { AdminOverviewPanel } from '@/components/admin/admin-overview-panel';
 import { AdminPlayersPanel } from '@/components/admin/admin-players-panel';
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'overview', label: 'Сводка', masterOnly: false },
   { id: 'reports', label: 'Жалобы', masterOnly: false },
   { id: 'players', label: 'Игроки', masterOnly: false },
+  { id: 'content', label: 'Контент', masterOnly: false },
   { id: 'sessions', label: 'Партии', masterOnly: false },
   { id: 'errors', label: 'Ошибки', masterOnly: false },
   { id: 'broadcast', label: 'Рассылка', masterOnly: true },
@@ -98,6 +100,7 @@ export default function AdminPage() {
       {tab === 'overview' && <AdminOverviewPanel />}
       {tab === 'reports' && <AdminReportsPanel />}
       {tab === 'players' && <AdminPlayersPanel />}
+      {tab === 'content' && <AdminContentPanel />}
       {tab === 'sessions' && <AdminSessionsPanel />}
       {tab === 'errors' && <AdminErrorsPanel />}
       {tab === 'broadcast' && master && <AdminBroadcastPanel />}

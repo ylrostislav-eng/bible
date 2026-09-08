@@ -840,6 +840,10 @@ model AliasWord {
   refVerse   Int?
 
   createdAt DateTime @default(now())
+  /// Когда слово правили в последний раз. Заведено вместе с правкой
+  /// содержимого из приложения: без него в списке не отличить слово из
+  /// первой заливки от исправленного вчера.
+  updatedAt DateTime @default(now()) @updatedAt
 
   dailyAttempts   DailyWordAttempt[]
   hotColdAttempts HotColdAttempt[]
@@ -1131,6 +1135,9 @@ enum AdminActionKind {
   DELETE_ACCOUNT
   CLOSE_SESSION
   BROADCAST
+  EDIT_CONTENT
+  CREATE_CONTENT
+  DELETE_CONTENT
 }
 
 /// Журнал действий администратора.
