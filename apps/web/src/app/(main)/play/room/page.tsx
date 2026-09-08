@@ -14,6 +14,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
+import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { ScreenIcon } from '@/components/ui/screen-icon';
@@ -449,6 +450,7 @@ export default function RoomPage() {
                     {p.nickname ?? 'Игрок'}
                     {p.userId === me.userId && ' (вы)'}
                   </span>
+                  <RoleBadge role={p.role} />
                   {p.isLeader ? (
                     <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                       Лидер
@@ -555,6 +557,7 @@ export default function RoomPage() {
                     {p.nickname ?? 'Игрок'}
                     {p.userId === me.userId && ' (вы)'}
                   </span>
+                  <RoleBadge role={p.role} />
                 </div>
                 <div className="flex shrink-0 items-center gap-3 text-sm">
                   <span className="text-text-secondary">{p.correctCount} прав.</span>

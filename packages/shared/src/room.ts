@@ -1,3 +1,4 @@
+import type { AppRole } from './admin';
 import type { GameQuestion } from './game';
 
 /** Hard ceiling on room size — kept modest for now; can grow later once the
@@ -73,6 +74,8 @@ export interface RoomParticipantView {
   userId: string;
   nickname: string | null;
   avatarUrl: string | null;
+  /** Роль — значок рядом с ником в лобби и на табло. */
+  role: AppRole;
   isLeader: boolean;
   /** Meaningless once the room leaves LOBBY (always false after start). */
   isReady: boolean;

@@ -1114,3 +1114,55 @@ model HotColdDuelPlayer {
   @@index([userId, duelId])
   @@map("hot_cold_duel_players")
 }
+
+/// В какой роли действовал человек. Хранится вместе с записью, а не
+/// вычисляется при чтении: права меняются, а журнал должен остаться
+/// таким, каким был в момент действия.
+enum AdminActorRole {
+  GAME_MASTER
+  ADMIN
+}
+
+enum AdminActionKind {
+  MUTE
+  UNMUTE
+  RENAME
+  ADJUST_BALANCE
+  DELETE_ACCOUNT
+  CLOSE_SESSION
+  BROADCAST
+}
+
+/// Журнал действий администратора.
+///
+/// Нужен не из недоверия — администратор в приложении один, — а чтобы
+/// через месяц можно было ответить на вопрос «почему у игрока другой ник»
+/// или «куда делись монеты». Без записи такой ответ достаётся только
+/// памятью, а память к тому времени помнит правку и не помнит причину.
+///
+/// Внешних ключей на `users` здесь намеренно нет, ни на администратора,
+/// ни на цель: самое ценное для журнала действие — удаление аккаунта, и
+/// каскад стёр бы запись ровно о нём. Ники сохраняются строками на момент
+/// действия по той же причине.
+model AdminAction {
+  id String @id @default(cuid())
+
+  adminUserId   String
+  adminNickname String?
+  actorRole     AdminActorRole @default(ADMIN)
+
+  kind AdminActionKind
+
+  targetUserId   String?
+  targetNickname String?
+
+  /// Человеческое описание: «мут на 24 ч», «монеты +500», «ник Vasya →
+  /// Vasiliy». Читается в журнале без обращения к другим полям.
+  summary String
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetUserId, createdAt])
+  @@map("admin_actions")
+}

@@ -81,6 +81,10 @@ class EnvironmentVariables {
   /// rather than an open admin endpoint.
   @IsString()
   @IsOptional()
+  GAME_MASTER_TELEGRAM_ID?: string;
+
+  @IsOptional()
+  @IsString()
   ADMIN_TELEGRAM_IDS?: string;
 
   /// Explicit opt-in for `/auth/dev-login`, independent of `NODE_ENV` — see

@@ -1,3 +1,5 @@
+import type { AppRole } from './admin';
+
 /** How a searched-up user relates to the person doing the search — drives
  * which action button (if any) the search result shows. */
 export type FriendRelation = 'none' | 'friend' | 'incoming' | 'outgoing' | 'self';
@@ -60,6 +62,8 @@ export interface PlayerView {
   rating: number;
   title: string;
   online: boolean;
+  /** Роль — строка показывает значок вместо титула. */
+  role: AppRole;
   /** Отношение — для кнопки «Добавить» и раздела «Мои». Дружба больше
    * ничего не разрешает, но остаётся списком своих. */
   relation: FriendRelation;

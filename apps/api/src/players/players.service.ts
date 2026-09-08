@@ -6,6 +6,7 @@ import {
   type PlayersListResponse,
 } from '@bible-arena/shared';
 import type { Prisma, User } from '@prisma/client';
+import { AdminRegistry } from '../auth/admin-registry.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -43,6 +44,7 @@ export class PlayersService {
     private readonly presence: PresenceService,
     private readonly contactPolicy: ContactPolicyService,
     private readonly usersService: UsersService,
+    private readonly admins: AdminRegistry,
   ) {}
 
   async list(
@@ -222,6 +224,7 @@ export class PlayersService {
       rating: row.rating,
       title: getTitleForRating(row.rating),
       online: onlineIds.has(row.id),
+      role: this.admins.roleOf(row.telegramId.toString()),
       relation: relationFor(row.id, { friendIds, outgoingTo, incomingFrom }),
       canInvite: reachable.has(row.id),
     }));

@@ -1,5 +1,6 @@
 import type { QuestionPace, TextScale } from './accessibility';
 import type { AgeBand } from './age';
+import type { AppRole } from './admin';
 import type { LanguageCode } from './language';
 
 export const NICKNAME_MIN_LENGTH = 3;
@@ -48,6 +49,14 @@ export interface UserProfile {
   rating: number;
   /** Title for the current `rating` — see `getTitleForRating`. */
   title: string;
+  /**
+   * Роль в приложении: гейм-мастер, администратор или игрок.
+   *
+   * Приходит с сервера, а не считается на клиенте: клиент не знает и не
+   * должен знать списки, а спрятанный экран — это удобство, а не защита.
+   * Настоящая проверка живёт в охранниках на каждом запросе.
+   */
+  role: AppRole;
 
   gamesPlayed: number;
   /** Completed duels only (win, loss, or draw) — see `winRate`. */
@@ -116,6 +125,8 @@ export interface LeaderboardEntry {
   gamesWon: number;
   gamesLost: number;
   isMe: boolean;
+  /** Роль — вместо титула в строке рейтинга у гейм-мастера и админов. */
+  role: AppRole;
   /**
    * Показывать ли кнопку «Добавить в друзья» на этой строке.
    *

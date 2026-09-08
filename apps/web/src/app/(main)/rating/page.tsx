@@ -1,9 +1,11 @@
 'use client';
 
+import { isStaffRole } from '@bible-arena/shared';
 import type { BannedUserView, LeaderboardEntry, LeaderboardResponse } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { RatingIcon } from '@/components/icons/nav-icons';
+import { RoleBadge } from '@/components/ui/role-badge';
 import { Card } from '@/components/ui/card';
 import { ScreenIcon } from '@/components/ui/screen-icon';
 import { UserActionSheet } from '@/components/user-action-sheet';
@@ -45,8 +47,10 @@ function Row({
       <Avatar entry={entry} />
       <div className="min-w-0 flex-1 text-left">
         <p className="truncate text-sm font-semibold">{playerName(entry.nickname)}</p>
-        <p className="truncate text-xs text-text-secondary">
-          {entry.title} · {entry.gamesWon}W/{entry.gamesLost}L
+        <p className="flex items-center gap-1.5 truncate text-xs text-text-secondary">
+          {isStaffRole(entry.role) ? <RoleBadge role={entry.role} /> : entry.title} ·{' '}
+          {entry.gamesWon}W/
+          {entry.gamesLost}L
         </p>
       </div>
       {requestSent && <span className="shrink-0 text-xs text-text-muted">Заявка отправлена</span>}

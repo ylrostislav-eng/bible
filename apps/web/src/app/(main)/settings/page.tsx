@@ -135,7 +135,45 @@ export default function SettingsPage() {
 
       <RemindersSection />
 
+      <TelegramIdRow />
+
       <ScreenBack href="/profile" label="Назад в профиль" />
     </div>
+  );
+}
+
+/**
+ * Свой Telegram ID — внизу настроек, мелко, без объяснений про роли.
+ *
+ * Он нужен ровно для одного: вписать его в `GAME_MASTER_TELEGRAM_ID` или
+ * `ADMIN_TELEGRAM_IDS` в панели развёртывания. Узнать свой номер иначе
+ * человеку негде — в Telegram он не показан, а спрашивать его у нас же
+ * через поддержку абсурдно. Обычному игроку строка не мешает: она
+ * приглушена и ничего не обещает.
+ *
+ * Копирование — не украшение: номер длинный, и переписывать его руками с
+ * телефона в панель на компьютере значит однажды ошибиться цифрой и
+ * долго искать, почему права не выдались.
+ */
+function TelegramIdRow() {
+  const { user } = useAuth();
+  const [copied, setCopied] = useState(false);
+
+  if (!user) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(user.telegramId)
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false));
+      }}
+      className="mx-auto text-xs text-text-muted transition active:text-text-secondary"
+    >
+      Ваш Telegram ID: {user.telegramId}
+      {copied ? ' · скопировано' : ''}
+    </button>
   );
 }

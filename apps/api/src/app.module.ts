@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AdminModule } from './admin/admin.module';
+import { AdminAccessModule } from './auth/admin-access.module';
 import { AuthModule } from './auth/auth.module';
 import { BibleModule } from './bible/bible.module';
 import { validateEnv } from './config/env.validation';
@@ -40,6 +42,7 @@ import { UsersModule } from './users/users.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     RedisModule,
+    AdminAccessModule,
     SemanticsModule,
     HealthModule,
     AuthModule,
@@ -58,6 +61,7 @@ import { UsersModule } from './users/users.module';
     DailyWordModule,
     HotColdModule,
     TelemetryModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

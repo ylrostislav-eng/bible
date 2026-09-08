@@ -1,3 +1,4 @@
+import type { AppRole } from './admin';
 import type { GameQuestion } from './game';
 
 export const DUEL_QUESTION_COUNT_MIN = 5;
@@ -78,6 +79,8 @@ export interface DuelParticipantView {
   userId: string;
   nickname: string | null;
   avatarUrl: string | null;
+  /** Роль — значок рядом с ником. */
+  role: AppRole;
   correctCount: number;
   score: number;
   streak: number;

@@ -30,6 +30,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
+import { AdminRegistry } from '../auth/admin-registry.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isAllowedAvatarUrl } from './avatar-url';
 import { RedisService } from '../redis/redis.service';
@@ -107,6 +108,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
+    private readonly admins: AdminRegistry,
   ) {}
 
   /**
@@ -1038,6 +1040,7 @@ export class UsersService {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       isMe: user.id === currentUserId,
+      role: this.admins.roleOf(user.telegramId.toString()),
       canAddFriend: !friendImpossible.has(user.id),
     };
   }
@@ -1075,6 +1078,7 @@ export class UsersService {
       coins: user.coins,
       rating: user.rating,
       title: getTitleForRating(user.rating),
+      role: this.admins.roleOf(user.telegramId.toString()),
       gamesPlayed: user.gamesPlayed,
       duelsPlayed: user.duelsPlayed,
       gamesWon: user.gamesWon,

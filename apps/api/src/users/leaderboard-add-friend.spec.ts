@@ -1,4 +1,5 @@
 import type { LeaderboardEntry } from '@bible-arena/shared';
+import type { AdminRegistry } from '../auth/admin-registry.service';
 import { UsersService } from './users.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
@@ -20,9 +21,15 @@ import type { RedisService } from '../redis/redis.service';
 describe('UsersService.getLeaderboard — кнопка «Добавить в друзья»', () => {
   const ME = 'me';
 
+  /** `telegramId` здесь не для красоты: строка рейтинга спрашивает по нему
+   * роль (значок гейм-мастера или админа вместо титула), и без него сборка
+   * строки падает. */
+  let nextTelegramId = 1000n;
+
   function user(id: string, rating: number) {
     return {
       id,
+      telegramId: nextTelegramId++,
       nickname: id,
       avatarUrl: null,
       country: null,
@@ -65,8 +72,15 @@ describe('UsersService.getLeaderboard — кнопка «Добавить в д�
       roomBan: { findMany: jest.fn(() => Promise.resolve(options.bans ?? [])) },
     } as unknown as PrismaService;
 
-    // Redis рейтингу не нужен: он читает только базу.
-    return new UsersService(prisma, {} as RedisService);
+    // Redis рейтингу не нужен: он читает только базу. Реестр админов —
+    // нужен: строка рейтинга несёт значок, и без него сборка строки падает.
+    return new UsersService(
+      prisma,
+      {} as RedisService,
+      {
+        roleOf: () => 'PLAYER' as const,
+      } as unknown as AdminRegistry,
+    );
   }
 
   async function canAdd(

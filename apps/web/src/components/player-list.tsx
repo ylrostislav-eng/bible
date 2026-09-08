@@ -11,11 +11,12 @@ import {
   DUEL_QUESTION_COUNT_MAX,
   DUEL_QUESTION_COUNT_MIN,
 } from '@bible-arena/shared';
-import { isChildBand } from '@bible-arena/shared';
+import { isChildBand, isStaffRole } from '@bible-arena/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { NO_NICKNAME_HINT, playerName } from '@/lib/player-name';
+import { RoleBadge } from './ui/role-badge';
 import { Card } from './ui/card';
 import { QuestionCountSlider } from './ui/question-count-slider';
 import { Spinner } from './ui/spinner';
@@ -240,8 +241,16 @@ export function PlayerList({
                 </span>
               )}
             </p>
-            <p className="text-xs text-text-muted">
-              {player.nickname ? `${player.title} · ур. ${player.level}` : NO_NICKNAME_HINT}
+            <p className="flex items-center gap-1.5 text-xs text-text-muted">
+              {!player.nickname ? (
+                NO_NICKNAME_HINT
+              ) : isStaffRole(player.role) ? (
+                <>
+                  <RoleBadge role={player.role} /> · ур. {player.level}
+                </>
+              ) : (
+                `${player.title} · ур. ${player.level}`
+              )}
             </p>
           </div>
         </button>

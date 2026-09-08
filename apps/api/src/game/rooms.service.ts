@@ -21,6 +21,7 @@ import {
   type RoomSummary,
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
+import { AdminRegistry } from '../auth/admin-registry.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -79,6 +80,7 @@ export class RoomsService {
     private readonly notificationsService: NotificationsService,
     private readonly contactPolicy: ContactPolicyService,
     private readonly inviteNotifier: InviteNotifierService,
+    private readonly admins: AdminRegistry,
   ) {}
 
   async create(
@@ -1064,6 +1066,7 @@ export class RoomsService {
       userId: p.userId,
       nickname: p.user.nickname,
       avatarUrl: p.user.avatarUrl,
+      role: this.admins.roleOf(p.user.telegramId.toString()),
       isLeader: p.userId === leaderId,
       isReady: p.isReady,
       correctCount: p.correctCount,
@@ -1098,6 +1101,7 @@ export class RoomsService {
             userId,
             nickname: null,
             avatarUrl: null,
+            role: 'PLAYER',
             isLeader: false,
             isReady: false,
             correctCount: 0,

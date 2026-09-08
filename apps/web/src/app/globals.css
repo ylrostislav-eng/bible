@@ -549,3 +549,99 @@ a {
     animation: none;
   }
 }
+
+/* Значки ролей (`components/ui/role-badge.tsx`).
+ *
+ * Заливкой, а не цветом текста: титулы в приложении и так янтарные, и
+ * золотые буквы среди них не читались бы как «этот другой». Здесь важна
+ * форма пятна — она видна раньше, чем прочитано слово.
+ *
+ * Золото досталось гейм-мастеру, потому что он один; администраторам —
+ * сталь. Два золотых значка рядом сделали бы роли равными на вид, и
+ * «главный здесь» пришлось бы вычитывать буквами.
+ *
+ * Текст на золоте тёмный (`--color-on-primary`) — единственное читаемое
+ * сочетание; светлый на светлом даёт 1.5:1. */
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  /* Не сжимается соседями по строке: у гейм-мастера значок длинный, а
+     `overflow: hidden` (он нужен для блика) сжатый текст просто срезал бы
+     — в шапке экрана управления так и вышло: «ГЕЙМ-МАСТЕ». */
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem 0.1rem 0.35rem;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Гейм-мастер: золото с бликом. Блик проходит один раз при появлении —
+ * постоянная анимация в списке из полусотни строк это мельтешение, а не
+ * выделение. */
+.role-badge-master {
+  position: relative;
+  overflow: hidden;
+  color: var(--color-on-primary);
+  background: linear-gradient(135deg, #f7dd9b 0%, #e8b04b 45%, #c98f2c 100%);
+  box-shadow:
+    0 0 14px -3px rgba(232, 176, 75, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.role-badge-master::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+  animation: role-badge-shine 1.1s ease-out 0.2s 1;
+}
+
+@keyframes role-badge-shine {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+/* Администратор: сталь. Тише золота намеренно — роль рабочая, не
+ * заглавная, и таких значков на экране бывает несколько. */
+.role-badge-admin {
+  color: #dbe6f2;
+  background: linear-gradient(135deg, #46566b 0%, #33404f 55%, #26303c 100%);
+  box-shadow:
+    0 0 10px -4px rgba(154, 180, 210, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.role-badge-md {
+  padding: 0.2rem 0.7rem 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  gap: 0.3rem;
+}
+
+.role-badge-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+
+.role-badge-md .role-badge-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-badge-master::after {
+    animation: none;
+    opacity: 0;
+  }
+}

@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { AchievementsSection } from '@/components/achievements-section';
+import { RoleBadge } from '@/components/ui/role-badge';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { pluralDraws, pluralDuels, pluralLosses, pluralWins } from '@/lib/plural';
-import { COUNTRIES, getTitleProgress } from '@bible-arena/shared';
+import { COUNTRIES, getTitleProgress, isStaffRole } from '@bible-arena/shared';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
@@ -41,9 +42,15 @@ export default function ProfilePage() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-bold">{user.nickname}</h1>
-            <span className="rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-semibold text-primary">
-              {user.title}
-            </span>
+            {/* Администратору вместо титула — значок: титул у него всё
+                равно есть, но на вопрос «кто это» отвечает не он. */}
+            {isStaffRole(user.role) ? (
+              <RoleBadge role={user.role} size="md" />
+            ) : (
+              <span className="rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-semibold text-primary">
+                {user.title}
+              </span>
+            )}
           </div>
           <p className="text-sm text-text-secondary">
             {user.telegramUsername ? `@${user.telegramUsername}` : 'Уровень ' + user.level}
@@ -138,6 +145,25 @@ export default function ProfilePage() {
           to. Each row says what it actually does — "Чёрный список" alone
           isn't self-explanatory if you haven't needed it yet. */}
       <div className="flex flex-col gap-2">
+        {/* Вход в управление — только у тех, у кого есть права. Экран
+            и так закрыт сервером, но показывать всем дверь, за которой
+            всем откажут, незачем. */}
+        {isStaffRole(user.role) && (
+          <Link href="/admin">
+            <Card className="flex-row items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <h2 className="text-sm font-semibold">Управление</h2>
+                <p className="text-xs text-text-secondary">
+                  {user.role === 'GAME_MASTER'
+                    ? 'Сводка, жалобы, игроки, рассылка и журнал'
+                    : 'Сводка, жалобы, игроки, партии и ошибки'}
+                </p>
+              </div>
+              <span className="text-text-secondary">›</span>
+            </Card>
+          </Link>
+        )}
+
         <Link href="/settings">
           <Card className="flex-row items-center justify-between">
             <div className="flex flex-col gap-0.5">

@@ -18,6 +18,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
+import { AdminRegistry } from '../auth/admin-registry.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -84,6 +85,7 @@ export class DuelService {
     private readonly notificationsService: NotificationsService,
     private readonly contactPolicy: ContactPolicyService,
     private readonly inviteNotifier: InviteNotifierService,
+    private readonly admins: AdminRegistry,
   ) {}
 
   async create(
@@ -799,6 +801,7 @@ export class DuelService {
       userId: p.userId,
       nickname: p.user.nickname,
       avatarUrl: p.user.avatarUrl,
+      role: this.admins.roleOf(p.user.telegramId.toString()),
       correctCount: p.correctCount,
       score: p.score,
       streak: p.streak,

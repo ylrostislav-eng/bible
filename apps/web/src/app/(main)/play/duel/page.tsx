@@ -19,6 +19,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PlayerList } from '@/components/player-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
+import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { ScreenIcon } from '@/components/ui/screen-icon';
@@ -572,8 +573,9 @@ export default function DuelPage() {
               <p className="text-xs text-text-muted">правильных</p>
             </Card>
             <Card className="flex-col items-center gap-1">
-              <p className="text-xs text-text-secondary">
+              <p className="flex items-center gap-1.5 text-xs text-text-secondary">
                 {duelState.opponent?.nickname ?? 'Соперник'}
+                <RoleBadge role={duelState.opponent?.role} />
               </p>
               <p className="text-2xl font-bold">
                 {duelState.opponent?.correctCount ?? 0}/{duelState.questionCount}
@@ -667,7 +669,10 @@ export default function DuelPage() {
             <p className="text-xs">{duelState.secondsRemaining}с</p>
           </div>
           <div className="text-right">
-            <p className="font-semibold">{duelState.opponent?.nickname ?? 'Соперник'}</p>
+            <p className="flex items-center justify-end gap-1.5 font-semibold">
+              {duelState.opponent?.nickname ?? 'Соперник'}
+              <RoleBadge role={duelState.opponent?.role} />
+            </p>
             <p className="text-text-secondary">{duelState.opponent?.score ?? 0} очков</p>
           </div>
         </div>

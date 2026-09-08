@@ -144,5 +144,7 @@ export const apiClient = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
-  delete: <T>(path: string) => request<T>('DELETE', path),
+  // С телом: удаление аккаунта в админке требует подтверждения ником, и
+  // класть его в адрес нельзя — ник попал бы в журналы прокси и историю.
+  delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
 };

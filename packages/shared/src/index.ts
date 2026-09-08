@@ -11,6 +11,7 @@ export * from './friends';
 export * from './room';
 export * from './decline-notices';
 export * from './moderation';
+export * from './admin';
 export * from './nickname';
 export * from './age';
 export * from './achievements';

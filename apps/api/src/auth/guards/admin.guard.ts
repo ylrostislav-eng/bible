@@ -4,29 +4,46 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { GAME_MASTER_ONLY_MESSAGE } from '@bible-arena/shared';
 import type { Request } from 'express';
+import { AdminRegistry } from '../admin-registry.service';
 
 /**
- * Gates admin-only endpoints (currently just error telemetry) by Telegram
- * user id. Must run after `JwtAuthGuard` so `request.user` is populated.
- * With `ADMIN_TELEGRAM_IDS` unset, denies everyone — an open admin
- * endpoint is a worse default than a temporarily-locked-out one.
+ * Пускает к экрану управления: гейм-мастера и администраторов. Ставится
+ * **после** `JwtAuthGuard`, иначе `request.user` ещё пуст и охранник
+ * откажет всем.
+ *
+ * Сам список не разбирает — спрашивает `AdminRegistry`: тот же ответ
+ * нужен профилю и спискам, и два разбора одних переменных окружения рано
+ * или поздно разошлись бы.
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly admins: AdminRegistry) {}
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    const user = request.user;
-    const allowed = (this.configService.get<string>('ADMIN_TELEGRAM_IDS') ?? '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter(Boolean);
-
-    if (!user || !allowed.includes(user.telegramId)) {
+    if (!this.admins.isStaff(request.user?.telegramId)) {
       throw new ForbiddenException('Admin access required');
+    }
+    return true;
+  }
+}
+
+/**
+ * Второй рубеж — для необратимого: удаления аккаунта, правки чужого
+ * баланса, рассылки. Отдельным охранником, а не проверкой внутри метода:
+ * проверку в теле метода забывают, охранник над методом виден глазом при
+ * чтении контроллера.
+ */
+@Injectable()
+export class GameMasterGuard implements CanActivate {
+  constructor(private readonly admins: AdminRegistry) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<Request>();
+    if (!this.admins.isGameMaster(request.user?.telegramId)) {
+      throw new ForbiddenException(GAME_MASTER_ONLY_MESSAGE);
     }
     return true;
   }
