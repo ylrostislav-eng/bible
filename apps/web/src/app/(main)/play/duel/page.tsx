@@ -48,7 +48,7 @@ const POLL_INTERVAL_MS = 1200;
  * page for no real benefit — this is a one-shot handoff, not shareable state). */
 const PENDING_SESSION_STORAGE_KEY = 'bible-arena:pending-duel-session';
 
-type Menu = 'menu' | 'find' | 'create' | 'createByCode' | 'join';
+type Menu = 'menu' | 'create' | 'createByCode' | 'join';
 
 /**
  * Сколько вопросов в партии со случайным соперником — одинаково у всех и
@@ -811,32 +811,6 @@ export default function DuelPage() {
     );
   }
 
-  if (menu === 'find') {
-    return (
-      <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
-        <h1 className="text-xl font-bold">Найти соперника</h1>
-        <p className="text-sm text-text-secondary">
-          Незнакомец, который прямо сейчас ищет партию. Настраивать нечего: у всех одинаковые{' '}
-          {FIND_OPPONENT_QUESTION_COUNT} вопросов. Если сейчас никто не ищет — встанете в очередь и
-          начнёте, как только кто-то придёт.
-        </p>
-        <ScreenSpacer />
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-        {/* Над кнопкой, а не под: это то, что человек читает перед
-            нажатием, а не после. */}
-        <WaitingOpponents
-          endpoint="/game/duel/waiting"
-          questionCount={FIND_OPPONENT_QUESTION_COUNT}
-        />
-        <Button onClick={findOpponent} disabled={loading}>
-          {loading ? 'Ищем…' : 'Найти соперника'}
-        </Button>
-        <ScreenBack onClick={() => setMenu('menu')} />
-      </div>
-    );
-  }
-
   if (menu === 'createByCode') {
     return (
       <div className="screen-fill mx-auto max-w-md gap-5 px-4 pt-6">
@@ -999,8 +973,19 @@ export default function DuelPage() {
       <ScreenSpacer />
 
       {/* Первым — поиск соперника: игра с друзьями упирается в то, есть ли
-          друг под рукой прямо сейчас, а сыграть хочется сразу. */}
-      <Button onClick={() => setMenu('find')}>Найти соперника</Button>
+          друг под рукой прямо сейчас, а сыграть хочется сразу.
+          Ищет отсюда же, без промежуточного экрана: настраивать нечего —
+          у всех одинаковые вопросы, — а лишний экран между «хочу играть»
+          и самой игрой не объяснял ничего, чего не видно здесь. Сколько
+          человек в очереди, написано прямо над кнопкой. */}
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <WaitingOpponents
+        endpoint="/game/duel/waiting"
+        questionCount={FIND_OPPONENT_QUESTION_COUNT}
+      />
+      <Button onClick={findOpponent} disabled={loading}>
+        {loading ? 'Ищем…' : 'Найти соперника'}
+      </Button>
       <Button onClick={() => setMenu('create')} variant="secondary">
         Пригласить
       </Button>

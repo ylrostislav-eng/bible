@@ -1,6 +1,7 @@
 'use client';
 
 import type { WaitingOpponentsView } from '@bible-arena/shared';
+import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '@/lib/api';
 
@@ -60,33 +61,50 @@ export function WaitingOpponents({
     };
   }, [load]);
 
-  if (!data) return null;
-
+  // До первого ответа считаем очередь пустой: строка всё равно невидима,
+  // а ветвление на `null` пришлось бы протаскивать во всю вёрстку ниже.
   const count =
-    questionCount !== undefined && data.byQuestionCount
+    questionCount !== undefined && data?.byQuestionCount
       ? (data.byQuestionCount[String(questionCount)] ?? 0)
-      : data.total;
+      : (data?.total ?? 0);
 
   const empty = count === 0;
 
+  // Строка занимает своё место с самого начала и только проявляется, когда
+  // ответ пришёл. Иначе она возникает через полсекунды и толкает кнопку
+  // вниз — глазами это читается как подёргивание экрана, а палец к тому
+  // моменту уже летит к прежнему месту кнопки.
   return (
     <p
-      className={`flex items-center justify-center gap-1.5 text-xs ${
-        empty ? 'text-text-muted' : 'text-primary'
-      } ${className ?? ''}`}
-      aria-live="polite"
-    >
-      <PeopleIcon />
-      {empty ? (
-        'Пока никто не ищет — встаньте первым, вас найдут'
-      ) : (
-        <>
-          Сейчас ищут: <span className="font-semibold">{count}</span>
-          {questionCount !== undefined && (
-            <span className="text-text-muted">· с тем же числом вопросов</span>
-          )}
-        </>
+      className={clsx(
+        'flex min-h-6 items-center justify-center text-xs transition-opacity duration-200',
+        data ? 'opacity-100' : 'opacity-0',
+        className,
       )}
+      aria-live="polite"
+      aria-hidden={!data}
+    >
+      {/* Подложка по ширине текста: строка лежит на картинке экрана, и без
+          неё светлые места обоев съедают половину букв. Плашка узкая и
+          полупрозрачная — читаемость, а не ещё одна карточка. */}
+      <span
+        className={clsx(
+          'inline-flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1 backdrop-blur-[2px]',
+          empty ? 'text-text-secondary' : 'text-primary',
+        )}
+      >
+        <PeopleIcon />
+        {empty ? (
+          'Пока никто не ищет — встаньте первым, вас найдут'
+        ) : (
+          <>
+            Сейчас ищут: <span className="font-semibold">{count}</span>
+            {questionCount !== undefined && (
+              <span className="text-text-muted">· с тем же числом вопросов</span>
+            )}
+          </>
+        )}
+      </span>
     </p>
   );
 }
