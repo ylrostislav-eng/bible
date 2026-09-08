@@ -56,6 +56,16 @@ export default function HotColdDuelPage() {
   const [guess, setGuess] = useState('');
   const [startError, setStartError] = useState<string | null>(null);
   /**
+   * Нажали «Отменить» и ждём, пока сервер подтвердит.
+   *
+   * Уйти в лобби прямо в обработчике нельзя: смена `duelId` рвёт сокет, а
+   * вместе с ним может уйти в никуда и само событие отмены — партия
+   * останется висеть, и «Найти соперника» вернёт в неё же. Поэтому ждём
+   * ответа (обычно это доли секунды), а если он не пришёл — уходим всё
+   * равно: экран не должен зависать на нажатой кнопке.
+   */
+  const [leaving, setLeaving] = useState(false);
+  /**
    * Разбор хранится вместе с id дуэли, к которой относится.
    *
    * Иначе его пришлось бы сбрасывать в эффекте при каждой смене партии, а
@@ -83,7 +93,16 @@ export default function HotColdDuelPage() {
   // Разбор после игры приходит отдельным запросом: до конца партии он и
   // есть ответ, поэтому сервер его просто не отдаёт.
   const duelOver = state?.status === 'FINISHED' || state?.status === 'ABANDONED';
-  const finishedId = duelOver ? state.id : null;
+  /**
+   * Партия, которая так и не началась: отменили до первого слова.
+   *
+   * Разбирать в ней нечего — ни ходов, ни исхода, — а раскрывать
+   * загаданное слово тем более незачем: его никто не искал. Поэтому вместо
+   * итогов здесь короткое «не состоялась» и дорога обратно к поиску.
+   * Отличается от брошенной посреди игры именно отсутствием ходов.
+   */
+  const neverStarted = state?.status === 'ABANDONED' && state.guesses.length === 0;
+  const finishedId = duelOver && !neverStarted ? state.id : null;
 
   // Три исхода звучат по-разному. Несостоявшаяся партия — не поражение и
   // не ничья: там нечего объявлять, и она молчит.
@@ -181,6 +200,35 @@ export default function HotColdDuelPage() {
     }
   }, [code]);
 
+  /**
+   * «Отменить» до начала партии — это выход, а не сдача.
+   *
+   * Сервер разбирается сам (ждущую дуэль он отменяет, поражения не
+   * назначает), а экрану остаётся вернуть человека туда, откуда он
+   * нажимал «Найти соперника». _Раньше здесь оставался `duelId`, приходило
+   * состояние `ABANDONED`, и вместо лобби рисовался разбор законченной
+   * партии — с загаданным словом, которого никто не искал._
+   */
+  const cancelWaiting = useCallback(() => {
+    setLeaving(true);
+    duel.surrender();
+  }, [duel]);
+
+  useEffect(() => {
+    if (!leaving) return;
+    const confirmed = !state || state.status === 'ABANDONED' || state.status === 'FINISHED';
+    // `setTimeout` даже для нуля: React Compiler не разрешает менять
+    // состояние прямо в теле эффекта (см. чеклист).
+    const timer = setTimeout(
+      () => {
+        setDuelId(null);
+        setLeaving(false);
+      },
+      confirmed ? 0 : 1500,
+    );
+    return () => clearTimeout(timer);
+  }, [leaving, state]);
+
   const send = useCallback(() => {
     const value = guess.trim();
     if (!value) return;
@@ -225,9 +273,9 @@ export default function HotColdDuelPage() {
       </header>
 
       {state.status === 'WAITING' ? (
-        <WaitingCard code={state.inviteCode} open={state.open} onCancel={duel.surrender} />
+        <WaitingCard code={state.inviteCode} open={state.open} onCancel={cancelWaiting} />
       ) : state.status === 'READY_CHECK' ? (
-        <ReadyCard state={state} onReady={duel.setReady} onCancel={duel.surrender} />
+        <ReadyCard state={state} onReady={duel.setReady} onCancel={cancelWaiting} />
       ) : (
         <>
           <Scoreboard state={state} moves={duel.opponentMoves} />
@@ -246,7 +294,9 @@ export default function HotColdDuelPage() {
             </section>
           )}
 
-          {duelOver ? (
+          {neverStarted ? (
+            <AbandonedCard onBack={() => setDuelId(null)} />
+          ) : duelOver ? (
             <FinishedCard
               state={state}
               myUserId={user?.id ?? ''}
@@ -670,6 +720,34 @@ function ReadyCard({
       >
         Отменить
       </button>
+    </div>
+  );
+}
+
+/**
+ * Партия не состоялась: соперник отменил её до первого слова.
+ *
+ * Отдельная карточка, а не итоги: итоги обещают разбор, которого нет, и
+ * показывают слово, которого никто не искал. _Живой случай: после отмены
+ * рисовался экран законченной дуэли с загаданным словом — и выглядело
+ * это так, будто партия прошла без тебя._
+ */
+function AbandonedCard({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="rounded-2xl border border-border bg-surface p-4 text-center">
+        <p className="text-sm font-semibold">Дуэль не состоялась</p>
+        <p className="mt-2 text-sm text-text-secondary">
+          Партию отменили до первого слова — ни ходов, ни результата.
+        </p>
+      </section>
+      <Button onClick={onBack}>Найти соперника</Button>
+      <Link
+        href="/hot-cold"
+        className="rounded-xl bg-surface-hover px-3 py-2.5 text-center text-sm font-semibold transition hover:bg-border"
+      >
+        Играть одному
+      </Link>
     </div>
   );
 }
