@@ -45,6 +45,15 @@ export interface UserProfile {
    * чтобы спросить, и не годится, чтобы не отправлять.
    */
   canWriteToPm: boolean;
+  /**
+   * Имя скрыто: везде, где показывался никнейм, остаётся значок роли.
+   *
+   * Только у гейм-мастера и администраторов — сервер откажет остальным.
+   * Свой профиль исключением не является: спрятанное имя должно
+   * скрываться и от самого себя, иначе владелец не видит того, что видят
+   * другие, и не может проверить, сработало ли.
+   */
+  hideName: boolean;
   /** Timer for the solo chapter check-up — see `accessibility.ts`. */
   questionPace: QuestionPace;
   /** Звук и вибро — см. `sound.ts`. */
@@ -119,6 +128,9 @@ export interface UpdateProfileInput {
   soundVolume?: number;
   musicVolume?: number;
   textScale?: TextScale;
+  /** Скрыть имя за значком роли. Принимается только от гейм-мастера и
+   * администраторов — остальным сервер откажет. */
+  hideName?: boolean;
 }
 
 export interface AuthResponse {

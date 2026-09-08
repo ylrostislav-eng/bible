@@ -14,11 +14,14 @@ import {
   DUEL_QUESTION_COUNT_MAX,
   DUEL_QUESTION_COUNT_MIN,
   TESTAMENT_NAMES,
+  isNameHidden,
+  displayName,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PlayerList } from '@/components/player-list';
 import { FriendsIcon } from '@/components/icons/nav-icons';
+import { PlayerLabel } from '@/components/ui/player-label';
 import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
 import { ScreenBack } from '@/components/ui/screen-back';
@@ -577,8 +580,13 @@ export default function DuelPage() {
             </Card>
             <Card className="flex-col items-center gap-1">
               <p className="flex items-center gap-1.5 text-xs text-text-secondary">
-                {duelState.opponent?.nickname ?? 'Соперник'}
-                <RoleBadge role={duelState.opponent?.role} />
+                <PlayerLabel
+                  nickname={duelState.opponent?.nickname}
+                  role={duelState.opponent?.role}
+                />
+                {!isNameHidden(duelState.opponent?.nickname, duelState.opponent?.role) && (
+                  <RoleBadge role={duelState.opponent?.role} />
+                )}
               </p>
               <p className="text-2xl font-bold">
                 {duelState.opponent?.correctCount ?? 0}/{duelState.questionCount}
@@ -673,8 +681,13 @@ export default function DuelPage() {
           </div>
           <div className="text-right">
             <p className="flex items-center justify-end gap-1.5 font-semibold">
-              {duelState.opponent?.nickname ?? 'Соперник'}
-              <RoleBadge role={duelState.opponent?.role} />
+              <PlayerLabel
+                nickname={duelState.opponent?.nickname}
+                role={duelState.opponent?.role}
+              />
+              {!isNameHidden(duelState.opponent?.nickname, duelState.opponent?.role) && (
+                <RoleBadge role={duelState.opponent?.role} />
+              )}
             </p>
             <p className="text-text-secondary">{duelState.opponent?.score ?? 0} очков</p>
           </div>
@@ -760,7 +773,7 @@ export default function DuelPage() {
             <div className="flex justify-between text-sm">
               <span>Вы: +{duelState.reveal.you.scoreDelta}</span>
               <span>
-                {duelState.opponent?.nickname ?? 'Соперник'}: +
+                {displayName(duelState.opponent?.nickname, duelState.opponent?.role)}: +
                 {duelState.reveal.opponent.scoreDelta}
               </span>
             </div>

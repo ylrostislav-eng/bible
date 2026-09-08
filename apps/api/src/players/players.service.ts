@@ -7,6 +7,7 @@ import {
 } from '@bible-arena/shared';
 import type { Prisma, User } from '@prisma/client';
 import { AdminRegistry } from '../auth/admin-registry.service';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,6 +46,7 @@ export class PlayersService {
     private readonly contactPolicy: ContactPolicyService,
     private readonly usersService: UsersService,
     private readonly admins: AdminRegistry,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   async list(
@@ -218,7 +220,9 @@ export class PlayersService {
 
     return rows.map((row) => ({
       userId: row.id,
-      nickname: row.nickname,
+      // Скрытое имя не уходит с сервера — на его месте клиент рисует
+      // значок роли, которая едет в этой же строке.
+      nickname: this.staffNames.nickname(row.id, row.nickname),
       avatarUrl: row.avatarUrl,
       level: row.level,
       rating: row.rating,

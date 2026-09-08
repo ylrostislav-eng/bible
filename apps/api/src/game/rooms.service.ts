@@ -22,6 +22,7 @@ import {
 } from '@bible-arena/shared';
 import { Prisma } from '@prisma/client';
 import { AdminRegistry } from '../auth/admin-registry.service';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -81,6 +82,7 @@ export class RoomsService {
     private readonly contactPolicy: ContactPolicyService,
     private readonly inviteNotifier: InviteNotifierService,
     private readonly admins: AdminRegistry,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   async create(
@@ -225,9 +227,13 @@ export class RoomsService {
         sessionId: s.id,
         inviteCode: s.inviteCode ?? '',
         roomName: s.roomName,
-        leaderNickname:
+        // Имя ведущего стоит строкой в карточке комнаты, значка там нет —
+        // у скрывшегося это метка роли.
+        leaderNickname: this.staffNames.label(
+          s.leaderId ?? '',
           s.participants.find((p) => p.userId === s.leaderId)?.user.nickname ??
-          null,
+            null,
+        ),
         participantCount: s.participants.length,
         maxParticipants: s.maxParticipants ?? ROOM_MAX_PARTICIPANTS,
         questionCount: s.questionCount,
@@ -431,7 +437,7 @@ export class RoomsService {
     });
     return bans.map((b) => ({
       userId: b.bannedUser.id,
-      nickname: b.bannedUser.nickname,
+      nickname: this.staffNames.label(b.bannedUser.id, b.bannedUser.nickname),
       avatarUrl: b.bannedUser.avatarUrl,
       level: b.bannedUser.level,
       rating: b.bannedUser.rating,
@@ -490,9 +496,11 @@ export class RoomsService {
       // недоступного Telegram оно не должно.
       void this.inviteNotifier.notifyRoomInvite({
         toUserId: targetUserId,
-        fromNickname:
+        fromNickname: this.staffNames.label(
+          leaderId,
           session.participants.find((p) => p.userId === leaderId)?.user
             .nickname ?? null,
+        ),
         roomName: session.roomName,
         inviteId: invite.id,
       });
@@ -514,7 +522,10 @@ export class RoomsService {
       inviteId: invite.id,
       sessionId: invite.sessionId,
       roomName: invite.session.roomName,
-      fromNickname: invite.fromUser.nickname,
+      fromNickname: this.staffNames.label(
+        invite.fromUser.id,
+        invite.fromUser.nickname,
+      ),
       participantCount: invite.session.participants.length,
       maxParticipants: invite.session.maxParticipants ?? ROOM_MAX_PARTICIPANTS,
       questionCount: invite.session.questionCount,
@@ -1064,7 +1075,9 @@ export class RoomsService {
   ): RoomParticipantView {
     return {
       userId: p.userId,
-      nickname: p.user.nickname,
+      // В лобби и на табло значок роли уже стоит — скрытое имя уходит
+      // как `null`, и клиент рисует значок на его месте.
+      nickname: this.staffNames.nickname(p.userId, p.user.nickname),
       avatarUrl: p.user.avatarUrl,
       role: this.admins.roleOf(p.user.telegramId.toString()),
       isLeader: p.userId === leaderId,

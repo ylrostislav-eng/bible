@@ -2,6 +2,8 @@ import { FriendsService } from './friends.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { PresenceService } from '../presence/presence.service';
+import type { AdminRegistry } from '../auth/admin-registry.service';
+import type { StaffNameMask } from '../auth/staff-name-mask.service';
 import type { TelegramBotService } from '../notifications/telegram-bot.service';
 import type { ConfigService } from '@nestjs/config';
 
@@ -56,6 +58,8 @@ describe('FriendsService.linkFromInvite', () => {
       {} as ContactPolicyService,
       // Вид ссылки здесь не проверяется — только кого с кем связали.
       { get: () => undefined } as unknown as ConfigService,
+      {} as AdminRegistry,
+      {} as StaffNameMask,
     );
     return { service, friendshipUpsert };
   }

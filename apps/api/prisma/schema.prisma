@@ -157,6 +157,17 @@ model User {
   /// разрешение ещё раз.
   canWriteToPm Boolean @default(false)
 
+  /// Скрыть имя: везде, где показывался никнейм, остаётся один значок роли.
+  ///
+  /// Только для гейм-мастера и администраторов — обычному игроку это дало
+  /// бы безымянную строку в списках, а вместе с ней способ спрятаться от
+  /// того, кто на него пожаловался.
+  ///
+  /// Скрытие настоящее, а не рисованное: имя не уходит с сервера вовсе
+  /// (см. `StaffNameMask`). Спрятанное только в вёрстке, оно осталось бы в
+  /// ответе API — то есть на виду у любого, кто откроет консоль.
+  hideName Boolean @default(false)
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.

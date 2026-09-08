@@ -3,6 +3,8 @@ import { FriendsService } from './friends.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { PresenceService } from '../presence/presence.service';
+import type { AdminRegistry } from '../auth/admin-registry.service';
+import type { StaffNameMask } from '../auth/staff-name-mask.service';
 import type { TelegramBotService } from '../notifications/telegram-bot.service';
 import type { ConfigService } from '@nestjs/config';
 
@@ -49,6 +51,8 @@ describe('FriendsService — подделка приглашения и прав
       {} as TelegramBotService,
       contactPolicy as ContactPolicyService,
       configStub(),
+      {} as AdminRegistry,
+      {} as StaffNameMask,
     );
   }
 

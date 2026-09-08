@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import type { DeclineNoticeView } from '@bible-arena/shared';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly staffNames: StaffNameMask,
+  ) {}
 
   /** Records that `declinedByUserId` turned down something `userId` sent
    * them — a duel challenge or a room invite. Fire-and-forget from the
@@ -50,7 +54,11 @@ export class NotificationsService {
     return rows.map((row) => ({
       id: row.id,
       kind: row.kind,
-      declinedByNickname: row.declinedByUser.nickname,
+      // «Ваш вызов к X отклонён» — имя внутри фразы, значит метка роли.
+      declinedByNickname: this.staffNames.label(
+        row.declinedByUser.id,
+        row.declinedByUser.nickname,
+      ),
       roomName: row.roomName,
     }));
   }

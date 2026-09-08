@@ -12,6 +12,8 @@ export interface FriendView {
   rating: number;
   title: string;
   online: boolean;
+  /** Роль: на месте скрытого имени строка показывает значок. */
+  role: AppRole;
 }
 
 /** The other person in a pending request — `id` is the request's own id
@@ -25,6 +27,7 @@ export interface FriendRequestView {
   rating: number;
   title: string;
   createdAt: string;
+  role: AppRole;
 }
 
 export interface FriendsListResponse {
@@ -56,6 +59,7 @@ export interface FriendSearchResult {
   rating: number;
   title: string;
   relation: FriendRelation;
+  role: AppRole;
 }
 
 export interface SendFriendRequestInput {

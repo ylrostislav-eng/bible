@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/card';
 import { ScreenIcon } from '@/components/ui/screen-icon';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { playerName } from '@/lib/player-name';
+import { PlayerLabel } from '@/components/ui/player-label';
 
 /** Matches the key `/play/duel` reads on mount to pick up a
  * challenge-created session without a URL param. */
@@ -119,7 +119,9 @@ export default function PlayersPage() {
           {overview.incomingRequests.map((req) => (
             <div key={req.id} className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{playerName(req.nickname)}</p>
+                <p className="truncate text-sm font-semibold">
+                  <PlayerLabel nickname={req.nickname} role={req.role} />
+                </p>
                 <p className="text-xs text-text-muted">
                   {req.title} · ур. {req.level}
                 </p>

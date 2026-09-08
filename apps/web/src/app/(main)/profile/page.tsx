@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { AchievementsSection } from '@/components/achievements-section';
+import { HideNameToggle } from '@/components/profile/hide-name-toggle';
 import { RoleBadge } from '@/components/ui/role-badge';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -41,10 +42,18 @@ export default function ProfilePage() {
         </div>
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-bold">{user.nickname}</h1>
+            {/* Своё имя показывается настоящим, даже когда скрыто, — иначе
+                его не поправить и не вспомнить. Что видят остальные,
+                написано ниже, у самого переключателя. */}
+            {user.hideName ? (
+              <RoleBadge role={user.role} size="md" />
+            ) : (
+              <h1 className="text-xl font-bold">{user.nickname}</h1>
+            )}
             {/* Администратору вместо титула — значок: титул у него всё
-                равно есть, но на вопрос «кто это» отвечает не он. */}
-            {isStaffRole(user.role) ? (
+                равно есть, но на вопрос «кто это» отвечает не он. Когда имя
+                скрыто, значок уже стоит выше — здесь тогда обычный титул. */}
+            {isStaffRole(user.role) && !user.hideName ? (
               <RoleBadge role={user.role} size="md" />
             ) : (
               <span className="rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-semibold text-primary">
@@ -59,6 +68,10 @@ export default function ProfilePage() {
           <p className="text-xs text-text-muted">На платформе с {formatDate(user.createdAt)}</p>
         </div>
       </div>
+
+      {/* Прямо под именем: настройка меняет то, что видно строкой выше, и
+          проверяется взглядом, а не походом в настройки. */}
+      <HideNameToggle />
 
       <div className="grid grid-cols-2 gap-3">
         <Card className="flex-col">

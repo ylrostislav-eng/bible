@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { RoleBadge } from '@/components/ui/role-badge';
 import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { DailyGoalCard } from '@/components/daily-goal-card';
@@ -25,7 +26,13 @@ export default function HomePage() {
       <div>
         <p className="text-sm text-text-secondary">Мир вам,</p>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold">{user.nickname}</h1>
+          {/* Скрытое имя прячется и от самого себя: иначе владелец не
+              видит того, что видят все, и не понимает, сработало ли. */}
+          {user.hideName ? (
+            <RoleBadge role={user.role} size="md" />
+          ) : (
+            <h1 className="text-2xl font-bold">{user.nickname}</h1>
+          )}
           <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs font-semibold text-primary">
             {user.title}
           </span>

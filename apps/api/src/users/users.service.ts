@@ -17,6 +17,7 @@ import type {
 } from '@bible-arena/shared';
 import {
   CHILD_MODE_PIN_MESSAGE,
+  HIDE_NAME_STAFF_ONLY_MESSAGE,
   GUARDIAN_PIN_PATTERN,
   isChildBand,
   isReservedNickname,
@@ -31,6 +32,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { AdminRegistry } from '../auth/admin-registry.service';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isAllowedAvatarUrl } from './avatar-url';
 import { RedisService } from '../redis/redis.service';
@@ -109,6 +111,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly admins: AdminRegistry,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   /**
@@ -275,6 +278,40 @@ export class UsersService {
     const leavingChildMode =
       dto.ageBand !== undefined && !isChildBand(dto.ageBand);
 
+    // Скрытое имя — привилегия служебных ролей, а не настройка приватности:
+    // игроку оно дало бы способ уйти из списков безымянной строкой и
+    // спрятаться от того, кто на него пожаловался. Проверка здесь, а не в
+    // контроллере: профиль правится одним запросом, и охранник на маршруте
+    // закрыл бы заодно смену громкости.
+    if (dto.hideName !== undefined) {
+      await this.assertMayHideName(id);
+    }
+
+    const result = await this.writeProfile(id, dto, {
+      guardianConfirmedAt,
+      leavingChildMode,
+      nickname,
+    });
+
+    // Карта скрытых имён перечитывается по времени; здесь — сразу, иначе
+    // человек нажал «скрыть», а полминуты видит своё имя как прежде и
+    // решает, что не сработало.
+    if (dto.hideName !== undefined) this.staffNames.invalidate();
+
+    return result;
+  }
+
+  private async writeProfile(
+    id: string,
+    dto: UpdateProfileDto,
+    extra: {
+      guardianConfirmedAt: Date | undefined;
+      leavingChildMode: boolean;
+      nickname: string | undefined;
+    },
+  ): Promise<User> {
+    const { guardianConfirmedAt, leavingChildMode, nickname } = extra;
+
     try {
       return await this.prisma.user.update({
         where: { id },
@@ -293,6 +330,7 @@ export class UsersService {
           musicVolume: dto.musicVolume,
           hapticsEnabled: dto.hapticsEnabled,
           soundVolume: dto.soundVolume,
+          hideName: dto.hideName,
           ...(guardianConfirmedAt ? { guardianConfirmedAt } : {}),
           ...(leavingChildMode && !guardianConfirmedAt
             ? { guardianConfirmedAt: null }
@@ -312,6 +350,23 @@ export class UsersService {
         throw new ConflictException('Этот никнейм уже занят');
       }
       throw error;
+    }
+  }
+
+  /**
+   * Скрыть имя может только гейм-мастер или администратор.
+   *
+   * Роль спрашивается по `telegramId`, а не по флагу в базе: права
+   * раздаются переменными окружения, и это единственный источник правды о
+   * том, кто здесь служебный.
+   */
+  private async assertMayHideName(id: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { telegramId: true },
+    });
+    if (!user || !this.admins.isStaff(user.telegramId.toString())) {
+      throw new ForbiddenException(HIDE_NAME_STAFF_ONLY_MESSAGE);
     }
   }
 
@@ -1063,7 +1118,9 @@ export class UsersService {
     return {
       rank,
       id: user.id,
-      nickname: user.nickname,
+      // Скрытое имя не покидает сервер: строка рейтинга несёт роль, и
+      // клиент рисует на его месте значок.
+      nickname: this.staffNames.nickname(user.id, user.nickname),
       avatarUrl: user.avatarUrl,
       country: user.country,
       level: user.level,
@@ -1099,6 +1156,11 @@ export class UsersService {
       remindersEnabled: user.remindersEnabled,
       inviteNotificationsEnabled: user.inviteNotificationsEnabled,
       canWriteToPm: user.canWriteToPm,
+      // Себе имя приходит настоящим, даже когда скрыто: иначе его нельзя
+      // ни поправить в настройках, ни узнать, под каким ником заведён
+      // аккаунт. Значок вместо него на своих экранах рисует клиент — по
+      // этому же флагу.
+      hideName: user.hideName,
       questionPace: user.questionPace,
       textScale: user.textScale,
       soundEnabled: user.soundEnabled,

@@ -1,16 +1,14 @@
 'use client';
 
-import { isStaffRole } from '@bible-arena/shared';
 import type { BannedUserView, LeaderboardEntry, LeaderboardResponse } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { RatingIcon } from '@/components/icons/nav-icons';
-import { RoleBadge } from '@/components/ui/role-badge';
+import { PlayerLabel, RoleOrTitle } from '@/components/ui/player-label';
 import { Card } from '@/components/ui/card';
 import { ScreenIcon } from '@/components/ui/screen-icon';
 import { UserActionSheet } from '@/components/user-action-sheet';
 import { ApiError, apiClient } from '@/lib/api';
-import { playerName } from '@/lib/player-name';
 
 function Avatar({ entry }: { entry: LeaderboardEntry }) {
   return (
@@ -46,9 +44,11 @@ function Row({
       </span>
       <Avatar entry={entry} />
       <div className="min-w-0 flex-1 text-left">
-        <p className="truncate text-sm font-semibold">{playerName(entry.nickname)}</p>
+        <p className="truncate text-sm font-semibold">
+          <PlayerLabel nickname={entry.nickname} role={entry.role} />
+        </p>
         <p className="flex items-center gap-1.5 truncate text-xs text-text-secondary">
-          {isStaffRole(entry.role) ? <RoleBadge role={entry.role} /> : entry.title} ·{' '}
+          <RoleOrTitle nickname={entry.nickname} role={entry.role} title={entry.title} /> ·{' '}
           {entry.gamesWon}W/
           {entry.gamesLost}L
         </p>

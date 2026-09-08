@@ -100,4 +100,10 @@ export class UpdateProfileDto {
   @Min(SOUND_VOLUME_MIN)
   @Max(SOUND_VOLUME_MAX)
   soundVolume?: number;
+
+  /** Скрыть имя за значком роли. Право проверяется в сервисе: здесь
+   * известен только тип значения, но не тот, кто его прислал. */
+  @IsOptional()
+  @IsBoolean()
+  hideName?: boolean;
 }

@@ -22,6 +22,8 @@ import {
   inviteLinkOpensApp,
 } from '../notifications/invite-link';
 import { TelegramBotService } from '../notifications/telegram-bot.service';
+import { AdminRegistry } from '../auth/admin-registry.service';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -35,6 +37,8 @@ export class FriendsService {
     private readonly telegramBot: TelegramBotService,
     private readonly contactPolicy: ContactPolicyService,
     private readonly configService: ConfigService,
+    private readonly admins: AdminRegistry,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   async search(
@@ -109,7 +113,10 @@ export class FriendsService {
 
     return users.map((user) => ({
       userId: user.id,
-      nickname: user.nickname,
+      // Имя скрывшегося не уходит наружу нигде — включая поиск: иначе
+      // достаточно было бы поискать, чтобы узнать его.
+      nickname: this.staffNames.nickname(user.id, user.nickname),
+      role: this.admins.roleOf(user.telegramId.toString()),
       avatarUrl: user.avatarUrl,
       level: user.level,
       rating: user.rating,
@@ -397,7 +404,8 @@ export class FriendsService {
     return {
       id: requestId,
       userId: otherUser.id,
-      nickname: otherUser.nickname,
+      nickname: this.staffNames.nickname(otherUser.id, otherUser.nickname),
+      role: this.admins.roleOf(otherUser.telegramId.toString()),
       avatarUrl: otherUser.avatarUrl,
       level: otherUser.level,
       rating: otherUser.rating,
@@ -531,7 +539,8 @@ export class FriendsService {
     const friends: FriendView[] = friendUsers
       .map((user) => ({
         userId: user.id,
-        nickname: user.nickname,
+        nickname: this.staffNames.nickname(user.id, user.nickname),
+        role: this.admins.roleOf(user.telegramId.toString()),
         avatarUrl: user.avatarUrl,
         level: user.level,
         rating: user.rating,

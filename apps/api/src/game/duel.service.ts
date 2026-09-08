@@ -19,6 +19,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { AdminRegistry } from '../auth/admin-registry.service';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -86,6 +87,7 @@ export class DuelService {
     private readonly contactPolicy: ContactPolicyService,
     private readonly inviteNotifier: InviteNotifierService,
     private readonly admins: AdminRegistry,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   async create(
@@ -273,12 +275,14 @@ export class DuelService {
 
   /** Ник для текста уведомления. Отдельным запросом, а не из `include`:
    * нужен он только здесь, а `challenge` и без того делает достаточно. */
+  /** Для текста уведомления: у скрывшегося это метка роли, а не «Игрок»,
+   * — подменять личность в чужой переписке нельзя. */
   private async nicknameOf(userId: string): Promise<string | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { nickname: true },
     });
-    return user?.nickname ?? null;
+    return this.staffNames.label(userId, user?.nickname ?? null);
   }
 
   /** Challenges sent to `userId` that haven't been accepted/declined yet —
@@ -297,7 +301,10 @@ export class DuelService {
     return sessions.map((session) => ({
       sessionId: session.id,
       fromUserId: session.participants[0]?.userId ?? '',
-      fromNickname: session.participants[0]?.user.nickname ?? null,
+      fromNickname: this.staffNames.label(
+        session.participants[0]?.userId ?? '',
+        session.participants[0]?.user.nickname ?? null,
+      ),
       questionCount: session.questionCount,
       createdAt: session.startedAt.toISOString(),
     }));
@@ -375,7 +382,10 @@ export class DuelService {
 
     return {
       sessionId: session.id,
-      hostNickname: session.participants[0]?.user.nickname ?? null,
+      hostNickname: this.staffNames.label(
+        session.participants[0]?.userId ?? '',
+        session.participants[0]?.user.nickname ?? null,
+      ),
       questionCount: session.questionCount,
     };
   }
@@ -799,7 +809,8 @@ export class DuelService {
 
     const toView = (p: LoadedParticipant): DuelParticipantView => ({
       userId: p.userId,
-      nickname: p.user.nickname,
+      // На табло значок роли уже есть — скрытое имя уходит как `null`.
+      nickname: this.staffNames.nickname(p.userId, p.user.nickname),
       avatarUrl: p.user.avatarUrl,
       role: this.admins.roleOf(p.user.telegramId.toString()),
       correctCount: p.correctCount,

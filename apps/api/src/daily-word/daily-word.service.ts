@@ -24,6 +24,7 @@ import {
   localDate,
   shuffledByKey,
 } from '../common/local-day';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 
@@ -65,6 +66,7 @@ export class DailyWordService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   /**
@@ -375,7 +377,8 @@ export class DailyWordService {
       const finished = attempt?.finishedAt != null;
       return {
         userId: id,
-        nickname: user?.nickname ?? null,
+        // Лента друзей — строки без значка: метка роли текстом.
+        nickname: this.staffNames.label(id, user?.nickname ?? null),
         avatarUrl: user?.avatarUrl ?? null,
         solved: attempt?.solved ?? false,
         // Пока друг не закончил, его цифры не показываем: «три попытки и

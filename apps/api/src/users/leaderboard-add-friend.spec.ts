@@ -1,5 +1,6 @@
 import type { LeaderboardEntry } from '@bible-arena/shared';
 import type { AdminRegistry } from '../auth/admin-registry.service';
+import type { StaffNameMask } from '../auth/staff-name-mask.service';
 import { UsersService } from './users.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
@@ -80,6 +81,10 @@ describe('UsersService.getLeaderboard — кнопка «Добавить в д�
       {
         roleOf: () => 'PLAYER' as const,
       } as unknown as AdminRegistry,
+      // Никто не скрывал имя — маска пропускает всё насквозь.
+      {
+        nickname: (_id: string, nickname: string | null) => nickname,
+      } as unknown as StaffNameMask,
     );
   }
 

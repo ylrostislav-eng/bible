@@ -15,8 +15,8 @@ import { isChildBand, isStaffRole } from '@bible-arena/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { NO_NICKNAME_HINT, playerName } from '@/lib/player-name';
-import { RoleBadge } from './ui/role-badge';
+import { NO_NICKNAME_HINT } from '@/lib/player-name';
+import { PlayerLabel, RoleOrTitle } from './ui/player-label';
 import { Card } from './ui/card';
 import { QuestionCountSlider } from './ui/question-count-slider';
 import { Spinner } from './ui/spinner';
@@ -234,7 +234,7 @@ export function PlayerList({
           />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">
-              {playerName(player.nickname)}
+              <PlayerLabel nickname={player.nickname} role={player.role} />
               {player.relation === 'friend' && (
                 <span className="ml-1.5 align-middle text-[10px] font-medium text-primary">
                   свой
@@ -242,14 +242,13 @@ export function PlayerList({
               )}
             </p>
             <p className="flex items-center gap-1.5 text-xs text-text-muted">
-              {!player.nickname ? (
+              {!player.nickname && !isStaffRole(player.role) ? (
                 NO_NICKNAME_HINT
-              ) : isStaffRole(player.role) ? (
-                <>
-                  <RoleBadge role={player.role} /> · ур. {player.level}
-                </>
               ) : (
-                `${player.title} · ур. ${player.level}`
+                <>
+                  <RoleOrTitle nickname={player.nickname} role={player.role} title={player.title} />{' '}
+                  · ур. {player.level}
+                </>
               )}
             </p>
           </div>
@@ -378,6 +377,7 @@ export function PlayerList({
       {actionSheetFor && (
         <UserActionSheet
           nickname={actionSheetFor.nickname}
+          role={actionSheetFor.role}
           userId={actionSheetFor.userId}
           isBanned={bannedIds.has(actionSheetFor.userId)}
           busy={actionBusy || busyId === actionSheetFor.userId}

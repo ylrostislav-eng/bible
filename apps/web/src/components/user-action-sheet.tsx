@@ -1,10 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import type { AppRole } from '@bible-arena/shared';
 import { ReportSheet } from './report-sheet';
+import { PlayerLabel } from './ui/player-label';
 
 interface UserActionSheetProps {
   nickname: string | null;
+  /** Роль: у скрывшего имя в заголовке стоит значок вместо ника. */
+  role?: AppRole | null;
   /** Needed for the report action — a complaint has to name someone. */
   userId: string;
   isBanned: boolean;
@@ -29,6 +33,7 @@ interface UserActionSheetProps {
  */
 export function UserActionSheet({
   nickname,
+  role,
   userId,
   isBanned,
   busy,
@@ -58,7 +63,9 @@ export function UserActionSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <p className="truncate text-base font-bold">{nickname ?? 'Игрок'}</p>
+          <p className="truncate text-base font-bold">
+            <PlayerLabel nickname={nickname} role={role} badgeSize="md" />
+          </p>
           <button onClick={onClose} className="text-sm text-text-secondary">
             Закрыть
           </button>

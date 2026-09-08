@@ -79,6 +79,36 @@ export type GameMasterOnlyPower = (typeof GAME_MASTER_ONLY_POWERS)[number];
 
 export const GAME_MASTER_ONLY_MESSAGE = 'Это может только гейм-мастер';
 
+/**
+ * Скрытое имя — привилегия, а не настройка приватности.
+ *
+ * Игроку она дала бы способ уйти из списков безымянной строкой, а заодно
+ * спрятаться от того, кто на него пожаловался. У гейм-мастера смысл
+ * обратный: значок роли **заметнее** имени, и «кто это» он объясняет
+ * лучше, чем никнейм.
+ */
+export const HIDE_NAME_STAFF_ONLY_MESSAGE = 'Скрыть имя может только гейм-мастер или администратор';
+
+/**
+ * Имя игрока для показа — одно правило на всё приложение.
+ *
+ * Скрытое имя приходит с сервера как `null` рядом со служебной ролью:
+ * никнейм в этом случае не покидает сервер вовсе. Значит `null` здесь
+ * значит одно из двух — либо имя спрятано (роль служебная, показываем
+ * метку роли), либо человек ещё не прошёл онбординг (обычный игрок,
+ * показываем «Игрок»). Пустой строки в списках быть не должно ни в том,
+ * ни в другом случае.
+ */
+export function displayName(nickname: string | null | undefined, role?: AppRole | null): string {
+  if (nickname) return nickname;
+  return isStaffRole(role) ? APP_ROLE_LABELS[role as AppRole] : APP_ROLE_LABELS.PLAYER;
+}
+
+/** Показывать ли на месте имени значок роли вместо текста. */
+export function isNameHidden(nickname: string | null | undefined, role?: AppRole | null): boolean {
+  return !nickname && isStaffRole(role);
+}
+
 /** Что видно на сводке — одним экраном, без листания. */
 export interface AdminOverview {
   players: {

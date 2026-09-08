@@ -36,6 +36,7 @@ import {
 } from '@bible-arena/shared';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { generateInviteCode } from '../game/invite-code';
+import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SemanticsService,
@@ -105,6 +106,7 @@ export class HotColdDuelService {
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
     private readonly semantics: SemanticsService,
+    private readonly staffNames: StaffNameMask,
   ) {}
 
   private readonly rankings = new Map<string, SemanticRanking>();
@@ -527,7 +529,9 @@ export class HotColdDuelService {
       opponent: other
         ? {
             userId: other.userId,
-            nickname: other.user.nickname,
+            // Значка роли на этом экране нет — у скрывшегося подписью
+            // идёт метка роли, а не «Соперник».
+            nickname: this.staffNames.label(other.userId, other.user.nickname),
             avatarUrl: other.user.avatarUrl,
             // Только числа. Слова остаются на сервере — см. заголовок.
             ranks: readGuesses(other.guesses).map((entry) => entry.rank),
