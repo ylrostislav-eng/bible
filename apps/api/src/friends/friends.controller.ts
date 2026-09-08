@@ -24,10 +24,17 @@ export class FriendsController {
     return this.friendsService.getOverview(user.sub);
   }
 
-  /** Личная ссылка-приглашение. `null`, если бот ещё не настроен. */
+  /**
+   * Личная ссылка-приглашение. `null`, если бот ещё не настроен.
+   *
+   * Вместе со ссылкой отдаётся `opensApp` — откроется ли по ней сразу игра
+   * или сначала бот. Обещать «сразу откроется игра», когда откроется бот,
+   * нельзя: приглашающий пересказывает это другу своими словами, и
+   * несовпадение выглядит как поломка у него, а не у нас.
+   */
   @Get('invite-link')
   async getInviteLink(@CurrentUser() user: JwtPayload) {
-    return { link: await this.friendsService.getInviteLink(user.sub) };
+    return this.friendsService.getInviteLink(user.sub);
   }
 
   @Get('search')

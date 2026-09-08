@@ -4,6 +4,7 @@ import type { AuthResponse, UpdateProfileInput, UserProfile } from '@bible-arena
 import { retrieveLaunchParams, retrieveRawInitData } from '@telegram-apps/sdk-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiClient, setAccessToken, setSessionRecovery } from './api';
+import { askWriteAccess } from './write-access';
 
 type AuthStatus = 'loading' | 'no-telegram' | 'authenticated' | 'error';
 
@@ -18,6 +19,14 @@ interface AuthContextValue {
   /** Sets, changes or clears the guardian PIN. `pin: null` clears it;
    * `currentPin` is required whenever one is already set. */
   updateGuardianPin: (input: { pin: string | null; currentPin?: string }) => Promise<void>;
+  /**
+   * Спрашивает у Telegram разрешение боту писать в личные сообщения и, если
+   * разрешили, сообщает об этом серверу. Возвращает, разрешили ли.
+   *
+   * Живёт здесь, а не в экране, потому что меняет профиль: `canWriteToPm`
+   * читают сразу несколько мест, и обновиться он должен всюду разом.
+   */
+  requestWriteAccess: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -59,14 +68,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (!initData) return null;
 
-    // Параметр запуска ссылки-приглашения (`?startapp=ref_<id>`). Читается
-    // на каждом входе, а не только на первом: связь создаёт сервер и он же
-    // решает, что с ней делать — новичка сразу дружит с пригласившим, у
-    // остальных заводит обычную заявку. Отсутствие параметра — обычное
-    // дело, приложение чаще открывают кнопкой бота.
+    // Параметр запуска ссылки-приглашения (`?startapp=ref_<токен>`).
+    // Читается на каждом входе, а не только на первом: связь создаёт сервер
+    // и он же решает, что с ней делать — новичка сразу дружит с
+    // пригласившим, у остальных заводит обычную заявку. Отсутствие
+    // параметра — обычное дело, приложение чаще открывают кнопкой бота.
+    //
+    // Источников два, потому что и дорог сюда две. Прямая ссылка на
+    // мини-приложение кладёт приглашение в параметр запуска Telegram. А
+    // ссылка через бота приводит человека в переписку, и оттуда игру
+    // открывает кнопка под ответом бота — она открывает приложение по
+    // прямому адресу, где параметра запуска нет вовсе, и приглашение
+    // приезжает обычным `?invite=` (см. `TelegramUpdatesService`).
+    // Забыть второй источник значит потерять дружбу ровно у тех, кто пришёл
+    // по приглашению впервые, — и не заметить этого.
     let startParam: string | undefined;
     try {
-      startParam = retrieveLaunchParams(true).tgWebAppStartParam;
+      startParam =
+        new URLSearchParams(window.location.search).get('invite') ??
+        retrieveLaunchParams(true).tgWebAppStartParam;
     } catch {
       startParam = undefined;
     }
@@ -141,6 +161,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const requestWriteAccess = useCallback(async () => {
+    const allowed = await askWriteAccess();
+    if (!allowed) return false;
+    // Отдельным запросом, потому что ответ Telegram получает приложение, а
+    // не сервер: в `initData` этого запуска флаг уже не появится.
+    try {
+      setUser(await apiClient.post<UserProfile>('/users/me/write-access', {}));
+    } catch {
+      // Разрешение уже дано — сервер узнает о нём на следующем входе из
+      // `initData`. Ронять экран из-за не дошедшей отметки нечестно: с
+      // точки зрения игрока он всё сделал.
+    }
+    return true;
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
@@ -150,8 +185,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       devLogin,
       updateProfile,
       updateGuardianPin,
+      requestWriteAccess,
     }),
-    [status, user, errorMessage, retry, devLogin, updateProfile, updateGuardianPin],
+    [
+      status,
+      user,
+      errorMessage,
+      retry,
+      devLogin,
+      updateProfile,
+      updateGuardianPin,
+      requestWriteAccess,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

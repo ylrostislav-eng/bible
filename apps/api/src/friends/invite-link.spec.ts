@@ -4,6 +4,13 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { PresenceService } from '../presence/presence.service';
 import type { TelegramBotService } from '../notifications/telegram-bot.service';
+import type { ConfigService } from '@nestjs/config';
+
+/** Настройки здесь ни на что не влияют: проверяется связывание, а не вид
+ * ссылки (за него отвечает `notifications/invite-link.spec.ts`). */
+function configStub(): ConfigService {
+  return { get: () => undefined } as unknown as ConfigService;
+}
 
 /**
  * ## Приглашение по ссылке
@@ -41,6 +48,7 @@ describe('FriendsService — подделка приглашения и прав
       {} as PresenceService,
       {} as TelegramBotService,
       contactPolicy as ContactPolicyService,
+      configStub(),
     );
   }
 

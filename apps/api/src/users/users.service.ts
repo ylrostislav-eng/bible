@@ -150,20 +150,33 @@ export class UsersService {
     telegramId: bigint;
     telegramUsername: string | null;
     telegramAvatarUrl: string | null;
+    /** Из `initData`. Только `true` что-то значит — см.
+     * `TelegramInitDataUser.allows_write_to_pm`. */
+    canWriteToPm?: boolean;
   }): Promise<{ user: User; created: boolean }> {
     const existing = await this.prisma.user.findUnique({
       where: { telegramId: params.telegramId },
     });
 
     if (existing) {
+      const data: Prisma.UserUpdateInput = {};
       if (params.telegramUsername !== existing.telegramUsername) {
-        const user = await this.prisma.user.update({
-          where: { id: existing.id },
-          data: { telegramUsername: params.telegramUsername },
-        });
-        return { user, created: false };
+        data.telegramUsername = params.telegramUsername;
       }
-      return { user: existing, created: false };
+      // Разрешение только ставится, никогда не снимается: пустой флаг
+      // означает «Telegram не сказал», а не «человек запретил».
+      if (params.canWriteToPm === true && !existing.canWriteToPm) {
+        data.canWriteToPm = true;
+      }
+
+      if (Object.keys(data).length === 0)
+        return { user: existing, created: false };
+
+      const user = await this.prisma.user.update({
+        where: { id: existing.id },
+        data,
+      });
+      return { user, created: false };
     }
 
     const user = await this.prisma.user.create({
@@ -171,9 +184,28 @@ export class UsersService {
         telegramId: params.telegramId,
         avatarUrl: params.telegramAvatarUrl,
         telegramUsername: params.telegramUsername,
+        canWriteToPm: params.canWriteToPm === true,
       },
     });
     return { user, created: true };
+  }
+
+  /**
+   * Отмечает, что боту разрешено писать этому человеку.
+   *
+   * Зовётся из приложения после `requestWriteAccess()` — Telegram отвечает
+   * приложению, но не серверу, и другого способа узнать об этом у сервера
+   * нет: `initData` уже выдан и до следующего запуска не изменится.
+   *
+   * Снять разрешение отсюда нельзя намеренно. Единственный надёжный признак
+   * запрета — отказ самого Telegram при отправке (`status: 'blocked'`), и
+   * обрабатывается он там, где приходит.
+   */
+  async grantWriteAccess(userId: string): Promise<User> {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { canWriteToPm: true },
+    });
   }
 
   async findById(id: string): Promise<User> {
@@ -1066,6 +1098,7 @@ export class UsersService {
       guardianPinSet: user.guardianPinHash !== null,
       remindersEnabled: user.remindersEnabled,
       inviteNotificationsEnabled: user.inviteNotificationsEnabled,
+      canWriteToPm: user.canWriteToPm,
       questionPace: user.questionPace,
       textScale: user.textScale,
       soundEnabled: user.soundEnabled,

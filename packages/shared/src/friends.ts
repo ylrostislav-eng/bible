@@ -33,6 +33,21 @@ export interface FriendsListResponse {
   outgoingRequests: FriendRequestView[];
 }
 
+/** Личная ссылка-приглашение и то, что по ней откроется. */
+export interface InviteLinkResponse {
+  /** `null`, пока у сервера нет токена бота — звать некуда. */
+  link: string | null;
+  /**
+   * Откроется ли по ссылке сразу игра, а не бот.
+   *
+   * Приходит с сервера, потому что зависит от настроек бота, о которых
+   * приложение знать не может. Нужно, чтобы подпись под кнопкой обещала
+   * ровно то, что случится: приглашающий пересказывает её другу, и
+   * расхождение выглядит поломкой у него, а не у нас.
+   */
+  opensApp: boolean;
+}
+
 export interface FriendSearchResult {
   userId: string;
   nickname: string | null;

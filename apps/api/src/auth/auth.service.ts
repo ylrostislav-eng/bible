@@ -60,6 +60,7 @@ export class AuthService {
       telegramId: BigInt(telegramUser.id),
       telegramUsername: telegramUser.username ?? null,
       telegramAvatarUrl: telegramUser.photo_url ?? null,
+      canWriteToPm: telegramUser.allows_write_to_pm,
     });
 
     const inviteToken = parseInviteParam(startParam);

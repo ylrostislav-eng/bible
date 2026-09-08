@@ -5,15 +5,18 @@ import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { RemindersService } from './reminders.service';
 import { TelegramBotService } from './telegram-bot.service';
+import { TelegramUpdatesController } from './telegram-updates.controller';
+import { TelegramUpdatesService } from './telegram-updates.service';
 
 @Module({
   imports: [PresenceModule],
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, TelegramUpdatesController],
   providers: [
     NotificationsService,
     TelegramBotService,
     RemindersService,
     InviteNotifierService,
+    TelegramUpdatesService,
   ],
   exports: [
     NotificationsService,

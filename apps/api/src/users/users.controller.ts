@@ -4,6 +4,7 @@ import {
   Get,
   Headers,
   Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -59,6 +60,24 @@ export class UsersController {
       dto.pin,
       dto.currentPin,
     );
+    return this.usersService.toProfile(user);
+  }
+
+  /**
+   * Приложение сообщает, что человек разрешил боту писать ему.
+   *
+   * Спрашивает разрешение Telegram, а ответ отдаёт приложению, не серверу.
+   * Сервер узнать это сам не может: `initData` выдан на запуске и до
+   * следующего уже не изменится, а следующий может случиться через неделю —
+   * всё это время уведомления считались бы недоставляемыми.
+   *
+   * Тела у запроса нет: отрицательный ответ не присылается вовсе. «Не
+   * разрешил» и «закрыл окно, не читая» с нашей стороны неразличимы, а
+   * записывать отказ значит потом не спросить второй раз.
+   */
+  @Post('me/write-access')
+  async grantWriteAccess(@CurrentUser() currentUser: JwtPayload) {
+    const user = await this.usersService.grantWriteAccess(currentUser.sub);
     return this.usersService.toProfile(user);
   }
 

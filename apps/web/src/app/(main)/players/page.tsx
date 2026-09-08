@@ -2,7 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { isChildBand, type FriendsListResponse } from '@bible-arena/shared';
+import {
+  isChildBand,
+  type FriendsListResponse,
+  type InviteLinkResponse,
+} from '@bible-arena/shared';
 import { FriendsIcon } from '@/components/icons/nav-icons';
 import { InviteFriendsCard } from '@/components/invite-friends-card';
 import { PlayerList } from '@/components/player-list';
@@ -33,7 +37,7 @@ export default function PlayersPage() {
   const child = isChildBand(user?.ageBand);
 
   const [overview, setOverview] = useState<FriendsListResponse | null>(null);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [invite, setInvite] = useState<InviteLinkResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Пересобирает список игроков после «Принять»/«Убрать»: сам он обновится
@@ -60,12 +64,12 @@ export default function PlayersPage() {
       //
       // `allSettled`, а не `all`: приглашение — необязательная часть экрана,
       // и его неудача не должна утаскивать за собой остальное.
-      const [list, invite] = await Promise.allSettled([
+      const [list, inviteLink] = await Promise.allSettled([
         apiClient.get<FriendsListResponse>('/friends'),
-        apiClient.get<{ link: string | null }>('/friends/invite-link'),
+        apiClient.get<InviteLinkResponse>('/friends/invite-link'),
       ]);
       if (cancelled) return;
-      if (invite.status === 'fulfilled') setInviteLink(invite.value.link);
+      if (inviteLink.status === 'fulfilled') setInvite(inviteLink.value);
       if (list.status === 'fulfilled') {
         setOverview(list.value);
         setLoadError(null);
@@ -175,7 +179,7 @@ export default function PlayersPage() {
           и «где брать людей» перестало быть первым вопросом экрана. Но
           позвать своих по-прежнему хочется — просто это уже не спасение от
           пустоты, а отдельное желание. */}
-      <InviteFriendsCard link={inviteLink} />
+      <InviteFriendsCard link={invite?.link ?? null} opensApp={invite?.opensApp ?? false} />
     </div>
   );
 }

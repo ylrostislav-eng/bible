@@ -144,6 +144,19 @@ model User {
   /// как и напоминания.
   inviteNotificationsEnabled Boolean @default(true)
 
+  /// Разрешил ли человек боту писать ему в личные сообщения.
+  ///
+  /// Тонкость Telegram: открыть мини-приложение по прямой ссылке можно, ни
+  /// разу не заговорив с ботом, — и тогда чата нет, а без чата бот писать
+  /// не может. Разрешение спрашивается внутри приложения родным окном
+  /// (`requestWriteAccess`), и его ответ хранится здесь.
+  ///
+  /// Отправку уведомлений этот флаг НЕ загораживает: у тех, кто нажал
+  /// Start в боте когда-то давно, он ложно пуст, и запрет по нему отнял бы
+  /// у них уведомления. Флаг решает другое — стоит ли **спрашивать**
+  /// разрешение ещё раз.
+  canWriteToPm Boolean @default(false)
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.

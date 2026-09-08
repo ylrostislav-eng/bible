@@ -3,6 +3,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { PresenceService } from '../presence/presence.service';
 import type { TelegramBotService } from '../notifications/telegram-bot.service';
+import type { ConfigService } from '@nestjs/config';
 
 /**
  * Тест сторожит продуктовое правило, а не код: **сразу в друзья попадает
@@ -53,6 +54,8 @@ describe('FriendsService.linkFromInvite', () => {
       {} as PresenceService,
       {} as TelegramBotService,
       {} as ContactPolicyService,
+      // Вид ссылки здесь не проверяется — только кого с кем связали.
+      { get: () => undefined } as unknown as ConfigService,
     );
     return { service, friendshipUpsert };
   }

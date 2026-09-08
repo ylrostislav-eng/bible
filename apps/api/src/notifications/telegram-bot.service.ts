@@ -161,4 +161,46 @@ export class TelegramBotService {
       };
     }
   }
+
+  /**
+   * Подписывает бота на входящие сообщения.
+   *
+   * `secretToken` Telegram возвращает нам в заголовке каждой доставки — это
+   * единственное, чем открытый эндпоинт отличает настоящую доставку от
+   * чужого запроса по угаданному адресу.
+   *
+   * `allowed_updates` сужен до сообщений намеренно: всё остальное (правки,
+   * реакции, участники чатов) нам не нужно, а каждая лишняя доставка — это
+   * запрос, который сервер обязан разобрать.
+   */
+  async setWebhook(url: string, secretToken: string): Promise<boolean> {
+    const token = this.token;
+    if (!token) return false;
+
+    try {
+      const response = await fetch(`${this.apiBase}/bot${token}/setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          secret_token: secretToken,
+          allowed_updates: ['message'],
+        }),
+      });
+      if (response.ok) return true;
+
+      const body: unknown = await response.json().catch(() => null);
+      this.logger.warn(
+        `Не удалось подписать бота на входящие: ${
+          body && typeof body === 'object' && 'description' in body
+            ? String(body.description)
+            : `HTTP ${response.status}`
+        }`,
+      );
+      return false;
+    } catch (error) {
+      this.logger.warn(`Не удалось подписать бота: ${String(error)}`);
+      return false;
+    }
+  }
 }

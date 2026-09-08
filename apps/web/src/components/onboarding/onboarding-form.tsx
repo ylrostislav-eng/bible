@@ -17,7 +17,7 @@ import { Button } from '../ui/button';
 import { AgeBandStep } from './age-band-step';
 
 export function OnboardingForm() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, requestWriteAccess } = useAuth();
   const [nickname, setNickname] = useState('');
   const [country, setCountry] = useState('');
   const [language, setLanguage] = useState<LanguageCode>(user?.language ?? 'ru');
@@ -53,6 +53,20 @@ export function OnboardingForm() {
         ageBand: payload.ageBand,
         guardianConfirmed: payload.guardianConfirmed,
       });
+
+      // Разрешение писать спрашивается один раз — здесь, и только у
+      // новичка. Позже подходящего места нет: открытие приложения переписки
+      // с ботом не создаёт, а уведомления («вас зовут в игру») включены с
+      // самого начала — без разрешения они молча не доходят, и игрок об
+      // этом никогда не узнает, потому что тумблер у него включён.
+      //
+      // После сохранения профиля, а не до: окно Telegram перекрывает экран,
+      // и упавший в этот момент запрос профиля вернул бы человека к форме
+      // поверх чужого окна.
+      //
+      // Отказ ничего не ломает и не запоминается: спросить снова можно в
+      // настройках, там же стоит объяснение, чем грозит отказ.
+      await requestWriteAccess();
     } catch (err) {
       // A nickname taken while the second step was open surfaces here, so
       // the message has to send the player back to the field it's about.

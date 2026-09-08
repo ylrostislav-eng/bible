@@ -8,6 +8,17 @@ export interface TelegramInitDataUser {
   first_name?: string;
   last_name?: string;
   photo_url?: string;
+  /**
+   * Разрешил ли человек боту писать ему в личные сообщения.
+   *
+   * Приходит от Telegram и подписано вместе со всем `initData`, то есть
+   * подделать нельзя. Но **отсутствие** флага ничего не доказывает: Telegram
+   * ставит его не во всех случаях запуска, а у тех, кто нажал «Старт» в
+   * боте когда-то давно, он бывает пуст при живой переписке. Поэтому
+   * значение годится, только чтобы поставить разрешение, и никогда — чтобы
+   * снять (см. `UsersService.grantWriteAccess`).
+   */
+  allows_write_to_pm?: boolean;
 }
 
 const MAX_AUTH_AGE_SECONDS = 24 * 60 * 60;

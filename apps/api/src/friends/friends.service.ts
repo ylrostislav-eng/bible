@@ -15,7 +15,12 @@ import {
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { ContactPolicyService } from '../contact/contact-policy.service';
+import {
+  buildInviteLink,
+  inviteLinkOpensApp,
+} from '../notifications/invite-link';
 import { TelegramBotService } from '../notifications/telegram-bot.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +34,7 @@ export class FriendsService {
     private readonly presenceService: PresenceService,
     private readonly telegramBot: TelegramBotService,
     private readonly contactPolicy: ContactPolicyService,
+    private readonly configService: ConfigService,
   ) {}
 
   async search(
@@ -252,15 +258,18 @@ export class FriendsService {
    * Ссылка нужна не всем и не всегда, а колонка с уникальным индексом
    * дешевле, когда она заполнена у десятка человек, а не у всех.
    */
-  async getInviteLink(currentUserId: string): Promise<string | null> {
+  async getInviteLink(
+    currentUserId: string,
+  ): Promise<{ link: string | null; opensApp: boolean }> {
+    const opensApp = inviteLinkOpensApp(this.configService);
     const botUsername = await this.telegramBot.getBotUsername();
-    if (!botUsername) return null;
+    if (!botUsername) return { link: null, opensApp };
 
     const user = await this.prisma.user.findUnique({
       where: { id: currentUserId },
       select: { inviteToken: true },
     });
-    if (!user) return null;
+    if (!user) return { link: null, opensApp };
 
     let token = user.inviteToken;
     if (!token) {
@@ -274,7 +283,10 @@ export class FriendsService {
       });
     }
 
-    return `https://t.me/${botUsername}/app?startapp=ref_${token}`;
+    return {
+      link: buildInviteLink(botUsername, token, this.configService),
+      opensApp,
+    };
   }
 
   /**

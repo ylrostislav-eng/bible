@@ -87,6 +87,26 @@ class EnvironmentVariables {
   @IsString()
   ADMIN_TELEGRAM_IDS?: string;
 
+  /// Короткое имя мини-приложения из BotFather (`/newapp`). Пока пусто,
+  /// ссылка-приглашение ведёт в бота, а не в игру — см. `invite-link.ts`.
+  @IsOptional()
+  @IsString()
+  TELEGRAM_MINI_APP_SHORT_NAME?: string;
+
+  /// Секрет вебхука Telegram. Обычно не задаётся: он выводится из токена
+  /// бота (см. `TelegramUpdatesService.secret`), потому что переменную,
+  /// которую надо не забыть, однажды забудут. Здесь — чтобы можно было
+  /// задать вручную.
+  @IsOptional()
+  @IsString()
+  TELEGRAM_WEBHOOK_SECRET?: string;
+
+  /// Куда Telegram приносит входящие. Если пусто, собирается из
+  /// `RAILWAY_PUBLIC_DOMAIN`; если нет и его — бот входящие не слушает.
+  @IsOptional()
+  @IsString()
+  TELEGRAM_WEBHOOK_URL?: string;
+
   /// Explicit opt-in for `/auth/dev-login`, independent of `NODE_ENV` — see
   /// `AuthService.devLogin`. Defaults off: a misconfigured `NODE_ENV` on a
   /// real deployment (left at "development" by mistake) must not be enough

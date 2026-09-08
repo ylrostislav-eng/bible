@@ -16,13 +16,26 @@ import { useAuth } from '@/lib/auth-context';
  * написано, что именно придёт: слово «уведомления» само по себе не значит
  * ничего, а человек, решающий, пускать ли приложение себе в переписку,
  * должен знать, когда и о чём оно напишет.
+ *
+ * ## Третья строка — про разрешение, а не про желание
+ *
+ * Тумблеры говорят, чего человек хочет; писать ли нам вообще, решает
+ * Telegram. Открытие мини-приложения переписки с ботом не создаёт, и без
+ * разрешения включённые уведомления означают тишину, о которой никто не
+ * узнает: у игрока всё включено, а сообщения не приходят. Поэтому, когда
+ * желание есть, а разрешения нет, здесь появляется просьба — и только
+ * тогда: выключившему оба тумблера она ни к чему.
  */
 export function RemindersSection() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, requestWriteAccess } = useAuth();
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [refused, setRefused] = useState(false);
 
   if (!user) return null;
+
+  const wantsMessages = user.remindersEnabled || user.inviteNotificationsEnabled;
 
   async function toggle(key: 'remindersEnabled' | 'inviteNotificationsEnabled', next: boolean) {
     if (savingKey) return;
@@ -56,6 +69,39 @@ export function RemindersSection() {
         saving={savingKey === 'inviteNotificationsEnabled'}
         onToggle={() => void toggle('inviteNotificationsEnabled', !user.inviteNotificationsEnabled)}
       />
+
+      {wantsMessages && !user.canWriteToPm && (
+        <div className="rounded-xl bg-surface-hover p-3">
+          <p className="text-sm font-semibold">Telegram пока не пускает нас в переписку</p>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            Тумблеры выше говорят, чего вы хотите, но написать вам мы можем, только если Telegram
+            разрешит. Пока разрешения нет, сообщения не придут — и вы об этом не узнаете.
+          </p>
+          <button
+            type="button"
+            disabled={asking}
+            onClick={() => {
+              setAsking(true);
+              setRefused(false);
+              void requestWriteAccess()
+                .then((allowed) => setRefused(!allowed))
+                .finally(() => setAsking(false));
+            }}
+            className="mt-2 h-10 w-full rounded-xl bg-primary text-sm font-semibold text-on-primary disabled:opacity-50"
+          >
+            {asking ? 'Спрашиваем…' : 'Разрешить'}
+          </button>
+          {refused && (
+            // Отказ не запоминается: закрытое окно и «не хочу» с нашей
+            // стороны неразличимы, и посчитав первое вторым, мы больше не
+            // спросим никогда. Кнопка остаётся на месте.
+            <p className="mt-2 text-xs text-text-muted">
+              Разрешение не получено. Можно нажать ещё раз — или просто написать боту любое
+              сообщение, это тоже открывает переписку.
+            </p>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
     </section>
