@@ -218,20 +218,27 @@ export class PlayersService {
         .map((r) => r.fromUserId),
     );
 
-    return rows.map((row) => ({
-      userId: row.id,
+    return rows.map((row) => {
       // Скрытое имя не уходит с сервера — на его месте клиент рисует
       // значок роли, которая едет в этой же строке.
-      nickname: this.staffNames.nickname(row.id, row.nickname),
-      avatarUrl: row.avatarUrl,
-      level: row.level,
-      rating: row.rating,
-      title: getTitleForRating(row.rating),
-      online: onlineIds.has(row.id),
-      role: this.admins.roleOf(row.telegramId.toString()),
-      relation: relationFor(row.id, { friendIds, outgoingTo, incomingFrom }),
-      canInvite: reachable.has(row.id),
-    }));
+      const nickname = this.staffNames.nickname(row.id, row.nickname);
+      return {
+        userId: row.id,
+        nickname,
+        // Рамка про значок, а не про имя, поэтому переживает скрытие. Цвет
+        // имени снимается вместе с именем: красить нечего.
+        frame: row.avatarFrame,
+        nameColor: nickname ? row.nameColor : null,
+        avatarUrl: row.avatarUrl,
+        level: row.level,
+        rating: row.rating,
+        title: getTitleForRating(row.rating),
+        online: onlineIds.has(row.id),
+        role: this.admins.roleOf(row.telegramId.toString()),
+        relation: relationFor(row.id, { friendIds, outgoingTo, incomingFrom }),
+        canInvite: reachable.has(row.id),
+      };
+    });
   }
 }
 

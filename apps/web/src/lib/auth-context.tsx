@@ -16,6 +16,14 @@ interface AuthContextValue {
   /** Local-development-only login bypass; the backend rejects it in production. */
   devLogin: () => void;
   updateProfile: (input: UpdateProfileInput) => Promise<void>;
+  /**
+   * Перечитывает профиль с сервера.
+   *
+   * Нужен там, где профиль меняется не самим профилем: монеты списывает
+   * лавка, и без этого в шапке и на главной осталась бы прежняя цифра —
+   * человек решил бы, что списали дважды.
+   */
+  refreshUser: () => Promise<void>;
   /** Sets, changes or clears the guardian PIN. `pin: null` clears it;
    * `currentPin` is required whenever one is already set. */
   updateGuardianPin: (input: { pin: string | null; currentPin?: string }) => Promise<void>;
@@ -148,6 +156,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const devLogin = useCallback(() => setUseDevLogin(true), []);
 
+  const refreshUser = useCallback(async () => {
+    // Молча: это обновление ради свежей цифры, и уронить из-за него экран
+    // хуже, чем показать цифру постарше.
+    try {
+      setUser(await apiClient.get<UserProfile>('/users/me'));
+    } catch {
+      // оставляем прежний профиль
+    }
+  }, []);
+
   const updateProfile = useCallback(async (input: UpdateProfileInput) => {
     const profile = await apiClient.patch<UserProfile>('/users/me', input);
     setUser(profile);
@@ -183,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       errorMessage,
       retry,
       devLogin,
+      refreshUser,
       updateProfile,
       updateGuardianPin,
       requestWriteAccess,
@@ -193,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       errorMessage,
       retry,
       devLogin,
+      refreshUser,
       updateProfile,
       updateGuardianPin,
       requestWriteAccess,

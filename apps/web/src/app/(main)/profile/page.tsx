@@ -86,10 +86,18 @@ export default function ProfilePage() {
           <p className="text-xs text-text-secondary">Знания</p>
           <p className="text-lg font-bold text-primary">{user.rating}</p>
         </Card>
-        <Card className="flex-col">
-          <p className="text-xs text-text-secondary">Монеты</p>
-          <p className="text-lg font-bold text-primary">{user.coins}</p>
-        </Card>
+        {/* Монеты — единственная плитка со ссылкой: число без ответа на
+            вопрос «и что с ними делать» ровно тем и было бесполезно, что
+            вело в никуда. Теперь ведёт в лавку. */}
+        <Link href="/shop">
+          <Card className="flex-col">
+            <div className="flex items-baseline justify-between gap-1">
+              <p className="text-xs text-text-secondary">Монеты</p>
+              <span className="text-xs text-text-muted">лавка ›</span>
+            </div>
+            <p className="text-lg font-bold text-primary">{user.coins}</p>
+          </Card>
+        </Link>
         <Card className="flex-col">
           <p className="text-xs text-text-secondary">Серия дней</p>
           <div className="flex items-center gap-1.5">

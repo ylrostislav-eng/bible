@@ -20,16 +20,29 @@ export function PlayerLabel({
   role,
   className,
   badgeSize = 'sm',
+  nameColor,
 }: {
   nickname: string | null | undefined;
   role?: AppRole | null;
   className?: string;
   badgeSize?: 'sm' | 'md';
+  /**
+   * Купленный в лавке цвет имени.
+   *
+   * Приходит с сервера уже разобранным: у скрытого имени там всегда
+   * пусто, поэтому здесь не нужно повторять правило «значок роли не
+   * красится» — оно уже применено там, где имя проверяется на скрытие.
+   */
+  nameColor?: string | null;
 }) {
   if (isNameHidden(nickname, role)) {
     return <RoleBadge role={role} size={badgeSize} className={className} />;
   }
-  return <span className={className}>{displayName(nickname, role)}</span>;
+  return (
+    <span className={className} style={nameColor ? { color: nameColor } : undefined}>
+      {displayName(nickname, role)}
+    </span>
+  );
 }
 
 /**

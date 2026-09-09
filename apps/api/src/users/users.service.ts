@@ -1161,12 +1161,18 @@ export class UsersService {
     currentUserId: string,
     friendImpossible: Set<string>,
   ): LeaderboardEntry {
+    // Скрытое имя не покидает сервер: строка рейтинга несёт роль, и
+    // клиент рисует на его месте значок.
+    const nickname = this.staffNames.nickname(user.id, user.nickname);
     return {
       rank,
       id: user.id,
-      // Скрытое имя не покидает сервер: строка рейтинга несёт роль, и
-      // клиент рисует на его месте значок.
-      nickname: this.staffNames.nickname(user.id, user.nickname),
+      nickname,
+      // Рамка остаётся и у скрытого имени — она про значок, а не про имя.
+      // Цвет имени снимается: красить нечего, а покрашенный значок роли
+      // читался бы как ещё одна роль.
+      frame: user.avatarFrame,
+      nameColor: nickname ? user.nameColor : null,
       avatarUrl: user.avatarUrl,
       country: user.country,
       level: user.level,

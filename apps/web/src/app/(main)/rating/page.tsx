@@ -4,6 +4,7 @@ import type { BannedUserView, LeaderboardEntry, LeaderboardResponse } from '@bib
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { RatingIcon } from '@/components/icons/nav-icons';
+import { AvatarFrame } from '@/components/ui/avatar-frame';
 import { PlayerLabel, RoleOrTitle } from '@/components/ui/player-label';
 import { Card } from '@/components/ui/card';
 import { ScreenIcon } from '@/components/ui/screen-icon';
@@ -12,18 +13,20 @@ import { ApiError, apiClient } from '@/lib/api';
 
 function Avatar({ entry }: { entry: LeaderboardEntry }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-hover text-sm font-bold text-primary">
-      {entry.avatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={entry.avatarUrl}
-          alt={entry.nickname ?? ''}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        (entry.nickname ?? '?').slice(0, 1).toUpperCase()
-      )}
-    </div>
+    <AvatarFrame frame={entry.frame} size={40}>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-hover text-sm font-bold text-primary">
+        {entry.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={entry.avatarUrl}
+            alt={entry.nickname ?? ''}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          (entry.nickname ?? '?').slice(0, 1).toUpperCase()
+        )}
+      </div>
+    </AvatarFrame>
   );
 }
 
@@ -45,7 +48,7 @@ function Row({
       <Avatar entry={entry} />
       <div className="min-w-0 flex-1 text-left">
         <p className="truncate text-sm font-semibold">
-          <PlayerLabel nickname={entry.nickname} role={entry.role} />
+          <PlayerLabel nickname={entry.nickname} role={entry.role} nameColor={entry.nameColor} />
         </p>
         <p className="flex items-center gap-1.5 truncate text-xs text-text-secondary">
           <RoleOrTitle nickname={entry.nickname} role={entry.role} title={entry.title} /> ·{' '}

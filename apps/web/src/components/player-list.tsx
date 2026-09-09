@@ -234,7 +234,11 @@ export function PlayerList({
           />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">
-              <PlayerLabel nickname={player.nickname} role={player.role} />
+              <PlayerLabel
+                nickname={player.nickname}
+                role={player.role}
+                nameColor={player.nameColor}
+              />
               {player.relation === 'friend' && (
                 <span className="ml-1.5 align-middle text-[10px] font-medium text-primary">
                   свой

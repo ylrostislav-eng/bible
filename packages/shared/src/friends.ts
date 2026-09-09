@@ -83,6 +83,10 @@ export interface PlayerView {
   online: boolean;
   /** Роль — строка показывает значок вместо титула. */
   role: AppRole;
+  /** Купленная рамка значка или null — см. `PlayerLook`. */
+  frame: string | null;
+  /** Купленный цвет имени; у скрытого имени всегда null. */
+  nameColor: string | null;
   /** Отношение — для кнопки «Добавить» и раздела «Мои». Дружба больше
    * ничего не разрешает, но остаётся списком своих. */
   relation: FriendRelation;
