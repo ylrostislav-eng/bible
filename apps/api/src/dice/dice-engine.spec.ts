@@ -1,4 +1,5 @@
 import {
+  DICE_ALREADY_TAKEN,
   DICE_BAD_SELECTION,
   DICE_MATCH_OVER,
   DICE_MUST_SELECT,
@@ -84,6 +85,44 @@ describe('Кости — ход и риск', () => {
       expect(() =>
         applyDiceAction(state, A, { type: 'SELECT', indexes: [1] }),
       ).toThrow(DICE_BAD_SELECTION);
+    });
+
+    it('к отложенному можно доложить ещё кость того же броска', () => {
+      let state = act(game(), A, { type: 'ROLL' }, roll(1, 5, 2, 3, 4, 6));
+      state = act(state, A, { type: 'SELECT', indexes: [0] }); // 1 = 100
+      state = act(state, A, { type: 'SELECT', indexes: [1] }); // 5 = 50
+      expect(state.turnScore).toBe(150);
+      expect(state.selected).toEqual([0, 1]);
+      // Стол уменьшается на обе кости, а не только на последнюю.
+      expect(state.availableDice).toBe(4);
+    });
+
+    it('за одну и ту же кость не платят дважды', () => {
+      // Дыра в счёте, а не мелочь: `selected` заменялся целиком, а очки
+      // прибавлялись, и одна единица, выбранная трижды, давала 300.
+      let state = act(game(), A, { type: 'ROLL' }, roll(1, 5, 2, 3, 4, 6));
+      state = act(state, A, { type: 'SELECT', indexes: [0] });
+      expect(() =>
+        applyDiceAction(state, A, { type: 'SELECT', indexes: [0] }),
+      ).toThrow(DICE_ALREADY_TAKEN);
+      expect(() =>
+        applyDiceAction(state, A, { type: 'SELECT', indexes: [0, 1] }),
+      ).toThrow(DICE_ALREADY_TAKEN);
+      expect(state.turnScore).toBe(100);
+    });
+
+    it('Hot Dice складывается и из двух выборов подряд', () => {
+      let state = act(game(), A, { type: 'ROLL' }, roll(1, 1, 1, 5, 5, 5));
+      state = act(state, A, { type: 'SELECT', indexes: [0, 1, 2] }); // 1000
+      const result = applyDiceAction(state, A, {
+        type: 'SELECT',
+        indexes: [3, 4, 5],
+      }); // 500
+      expect(result.events.some((event) => event.type === 'HOT_DICE')).toBe(
+        true,
+      );
+      expect(result.state.turnScore).toBe(1500);
+      expect(result.state.availableDice).toBe(6);
     });
 
     it('нельзя забрать, ничего не выбрав', () => {

@@ -9,8 +9,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DiceTable } from '@/components/dice/dice-table';
-import { Die } from '@/components/dice/die';
+import { DiceTable3D } from '@/components/dice3d';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -18,6 +17,7 @@ import { PlayerLabel } from '@/components/ui/player-label';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
+import { useImmersiveWhile } from '@/lib/immersive-context';
 
 /**
  * «Кости» — партия один на один. Правила и замысел: `docs/dice.md`.
@@ -26,6 +26,10 @@ import { ApiError, apiClient } from '@/lib/api';
  * действий считает сервер, а здесь тем же кодом из `shared` только
  * подсвечиваются варианты **до** нажатия. Иначе кнопка гасла бы по своим
  * правилам и рано или поздно разошлась с сервером — молча.
+ *
+ * Стол — трёхмерная сцена от первого лица (`components/dice3d`), и
+ * надписи лежат поверх неё, а не рядом: главное в кадре — стол и
+ * соперник напротив, а не панель управления.
  */
 
 /** Как часто спрашивать состояние, пока ходит соперник. Игра пошаговая:
@@ -45,8 +49,23 @@ export default function DicePage() {
   const [code, setCode] = useState('');
   const [picked, setPicked] = useState<number[]>([]);
 
-  /** Ключ броска: по нему стол понимает, что кости новые. */
+  /** Ключ броска: по нему сцена понимает, что кости новые. */
   const rollKey = match ? `${match.matchId}:${match.turnNumber}:${match.rollNumber}` : 'none';
+
+  /**
+   * За столом приложение убирает свой хром: нижнее меню, плавающие
+   * кнопки, всплывающие уведомления.
+   *
+   * Не ради красоты. Обёртка приложения добавляет снизу 10rem под эти
+   * кнопки, экран становится **выше окна**, страница начинает
+   * прокручиваться — и трёхмерный кадр уезжает вверх вместе с ней:
+   * доска в одном положении до прокрутки и в другом после. _Нашлось
+   * живой проверкой: два снимка одной партии показывали разную
+   * камеру._ Заодно всплывающее «вас вызвали на дуэль» перестаёт
+   * закрывать соперника — оно приходилось ровно на его голову.
+   */
+  const atTable = screen === 'match' && match !== null && match.status !== 'WAITING';
+  useImmersiveWhile(atTable);
 
   const apply = useCallback((view: DiceMatchView) => {
     setMatch(view);
@@ -260,12 +279,18 @@ function DiceMatchScreen({
   // не окном поверх экрана: на телефоне оно перекрывает стол целиком.
   const [confirmResign, setConfirmResign] = useState(false);
 
+  // Уже отложенные сервером кости. Их нельзя ни выбрать снова, ни
+  // подсветить: за них заплачено, и на столе они лежат отдельной кучкой.
+  const locked = match.selected;
   // Подсказка «что тут вообще даёт очки» — тем же кодом, каким считает
   // сервер. Не выбор за игрока: выбирает он, в этом стратегия.
-  const hint = match.dice.length ? analyzeRoll(match.dice).bestIndexes : [];
+  const hint = match.dice.length
+    ? analyzeRoll(match.dice).bestIndexes.filter((index) => !locked.includes(index))
+    : [];
   const pickedPoints = picked.length ? scoreSelection(match.dice, picked) : null;
 
   const toggle = (index: number) => {
+    if (locked.includes(index)) return;
     onPick(picked.includes(index) ? picked.filter((value) => value !== index) : [...picked, index]);
   };
 
@@ -297,171 +322,197 @@ function DiceMatchScreen({
   }
 
   return (
-    <div className="mx-auto flex min-h-[var(--app-height)] max-w-md flex-col gap-3 px-4 pb-6 pt-4">
+    <div className="relative mx-auto h-[var(--app-height)] w-full max-w-md overflow-hidden">
+      {/* Стол во весь экран. Надписи лежат поверх и намеренно занимают
+          мало места: переделка затевалась ради того, чтобы игрок смотрел
+          на стол и на соперника, а не на панель. */}
+      <div className="absolute inset-0">
+        <DiceTable3D
+          dice={match.dice}
+          rollKey={rollKey}
+          picked={picked}
+          locked={locked}
+          hint={myTurn ? hint : []}
+          interactive={myTurn && !finished && !busy}
+          side={myTurn ? 'you' : 'rival'}
+          rivalThinking={!myTurn && !finished}
+          onPick={toggle}
+        />
+      </div>
+
+      {/* Затемнение под надписями: на светлом дереве белый текст без него
+          не читается, а сплошная плашка закрыла бы стол. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
+
       {/* Счёт обоих и цель — первое, что нужно, чтобы решить, рисковать
           ли: 700 очков хода значат разное при 3800 и при 200. */}
-      <div className="flex items-stretch gap-2">
-        <ScoreCard player={me} label="Вы" active={myTurn} target={match.targetScore} />
-        <div className="flex flex-col items-center justify-center px-1">
-          <p className="text-[10px] uppercase tracking-wide text-text-muted">до</p>
-          <p className="text-sm font-bold text-primary">{match.targetScore}</p>
+      <div className="absolute inset-x-0 top-0 flex items-start gap-2 px-3 pt-3">
+        <ScoreChip player={me} label="Вы" active={myTurn && !finished} target={match.targetScore} />
+        <div className="shrink-0 rounded-full bg-black/45 px-2.5 py-1 text-center">
+          <p className="text-[9px] uppercase leading-none tracking-wide text-white/50">до</p>
+          <p className="text-xs font-bold leading-tight text-primary">{match.targetScore}</p>
         </div>
-        <ScoreCard
+        <ScoreChip
           player={rival}
           label={null}
           active={!myTurn && !finished}
           target={match.targetScore}
+          align="right"
         />
       </div>
 
-      <DiceTable
-        dice={match.dice}
-        selected={picked}
-        scoringHint={myTurn ? hint : []}
-        onToggle={myTurn && !finished ? toggle : undefined}
-        disabled={busy || !myTurn}
-        rollKey={rollKey}
-      />
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 px-3 pb-[max(0.75rem,var(--safe-bottom))]">
+        {finished ? (
+          <FinishedCard match={match} onLeave={onLeave} />
+        ) : (
+          <>
+            {/* Очки хода — крупно: это то самое число, которым рискуют. */}
+            <div className="flex items-baseline justify-between px-1">
+              <p className="text-sm font-medium text-white/80">
+                {myTurn ? 'Ваш ход' : 'Ходит соперник'}
+              </p>
+              <p className="text-lg font-bold tabular-nums text-primary">
+                +{match.turnScore}
+                {pickedPoints ? (
+                  <span className="ml-1 text-sm text-success">+{pickedPoints}</span>
+                ) : null}
+              </p>
+            </div>
 
-      {/* Очки хода — крупно: это то самое число, которым рискуют. */}
-      <div className="flex items-baseline justify-between px-1">
-        <p className="text-sm text-text-secondary">
-          {finished
-            ? match.winnerId === match.youId
-              ? 'Победа'
-              : 'Партия окончена'
-            : myTurn
-              ? 'Ваш ход'
-              : 'Ходит соперник'}
-        </p>
-        <p className="text-lg font-bold text-primary">
-          +{match.turnScore}
-          {pickedPoints ? <span className="ml-1 text-sm text-success">+{pickedPoints}</span> : null}
-        </p>
-      </div>
-
-      {/* В фазе выбора кнопок нет вовсе, и без этой строки экран молчит:
-          игрок видит кости и не понимает, чего от него ждут. _Нашлось
-          живой проверкой._ */}
-      {myTurn && !finished && match.phase === 'SELECTING' && picked.length === 0 && (
-        <p className="text-center text-sm text-text-secondary">
-          Выберите кости, которые дают очки — подсвечены тёплым
-        </p>
-      )}
-
-      {error && <p className="text-sm text-danger">{error}</p>}
-
-      {/* Распорка: действия прижаты к низу, к большому пальцу. */}
-      <div className="flex-1" />
-
-      {finished ? (
-        <FinishedCard match={match} onLeave={onLeave} />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {picked.length > 0 && (
-            <Button
-              onClick={() =>
-                onAction({ type: 'SELECT', indexes: picked, actionId: nextActionId() })
-              }
-              disabled={busy || pickedPoints === null}
-            >
-              {pickedPoints === null ? 'Эти кости очков не дают' : `Отложить · +${pickedPoints}`}
-            </Button>
-          )}
-
-          {match.actions.includes('ROLL') && picked.length === 0 && (
-            <Button
-              onClick={() => onAction({ type: 'ROLL', actionId: nextActionId() })}
-              disabled={busy}
-            >
-              {match.phase === 'HOT_DICE' ? 'Бросить все шесть' : `Бросить ${match.availableDice}`}
-            </Button>
-          )}
-
-          {match.actions.includes('CONTINUE') && picked.length === 0 && (
-            <Button
-              onClick={() => onAction({ type: 'CONTINUE', actionId: nextActionId() })}
-              disabled={busy}
-            >
-              Рискнуть и бросить {match.availableDice}
-            </Button>
-          )}
-
-          {match.actions.includes('BANK') && picked.length === 0 && (
-            <Button
-              variant="secondary"
-              onClick={() => onAction({ type: 'BANK', actionId: nextActionId() })}
-              disabled={busy}
-            >
-              Забрать {match.turnScore}
-            </Button>
-          )}
-
-          {!myTurn && <p className="py-2 text-center text-sm text-text-muted">Соперник думает…</p>}
-
-          {/* Два разных выхода, и путать их нельзя. «Свернуть» — уйти с
-              экрана, партия ждёт и открывается снова при возвращении.
-              «Сдаться» — закончить её по-настоящему, отдав победу.
-              Без второй кнопки партия висела бы вечно, а игрок не мог бы
-              начать новую: сервер отдаёт ему ту же самую. _Нашлось живой
-              проверкой: аккаунт с недоигранной партией не мог попасть в
-              меню вовсе._ */}
-          <button
-            type="button"
-            onClick={onLeave}
-            className="self-center text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline"
-          >
-            Свернуть стол
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (confirmResign) {
-                onAction({ type: 'RESIGN', actionId: nextActionId() });
-              } else {
-                setConfirmResign(true);
-              }
-            }}
-            className={clsx(
-              'self-center text-xs underline-offset-4 hover:underline',
-              confirmResign ? 'text-danger' : 'text-text-muted hover:text-text-secondary',
+            {/* В фазе выбора кнопок нет вовсе, и без этой строки экран
+                молчит: игрок видит кости и не понимает, чего от него
+                ждут. _Нашлось живой проверкой._ */}
+            {myTurn && match.phase === 'SELECTING' && picked.length === 0 && (
+              <p className="text-center text-sm text-white/70">
+                Возьмите кости, которые дают очки — они светятся тёплым
+              </p>
             )}
-          >
-            {confirmResign ? 'Точно сдаться? Нажмите ещё раз' : 'Сдаться'}
-          </button>
-        </div>
-      )}
+
+            {error && <p className="text-center text-sm text-danger">{error}</p>}
+
+            {picked.length > 0 && (
+              <Button
+                onClick={() =>
+                  onAction({ type: 'SELECT', indexes: picked, actionId: nextActionId() })
+                }
+                disabled={busy || pickedPoints === null}
+              >
+                {pickedPoints === null ? 'Эти кости очков не дают' : `Отложить · +${pickedPoints}`}
+              </Button>
+            )}
+
+            {match.actions.includes('ROLL') && picked.length === 0 && (
+              <Button
+                onClick={() => onAction({ type: 'ROLL', actionId: nextActionId() })}
+                disabled={busy}
+              >
+                {match.phase === 'HOT_DICE'
+                  ? 'Бросить все шесть'
+                  : `Бросить ${match.availableDice}`}
+              </Button>
+            )}
+
+            {match.actions.includes('CONTINUE') && picked.length === 0 && (
+              <Button
+                onClick={() => onAction({ type: 'CONTINUE', actionId: nextActionId() })}
+                disabled={busy}
+              >
+                Рискнуть и бросить {match.availableDice}
+              </Button>
+            )}
+
+            {match.actions.includes('BANK') && picked.length === 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => onAction({ type: 'BANK', actionId: nextActionId() })}
+                disabled={busy}
+              >
+                Забрать {match.turnScore}
+              </Button>
+            )}
+
+            {!myTurn && <p className="py-1 text-center text-sm text-white/50">Соперник думает…</p>}
+
+            {/* Два разных выхода, и путать их нельзя. «Свернуть» — уйти с
+                экрана, партия ждёт и открывается снова при возвращении.
+                «Сдаться» — закончить её по-настоящему, отдав победу.
+                Без второй кнопки партия висела бы вечно, а игрок не мог
+                бы начать новую: сервер отдаёт ему ту же самую. _Нашлось
+                живой проверкой: аккаунт с недоигранной партией не мог
+                попасть в меню вовсе._ */}
+            <div className="flex items-center justify-center gap-5 pt-0.5">
+              <button
+                type="button"
+                onClick={onLeave}
+                className="text-xs text-white/45 underline-offset-4 hover:text-white/70 hover:underline"
+              >
+                Свернуть стол
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmResign) {
+                    onAction({ type: 'RESIGN', actionId: nextActionId() });
+                  } else {
+                    setConfirmResign(true);
+                  }
+                }}
+                className={clsx(
+                  'text-xs underline-offset-4 hover:underline',
+                  confirmResign ? 'text-danger' : 'text-white/45 hover:text-white/70',
+                )}
+              >
+                {confirmResign ? 'Точно сдаться? Нажмите ещё раз' : 'Сдаться'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
-function ScoreCard({
+/** Счёт игрока поверх стола: имя, лампа, очки и полоска до цели. */
+function ScoreChip({
   player,
   label,
   active,
   target,
+  align = 'left',
 }: {
   player: DiceMatchView['players'][number] | undefined;
   label: string | null;
   active: boolean;
   target: number;
+  align?: 'left' | 'right';
 }) {
   const score = player?.score ?? 0;
   return (
     <div
       className={clsx(
-        'flex flex-1 flex-col gap-1 rounded-2xl border p-3 transition-colors',
-        active ? 'border-primary/60 bg-primary/10' : 'border-white/5 bg-surface',
+        'flex min-w-0 flex-1 flex-col gap-1 rounded-2xl border px-2.5 py-1.5 backdrop-blur-sm transition-colors',
+        active ? 'border-primary/70 bg-primary/20' : 'border-white/10 bg-black/45',
       )}
     >
-      <div className="flex items-center gap-1.5">
-        <OilLampFlame size={16} glow={false} look={player?.lamp} />
-        <p className="truncate text-xs font-medium">
+      <div
+        className={clsx(
+          'flex min-w-0 items-center gap-1.5',
+          align === 'right' && 'flex-row-reverse',
+        )}
+      >
+        <OilLampFlame size={15} glow={false} look={player?.lamp} />
+        <p
+          className={clsx(
+            'min-w-0 flex-1 truncate text-[11px] text-white/75',
+            align === 'right' && 'text-right',
+          )}
+        >
           {label ?? <PlayerLabel nickname={player?.nickname} role={player?.role} />}
         </p>
+        <p className="shrink-0 text-base font-bold leading-none tabular-nums text-white">{score}</p>
       </div>
-      <p className="text-xl font-bold">{score}</p>
-      <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
+      <div className="h-1 overflow-hidden rounded-full bg-black/50">
         <div
           className="h-full rounded-full bg-primary transition-[width]"
           style={{ width: `${Math.min(100, (score / target) * 100)}%` }}
@@ -477,28 +528,25 @@ function FinishedCard({ match, onLeave }: { match: DiceMatchView; onLeave: () =>
   const rival = match.players.find((player) => player.userId !== match.youId);
 
   return (
-    <Card className="flex-col gap-3">
-      <p className="text-center text-lg font-bold">{won ? '🏆 Победа' : 'Партия окончена'}</p>
+    <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/70 p-4 backdrop-blur-sm">
+      <p className="text-center text-lg font-bold text-white">
+        {won ? '🏆 Победа' : 'Партия окончена'}
+      </p>
       <div className="flex justify-center gap-6 text-center">
         <div>
-          <p className="text-xs text-text-secondary">Вы</p>
+          <p className="text-xs text-white/60">Вы</p>
           <p className="text-xl font-bold text-primary">{me?.score ?? 0}</p>
         </div>
         <div>
-          <p className="text-xs text-text-secondary">Соперник</p>
-          <p className="text-xl font-bold">{rival?.score ?? 0}</p>
+          <p className="text-xs text-white/60">Соперник</p>
+          <p className="text-xl font-bold text-white">{rival?.score ?? 0}</p>
         </div>
       </div>
-      <p className="text-center text-xs text-text-muted">
+      <p className="text-center text-xs text-white/50">
         Ходов: {match.turnNumber} · Hot Dice: {me?.hotDiceCount ?? 0} · Неудачных бросков:{' '}
         {me?.bustCount ?? 0} · Лучший ход: {me?.bestTurn ?? 0}
       </p>
       <Button onClick={onLeave}>Ещё партия</Button>
-    </Card>
+    </div>
   );
-}
-
-/** Кость в списке отложенных — та же, но меньше и без нажатия. */
-export function HeldDie({ value }: { value: DiceMatchView['dice'][number] }) {
-  return <Die value={value} size={34} held />;
 }

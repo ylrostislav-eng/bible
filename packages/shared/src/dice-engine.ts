@@ -107,6 +107,7 @@ export const DICE_NOT_YOUR_TURN = 'Сейчас ходит соперник';
 export const DICE_WRONG_PHASE = 'Так сейчас нельзя';
 export const DICE_MUST_SELECT = 'Сначала выберите кости, которые дают очки';
 export const DICE_BAD_SELECTION = 'Эти кости очков не дают';
+export const DICE_ALREADY_TAKEN = 'Эта кость уже отложена';
 export const DICE_MATCH_OVER = 'Партия уже закончена';
 
 export function createDiceGame(params: {
@@ -258,6 +259,21 @@ function applySelect(state: DiceGameState, playerId: string, indexes: number[]):
     throw new DiceRuleError(DICE_WRONG_PHASE);
   }
 
+  // Из `DECISION` можно доложить ещё кость того же броска: взял единицу,
+  // потом передумал и взял к ней пятёрку. Но **только не отложенную
+  // раньше**.
+  //
+  // Без этой проверки была дыра в счёте, а не мелочь: `selected`
+  // заменялся целиком, а очки прибавлялись, и повторный выбор той же
+  // кости платил за неё второй раз. Единица, выбранная трижды по
+  // одной, давала 300 вместо 100. _Нашлось при разборе того, что должен
+  // показывать трёхмерный стол: «отложенные» и «выбранные» — разные
+  // кучки, и стало видно, что сервер их не различает._
+  const taken = state.phase === 'DECISION' ? state.selected : [];
+  if (indexes.some((index) => taken.includes(index))) {
+    throw new DiceRuleError(DICE_ALREADY_TAKEN);
+  }
+
   const points = scoreSelection(state.dice, indexes);
   if (points === null) throw new DiceRuleError(DICE_BAD_SELECTION);
 
@@ -270,15 +286,16 @@ function applySelect(state: DiceGameState, playerId: string, indexes: number[]):
 
   // Зачли все кости броска — можно бросать заново все шесть, не теряя
   // накопленного. И рискуя им же: следующий Bust сожжёт всё.
-  const hot = isHotDice(state.dice, indexes);
+  const selected = [...taken, ...indexes];
+  const hot = isHotDice(state.dice, selected);
   if (hot) events.push({ type: 'HOT_DICE', playerId });
 
   return {
     state: {
       ...state,
-      selected: [...indexes],
+      selected,
       turnScore,
-      availableDice: hot ? DICE_COUNT : state.dice.length - indexes.length,
+      availableDice: hot ? DICE_COUNT : state.dice.length - selected.length,
       phase: hot ? 'HOT_DICE' : 'DECISION',
     },
     events,

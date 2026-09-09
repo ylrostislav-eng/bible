@@ -113,7 +113,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 function AppChrome({ children }: { children: React.ReactNode }) {
   const { immersive } = useImmersive();
 
-  // Погружённый экран не оборачивается ничем — и это важно, а не лень.
+  // Погружённый экран не получает отступов — и это важно, а не лень.
   //
   // Такие экраны высотой ровно в окно (`--app-height`), и отступ снаружи
   // прибавляется к этой высоте, а не входит в неё: низ уезжает за край.
@@ -123,8 +123,18 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   // Поэтому безопасную зону такие экраны учитывают внутри себя — рамка
   // считается по `border-box`, и там отступ входит в высоту, а не
   // добавляется к ней.
-  if (immersive) return <>{children}</>;
-
+  //
+  // **Обёртка при этом остаётся на месте всегда, меняются только её
+  // классы.** Раньше в погружённом режиме `AppChrome` возвращал голый
+  // фрагмент, и React считал это другим деревом: при включении режима
+  // экран **перемонтировался** и терял всё своё состояние. Для Alias это
+  // было незаметно — он просит полноэкранный режим сразу и навсегда. А
+  // «Кости» просят его, только когда началась партия, и получалось
+  // кольцо: партия → режим включён → перемонтирование → состояние
+  // сброшено, партии нет → режим выключен → перемонтирование → партия
+  // подгружается снова. Экран мигал и не давал нажать ни одной кнопки.
+  // _Нашлось живой проверкой: Playwright три раза подряд сообщил
+  // «element was detached from the DOM»._
   return (
     <>
       {/* Отступ снизу закрывает не только навигацию, но и плавающие кнопки:
@@ -136,13 +146,19 @@ function AppChrome({ children }: { children: React.ReactNode }) {
           К этому добавляется безопасная зона: сами кнопки от неё уже
           отодвинуты, и без такой же прибавки здесь отступ снова стал бы
           коротким ровно на высоту домашней полоски. */}
-      <div className="pt-safe pb-[calc(var(--safe-bottom)+10rem)]">{children}</div>
-      <IncomingNotifications />
-      <LaunchInviteNotice />
-      <DeclineNoticeToast />
-      <PendingInvitesWidget />
-      <MusicWidget />
-      <BottomNav />
+      <div className={immersive ? undefined : 'pt-safe pb-[calc(var(--safe-bottom)+10rem)]'}>
+        {children}
+      </div>
+      {!immersive && (
+        <>
+          <IncomingNotifications />
+          <LaunchInviteNotice />
+          <DeclineNoticeToast />
+          <PendingInvitesWidget />
+          <MusicWidget />
+          <BottomNav />
+        </>
+      )}
     </>
   );
 }
