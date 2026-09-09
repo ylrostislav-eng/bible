@@ -25,3 +25,5 @@ export * from './hot-cold';
 export * from './hot-cold-duel';
 export * from './hot-cold-riddle';
 export * from './shop';
+export * from './dice';
+export * from './dice-engine';
