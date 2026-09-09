@@ -221,3 +221,46 @@ export function describeSelection(dice: readonly DiceValue[], indexes: readonly 
   }
   return values.join('+');
 }
+
+/** Игрок за столом — так его видит другой игрок. */
+export interface DicePlayerView {
+  userId: string;
+  nickname: string | null;
+  role: import('./admin').AppRole;
+  avatarUrl: string | null;
+  lamp: import('./shop').LampLook;
+  score: number;
+  bustCount: number;
+  hotDiceCount: number;
+  bestTurn: number;
+}
+
+/**
+ * Состояние партии глазами игрока — ровно то, что отдаёт сервер.
+ *
+ * Тип общий, потому что экран рисует по нему, а сервер его собирает:
+ * разъехавшись, они разъедутся молча и обнаружатся уже на живом столе.
+ */
+export interface DiceMatchView {
+  matchId: string;
+  inviteCode: string;
+  targetScore: number;
+  turnTimeLimit: number | null;
+  status: import('./dice-engine').DiceMatchStatus;
+  phase: import('./dice-engine').DicePhase;
+  currentPlayerId: string | null;
+  /** Кто смотрит: чтобы экран не гадал, где «вы», а где соперник. */
+  youId: string;
+  turnScore: number;
+  dice: DiceValue[];
+  selected: number[];
+  availableDice: number;
+  turnNumber: number;
+  rollNumber: number;
+  winnerId: string | null;
+  /** Что можно сделать прямо сейчас — считает движок, не экран. */
+  actions: import('./dice-engine').DiceAction['type'][];
+  players: DicePlayerView[];
+  /** События последнего действия: по ним экран запускает анимации. */
+  events: import('./dice-engine').DiceEvent[];
+}

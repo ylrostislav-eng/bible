@@ -169,7 +169,18 @@ export function applyDiceAction(
 ): DiceStepResult {
   if (state.status === 'FINISHED') throw new DiceRuleError(DICE_MATCH_OVER);
   if (state.status === 'WAITING') throw new DiceRuleError(DICE_WRONG_PHASE);
-  if (playerId !== state.currentPlayerId) {
+
+  // Сдача — единственное действие вне очереди, и это принципиально.
+  //
+  // Ждать своего хода, чтобы выйти из партии, абсурдно: чаще всего
+  // сдаются как раз потому, что ход не приходит — соперник ушёл, думает
+  // десять минут или партия просто надоела. _Нашлось живой проверкой:
+  // кнопка «Сдаться» на экране была, а сервер отвечал «Сейчас ходит
+  // соперник»._
+  if (action.type !== 'RESIGN' && playerId !== state.currentPlayerId) {
+    throw new DiceRuleError(DICE_NOT_YOUR_TURN);
+  }
+  if (action.type === 'RESIGN' && !state.players.some((player) => player.userId === playerId)) {
     throw new DiceRuleError(DICE_NOT_YOUR_TURN);
   }
 

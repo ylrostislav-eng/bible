@@ -46,6 +46,9 @@ const THEMES: { prefix: string; theme: ModeTheme }[] = [
   // Alias играют вечером и вокруг стола — отсюда сиреневый.
   { prefix: '/play/alias', theme: { accent: '#b18cf0', glow: 0.18 } },
   { prefix: '/play/solo', theme: { accent: '#e8b04b', glow: 0.16 } },
+  // Кости: тёплая охра старого дерева. Единственный режим не про знание,
+  // и цвет у него самый «предметный» — не свет, а вещь.
+  { prefix: '/play/dice', theme: { accent: '#c98b4b', glow: 0.2 } },
   // Чтение: сияние слабее всех остальных. Экран, на котором читают,
   // должен быть тише экрана, на котором играют.
   { prefix: '/learn', theme: { accent: '#86b6d9', glow: 0.09 } },

@@ -240,6 +240,23 @@ describe('Кости — ход и риск', () => {
       ).toThrow(DICE_MATCH_OVER);
     });
 
+    it('сдаться можно и не в свой ход', () => {
+      // Чаще всего сдаются именно потому, что ход не приходит: соперник
+      // ушёл или думает десять минут. _Живой случай: кнопка на экране
+      // была, а сервер отвечал «Сейчас ходит соперник»._
+      const state = game(); // ходит A
+      const result = applyDiceAction(state, B, { type: 'RESIGN' });
+
+      expect(result.state.status).toBe('FINISHED');
+      expect(result.state.winnerId).toBe(A);
+    });
+
+    it('посторонний сдаться за игроков не может', () => {
+      expect(() =>
+        applyDiceAction(game(), 'случайный-прохожий', { type: 'RESIGN' }),
+      ).toThrow(DICE_NOT_YOUR_TURN);
+    });
+
     it('сдача отдаёт победу сопернику', () => {
       const result = applyDiceAction(game(), A, { type: 'RESIGN' });
       expect(result.state.winnerId).toBe(B);

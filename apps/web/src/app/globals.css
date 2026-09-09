@@ -698,3 +698,33 @@ a {
     opacity: 0;
   }
 }
+
+/* Тряска кружки перед броском. Короткая и мелкая: большая амплитуда
+   читается как дрожь экрана, а не как рука с кружкой. */
+@keyframes dice-cup-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(-4deg);
+  }
+  25% {
+    transform: translateX(-5px) rotate(6deg);
+  }
+  50% {
+    transform: translateX(4px) rotate(-7deg);
+  }
+  75% {
+    transform: translateX(-3px) rotate(5deg);
+  }
+}
+
+.dice-cup-shake {
+  animation: dice-cup-shake 0.17s linear infinite;
+}
+
+/* Кому движение мешает — тому его нет. Бросок при этом остаётся: кости
+   просто появляются на столе, без тряски и полёта. */
+@media (prefers-reduced-motion: reduce) {
+  .dice-cup-shake {
+    animation: none;
+  }
+}

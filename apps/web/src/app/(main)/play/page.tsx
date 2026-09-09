@@ -75,6 +75,25 @@ export default function PlayModePage() {
         </Card>
       </Link>
 
+      {/* Единственный режим, где знание Библии ни при чём: чистый риск за
+          столом. Стоит после учебных намеренно — он для того вечера, когда
+          учиться не хочется, а играть с человеком хочется. */}
+      <Link href="/play/dice">
+        <Card className="flex-row items-center gap-4">
+          <ModeIcon accent={modeTheme('/play/dice').accent}>
+            <DiceIcon className="h-6 w-6" />
+          </ModeIcon>
+          <div>
+            <p className="font-semibold">
+              Кости <span className="text-xs font-medium text-primary">один на один</span>
+            </p>
+            <p className="text-sm text-text-secondary">
+              Шесть костей на двоих. Забрать очки или рискнуть и бросить ещё
+            </p>
+          </div>
+        </Card>
+      </Link>
+
       <Link href="/play/room">
         <Card className="flex-row items-center gap-4">
           <ModeIcon accent={modeTheme('/play/room').accent}>
@@ -113,6 +132,32 @@ function FlameIcon({ className }: { className?: string }) {
         strokeWidth="1.7"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+/** Две кости — иконка режима. Точки настоящие: единица и пятёрка, самые
+ * узнаваемые грани из тех, что вообще дают очки. */
+function DiceIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="2.5" y="7" width="11" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="8" cy="12.5" r="1.4" fill="currentColor" />
+      <rect
+        x="11.5"
+        y="3.5"
+        width="10"
+        height="10"
+        rx="2.6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        fill="none"
+      />
+      <circle cx="14.4" cy="6.4" r="1" fill="currentColor" />
+      <circle cx="18.6" cy="6.4" r="1" fill="currentColor" />
+      <circle cx="16.5" cy="8.5" r="1" fill="currentColor" />
+      <circle cx="14.4" cy="10.6" r="1" fill="currentColor" />
+      <circle cx="18.6" cy="10.6" r="1" fill="currentColor" />
     </svg>
   );
 }

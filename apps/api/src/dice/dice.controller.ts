@@ -24,10 +24,16 @@ import { DiceService } from './dice.service';
 export class DiceController {
   constructor(private readonly dice: DiceService) {}
 
-  /** Партия, в которую можно вернуться: приложение закрыли, матч остался. */
+  /**
+   * Партия, в которую можно вернуться: приложение закрыли, матч остался.
+   *
+   * Ответ — всегда объект `{ match }`, даже когда партии нет. Голый `null`
+   * Nest отдаёт **пустым телом**, и разбор JSON на клиенте падает на
+   * ровном месте. _Нашлось живой проверкой._
+   */
   @Get('active')
-  active(@CurrentUser() user: JwtPayload) {
-    return this.dice.activeFor(user.sub);
+  async active(@CurrentUser() user: JwtPayload) {
+    return { match: await this.dice.activeFor(user.sub) };
   }
 
   @Get('waiting')
