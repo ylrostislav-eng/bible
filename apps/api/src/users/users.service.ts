@@ -101,6 +101,14 @@ export interface StreakOutcome {
   goalDays: number | null;
   goalReachedNow: boolean;
   goalCoinsEarned: number;
+  /**
+   * Сколько «хранителей серии» истрачено этой игрой.
+   *
+   * Отдаётся наружу, потому что списание молча — худший способ его
+   * провести: человек видит, что серия цела, но не понимает, почему в
+   * лавке стало на хранителя меньше, и решает, что его обсчитали.
+   */
+  freezesSpent: number;
 }
 
 @Injectable()
@@ -617,6 +625,12 @@ export class UsersService {
           currentStreak: streak.currentStreak,
           longestStreak: streak.longestStreak,
           lastActivityDate: streak.lastActivityDate,
+          // Хранители тратятся ровно тем же обновлением, что двигает
+          // серию: списать их отдельным запросом значит открыть окно, в
+          // котором серия уже спасена, а плата ещё не взята.
+          ...(streak.freezesSpent > 0 && {
+            streakFreezes: { decrement: streak.freezesSpent },
+          }),
           ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
           gamesPlayed: { increment: 1 },
           // `outcome` is only ever passed for duels — solo games leave it
@@ -704,6 +718,12 @@ export class UsersService {
           currentStreak: streak.currentStreak,
           longestStreak: streak.longestStreak,
           lastActivityDate: streak.lastActivityDate,
+          // Хранители тратятся ровно тем же обновлением, что двигает
+          // серию: списать их отдельным запросом значит открыть окно, в
+          // котором серия уже спасена, а плата ещё не взята.
+          ...(streak.freezesSpent > 0 && {
+            streakFreezes: { decrement: streak.freezesSpent },
+          }),
           ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
           gamesPlayed: { increment: 1 },
           roomRatingPointsToday: newPointsToday,
@@ -784,6 +804,12 @@ export class UsersService {
           currentStreak: streak.currentStreak,
           longestStreak: streak.longestStreak,
           lastActivityDate: streak.lastActivityDate,
+          // Хранители тратятся ровно тем же обновлением, что двигает
+          // серию: списать их отдельным запросом значит открыть окно, в
+          // котором серия уже спасена, а плата ещё не взята.
+          ...(streak.freezesSpent > 0 && {
+            streakFreezes: { decrement: streak.freezesSpent },
+          }),
           ...(goalReward.reachedNow && { streakGoalRewardedAt: new Date() }),
         },
       });
@@ -809,6 +835,7 @@ export class UsersService {
       currentStreak: number;
       longestStreak: number;
       increased: boolean;
+      freezesSpent: number;
     },
     goalReward: { reachedNow: boolean; coins: number },
   ): StreakOutcome {
@@ -819,6 +846,7 @@ export class UsersService {
       goalDays: before.streakGoalDays,
       goalReachedNow: goalReward.reachedNow,
       goalCoinsEarned: goalReward.coins,
+      freezesSpent: streak.freezesSpent,
     };
   }
 
@@ -916,6 +944,8 @@ export class UsersService {
     longestStreak: number;
     lastActivityDate: Date;
     increased: boolean;
+    /** Сколько «хранителей серии» из лавки истрачено этим возвращением. */
+    freezesSpent: number;
   } {
     const today = this.localDateLabel(new Date(), timezoneOffsetMinutes);
 
@@ -925,6 +955,7 @@ export class UsersService {
         longestStreak: Math.max(1, user.longestStreak),
         lastActivityDate: today,
         increased: true,
+        freezesSpent: 0,
       };
     }
 
@@ -942,15 +973,30 @@ export class UsersService {
         longestStreak: user.longestStreak,
         lastActivityDate: today,
         increased: false,
+        freezesSpent: 0,
       };
     }
 
-    const currentStreak = diffDays === 1 ? user.currentStreak + 1 : 1;
+    // Пропущенные дни закрываются «хранителями серии» из лавки — по одному
+    // за день. Тратятся сами и только здесь: в пропущенный день игрок в
+    // приложение не заходил по определению, нажать кнопку было некому.
+    //
+    // Списываем только тогда, когда запаса хватает на весь разрыв. Иначе
+    // человек теряет и серию, и хранителей разом — худший из возможных
+    // исходов: заплатил и не получил ничего. Частичное покрытие выглядело
+    // бы как «купил защиту, а она не сработала».
+    const missedDays = diffDays - 1;
+    const covered = missedDays > 0 && user.streakFreezes >= missedDays;
+    const freezesSpent = covered ? missedDays : 0;
+
+    const currentStreak =
+      diffDays === 1 || covered ? user.currentStreak + 1 : 1;
     return {
       currentStreak,
       longestStreak: Math.max(user.longestStreak, currentStreak),
       lastActivityDate: today,
       increased: true,
+      freezesSpent,
     };
   }
 

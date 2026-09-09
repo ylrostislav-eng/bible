@@ -16,6 +16,7 @@ import { HealthModule } from './health/health.module';
 import { HotColdModule } from './hot-cold/hot-cold.module';
 import { LearnModule } from './learn/learn.module';
 import { AchievementsModule } from './achievements/achievements.module';
+import { ShopModule } from './shop/shop.module';
 import { AliasModule } from './alias/alias.module';
 import { DailyWordModule } from './daily-word/daily-word.module';
 import { ModerationModule } from './moderation/moderation.module';
@@ -57,6 +58,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     ModerationModule,
     AchievementsModule,
+    ShopModule,
     AliasModule,
     DailyWordModule,
     HotColdModule,

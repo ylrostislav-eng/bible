@@ -50,6 +50,15 @@ export class DailyWordController {
     return this.dailyWordService.takeHint(currentUser.sub, readOffset(offset));
   }
 
+  /** Тратит «вторую попытку» из лавки и возвращает день в игру. */
+  @Post('retry')
+  async retry(
+    @CurrentUser() currentUser: JwtPayload,
+    @Headers('x-timezone-offset') offset?: string,
+  ) {
+    return this.dailyWordService.useRetry(currentUser.sub, readOffset(offset));
+  }
+
   @Post('guess')
   async guess(
     @CurrentUser() currentUser: JwtPayload,

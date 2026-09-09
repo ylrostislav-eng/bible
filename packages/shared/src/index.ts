@@ -24,3 +24,4 @@ export * from './typo';
 export * from './hot-cold';
 export * from './hot-cold-duel';
 export * from './hot-cold-riddle';
+export * from './shop';

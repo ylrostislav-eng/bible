@@ -90,6 +90,22 @@ model User {
   streakGoalDays       Int?
   streakGoalRewardedAt DateTime?
 
+  /// Запас «хранителей серии» из лавки: каждый закрывает один пропущенный
+  /// день (см. `packages/shared/src/shop.ts`).
+  ///
+  /// Тратится сам, при первой игре после пропуска, — нажать кнопку в
+  /// пропущенный день некому: игрока в этот день в приложении и не было.
+  /// Поэтому это запас, а не разовая покупка «на завтра».
+  streakFreezes Int @default(0)
+
+  /// Запас «вторых попыток» на «Слово дня» из лавки.
+  ///
+  /// Счётчиком рядом с монетами, а не строками в журнале покупок: его
+  /// читают и уменьшают на горячем пути (экран слова дня), и считать
+  /// остаток выборкой по журналу на каждый заход — лишняя работа ради
+  /// числа, которое и так помещается в колонку.
+  dailyWordRetries Int @default(0)
+
   /// The player's own UTC offset, in `Date.prototype.getTimezoneOffset()`
   /// units (positive = behind UTC). Refreshed from a request header on
   /// every profile fetch. Stored rather than passed per-call because a duel
@@ -168,6 +184,19 @@ model User {
   /// ответе API — то есть на виду у любого, кто откроет консоль.
   hideName Boolean @default(false)
 
+  /// Надетое оформление из лавки: ключ рамки и цвет имени. Хранится
+  /// **надетое**, а не купленное, — что куплено, знает `ShopPurchase`.
+  ///
+  /// Лежит здесь, а не вычисляется из покупок, потому что это читают все
+  /// списки игроков разом: рейтинг, «Игроки», лобби. Отдельный запрос за
+  /// покупками на каждую строку списка — та самая беда, из-за которой
+  /// когда-то переписывали список чатов.
+  ///
+  /// Значения — из каталога (`SHOP_ITEMS`), а не любые присланные клиентом:
+  /// иначе цвет имени становится способом нарисовать себе что угодно.
+  avatarFrame String?
+  nameColor   String?
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.
@@ -209,6 +238,7 @@ model User {
   mutedUntil DateTime?
 
   achievements UserAchievement[]
+  shopPurchases ShopPurchase[]
   aliasMatches AliasMatch[]
   dailyWords   DailyWordAttempt[]
   hotColdDays  HotColdAttempt[]
@@ -832,6 +862,35 @@ model UserAchievement {
   @@map("user_achievements")
 }
 
+/// Покупка в лавке — по строке на каждое списание монет.
+///
+/// Журнал, а не «что у игрока есть»: надетое оформление лежит в `User`,
+/// запас расходников — там же счётчиком. Здесь важна история, и она нужна
+/// не для красоты. Когда игрок напишет «купил рамку, а её нет» — вопрос
+/// решается одной выборкой; без журнала он решается верой на слово.
+///
+/// `price` записывается тот, что был в момент покупки: каталог живёт в
+/// коде и цены в нём меняются, а разбор старой покупки по новой цене —
+/// это разбор не того, что было.
+model ShopPurchase {
+  id String @id @default(cuid())
+
+  userId String
+  /// Идентификатор товара из `SHOP_ITEMS`. Строкой, а не перечислением:
+  /// каталог правится чаще, чем схема, и новый товар не должен требовать
+  /// миграции базы.
+  itemId String
+  price  Int
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, itemId])
+  @@map("shop_purchases")
+}
+
 /// Одно слово в колоде Alias.
 ///
 /// `gloss` — одна строка «что это», показывается на разборе раунда по
@@ -930,6 +989,13 @@ model DailyWordAttempt {
   /// Проставляется, когда игра за день закончена — угадал или потратил все
   /// попытки. Пока `null`, день ещё можно доиграть.
   finishedAt   DateTime?
+
+  /// Попытки, докупленные в лавке сверх обычных пяти.
+  ///
+  /// Отдельным полем, а не вычитанием из `attemptsUsed`: уменьшать счётчик
+  /// сделанных попыток значит потерять, сколько раз человек на самом деле
+  /// отвечал, — а это то, по чему потом разбирают день.
+  extraAttempts Int @default(0)
 
   xpEarned    Int @default(0)
   coinsEarned Int @default(0)

@@ -1,8 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   ALIAS_CATEGORY_LABELS,
+  DAILY_WORD_ALREADY_SOLVED_MESSAGE,
   DAILY_WORD_HINT_COUNT,
   DAILY_WORD_MAX_ATTEMPTS,
+  DAILY_WORD_NO_RETRY_MESSAGE,
+  DAILY_WORD_RETRY_ATTEMPTS,
+  DAILY_WORD_RETRY_NOT_NEEDED_MESSAGE,
   dailyWordReward,
   formatAliasReference,
   isDailyWordInflection,
@@ -26,6 +30,7 @@ import {
 } from '../common/local-day';
 import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopService } from '../shop/shop.service';
 import { UsersService } from '../users/users.service';
 
 const TESTAMENT_LABELS: Record<AliasTestament, string> = {
@@ -43,6 +48,7 @@ interface AttemptRow {
   hintsUsed: number;
   solved: boolean;
   finishedAt: Date | null;
+  extraAttempts: number;
   xpEarned: number;
   coinsEarned: number;
   word: WordRow;
@@ -67,6 +73,7 @@ export class DailyWordService {
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
     private readonly staffNames: StaffNameMask,
+    private readonly shop: ShopService,
   ) {}
 
   /**
@@ -156,11 +163,15 @@ export class DailyWordService {
     timezoneOffsetMinutes: number,
   ) {
     const date = localDate(timezoneOffsetMinutes);
+    // Запас вторых попыток читается здесь же: он нужен каждому ответу
+    // экрана, а отдельный поход за одним числом — лишний круг к базе на
+    // горячем пути.
+    const retriesInStock = await this.retriesInStock(userId);
     const existing = await this.prisma.dailyWordAttempt.findUnique({
       where: { userId_date: { userId, date } },
       include: { word: true },
     });
-    if (existing) return { attempt: existing, date };
+    if (existing) return { attempt: existing, date, retriesInStock };
 
     const word = await this.pickWordFor(date);
     // `upsert`, а не `create`: два запроса подряд с одного устройства —
@@ -172,21 +183,38 @@ export class DailyWordService {
       update: {},
       include: { word: true },
     });
-    return { attempt, date };
+    return { attempt, date, retriesInStock };
+  }
+
+  private async retriesInStock(userId: string): Promise<number> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { dailyWordRetries: true },
+    });
+    return user?.dailyWordRetries ?? 0;
+  }
+
+  /** Сколько всего попыток у этого дня: обычные плюс докупленные. */
+  private attemptLimit(attempt: { extraAttempts: number }): number {
+    return DAILY_WORD_MAX_ATTEMPTS + attempt.extraAttempts;
   }
 
   async getState(
     userId: string,
     timezoneOffsetMinutes: number,
   ): Promise<DailyWordState> {
-    const { attempt, date } = await this.loadOrCreateAttempt(
+    const { attempt, date, retriesInStock } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
     );
-    return this.toState(attempt, date);
+    return this.toState(attempt, date, retriesInStock);
   }
 
-  private toState(attempt: AttemptRow, date: Date): DailyWordState {
+  private toState(
+    attempt: AttemptRow,
+    date: Date,
+    retriesInStock: number,
+  ): DailyWordState {
     const finished = attempt.finishedAt !== null;
     const reference = toReference(attempt.word);
 
@@ -194,7 +222,10 @@ export class DailyWordService {
       date: dateLabel(date),
       gloss: attempt.word.gloss,
       attemptsUsed: attempt.attemptsUsed,
-      attemptsLeft: Math.max(0, DAILY_WORD_MAX_ATTEMPTS - attempt.attemptsUsed),
+      attemptsLeft: Math.max(
+        0,
+        this.attemptLimit(attempt) - attempt.attemptsUsed,
+      ),
       hints: this.buildHints(attempt.word, attempt.hintsUsed),
       hintsLeft: Math.max(0, DAILY_WORD_HINT_COUNT - attempt.hintsUsed),
       rewardIfSolvedNow: dailyWordReward(attempt.hintsUsed),
@@ -210,6 +241,7 @@ export class DailyWordService {
       earned: attempt.solved
         ? { xp: attempt.xpEarned, coins: attempt.coinsEarned }
         : null,
+      retriesInStock,
     };
   }
 
@@ -252,7 +284,7 @@ export class DailyWordService {
     userId: string,
     timezoneOffsetMinutes: number,
   ): Promise<DailyWordState> {
-    const { attempt, date } = await this.loadOrCreateAttempt(
+    const { attempt, date, retriesInStock } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
     );
@@ -268,7 +300,7 @@ export class DailyWordService {
       data: { hintsUsed: { increment: 1 } },
       include: { word: true },
     });
-    return this.toState(updated, date);
+    return this.toState(updated, date, retriesInStock);
   }
 
   async guess(
@@ -281,7 +313,7 @@ export class DailyWordService {
       throw new BadRequestException('Пустой ответ');
     }
 
-    const { attempt, date } = await this.loadOrCreateAttempt(
+    const { attempt, date, retriesInStock } = await this.loadOrCreateAttempt(
       userId,
       timezoneOffsetMinutes,
     );
@@ -291,7 +323,8 @@ export class DailyWordService {
 
     const correct = await this.isAccepted(guess, attempt.word);
     const attemptsUsed = attempt.attemptsUsed + 1;
-    const outOfAttempts = !correct && attemptsUsed >= DAILY_WORD_MAX_ATTEMPTS;
+    const outOfAttempts =
+      !correct && attemptsUsed >= this.attemptLimit(attempt);
     const reward = dailyWordReward(attempt.hintsUsed);
 
     // Одна запись на весь исход: `updateMany` с условием «ещё не закончено»
@@ -329,9 +362,62 @@ export class DailyWordService {
         [attempt.word.word, ...attempt.word.accepts].some((variant) =>
           isDailyWordNearMatch(guess, variant),
         ),
-      state: this.toState(fresh as AttemptRow, date),
+      state: this.toState(fresh as AttemptRow, date, retriesInStock),
       normalizedMatch: correct && guess !== attempt.word.word,
     };
+  }
+
+  /**
+   * Тратит «вторую попытку» из лавки и возвращает день в игру.
+   *
+   * Списание и возврат попыток — одной транзакцией: расходник, снятый без
+   * попыток, это худшее, что лавка может сделать с игроком, и падение
+   * между двумя запросами приводит ровно к этому.
+   *
+   * Подсказки при этом не сбрасываются, и награда считается по ним как
+   * обычно. Иначе докупка стала бы способом взять три подсказки, а
+   * заплатить как за чистую догадку.
+   */
+  async useRetry(
+    userId: string,
+    timezoneOffsetMinutes: number,
+  ): Promise<DailyWordState> {
+    const { attempt, date } = await this.loadOrCreateAttempt(
+      userId,
+      timezoneOffsetMinutes,
+    );
+
+    if (attempt.solved) {
+      throw new BadRequestException(DAILY_WORD_ALREADY_SOLVED_MESSAGE);
+    }
+    if (!attempt.finishedAt) {
+      throw new BadRequestException(DAILY_WORD_RETRY_NOT_NEEDED_MESSAGE);
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const spent = await this.shop.consume(userId, 'daily_word_retry', tx);
+      if (!spent) throw new BadRequestException(DAILY_WORD_NO_RETRY_MESSAGE);
+
+      // Условие по `finishedAt` отсекает второе одновременное нажатие:
+      // иначе два запроса потратили бы две покупки на один и тот же день.
+      const reopened = await tx.dailyWordAttempt.updateMany({
+        where: { id: attempt.id, finishedAt: { not: null }, solved: false },
+        data: {
+          finishedAt: null,
+          extraAttempts: { increment: DAILY_WORD_RETRY_ATTEMPTS },
+        },
+      });
+      if (reopened.count === 0) {
+        throw new BadRequestException(DAILY_WORD_RETRY_NOT_NEEDED_MESSAGE);
+      }
+
+      return tx.dailyWordAttempt.findUniqueOrThrow({
+        where: { id: attempt.id },
+        include: { word: true },
+      });
+    });
+
+    return this.toState(updated, date, await this.retriesInStock(userId));
   }
 
   // ---- друзья ----
