@@ -53,7 +53,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (status === 'no-telegram') {
     return (
       <div className="flex min-h-[var(--app-height)] flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-lg font-semibold">Откройте Bible Arena в Telegram</p>
+        <p className="text-lg font-semibold">Откройте «Библейскую арену» в Telegram</p>
         <p className="text-sm text-text-secondary">
           Это приложение работает только внутри Telegram Mini Apps.
         </p>
