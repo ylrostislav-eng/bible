@@ -37,6 +37,9 @@ describe('ShopService — правила покупки', () => {
       dailyWordRetries: state.dailyWordRetries ?? 0,
       avatarFrame: state.avatarFrame ?? null,
       nameColor: state.nameColor ?? null,
+      lampFlame: null as string | null,
+      lampVessel: null as string | null,
+      lampGlow: null as string | null,
     };
     const purchases = [...(state.owned ?? [])];
 
@@ -236,6 +239,41 @@ describe('ShopService — правила покупки', () => {
       owned: false,
       equipped: false,
     });
+  });
+
+  it('детали лампы надеваются каждая в своё место', async () => {
+    // Виды оформления разложены таблицей «вид → колонка». Тест держит
+    // именно это: пламя не должно оказаться в колонке сосуда, а новый вид
+    // — молча никуда не записаться.
+    const { shop, user } = shopWith({
+      coins: 0,
+      owned: ['lamp_flame_violet', 'lamp_vessel_gold', 'lamp_glow_stars'],
+    });
+
+    await shop.equip('игрок', 'lamp_flame_violet');
+    await shop.equip('игрок', 'lamp_vessel_gold');
+    await shop.equip('игрок', 'lamp_glow_stars');
+
+    expect(user.lampFlame).toBe(shopItem('lamp_flame_violet')!.value);
+    expect(user.lampVessel).toBe(shopItem('lamp_vessel_gold')!.value);
+    expect(user.lampGlow).toBe(shopItem('lamp_glow_stars')!.value);
+  });
+
+  it('«вернуть обычный вид» снимает и лампу тоже', async () => {
+    // Список снимаемого берётся из той же таблицы, поэтому забыть новый
+    // вид тут нельзя — но проверить это дешевле, чем потом искать, почему
+    // лампа не снимается.
+    const { shop, user } = shopWith({
+      coins: 0,
+      owned: ['frame_flame', 'lamp_flame_violet'],
+    });
+
+    await shop.equip('игрок', 'frame_flame');
+    await shop.equip('игрок', 'lamp_flame_violet');
+    await shop.equip('игрок', null);
+
+    expect(user.avatarFrame).toBeNull();
+    expect(user.lampFlame).toBeNull();
   });
 
   it('ошибки лавки — понятные, а не «Bad Request»', async () => {

@@ -29,7 +29,7 @@ export function DailyGoalCard({ user }: { user: UserProfile }) {
   return (
     <Card className="flex-col gap-3">
       <div className="flex items-center gap-3">
-        <OilLampFlame size={36} glow={user.streakActiveToday} />
+        <OilLampFlame size={36} glow={user.streakActiveToday} look={user.lamp} />
         <div className="min-w-0 flex-1">
           <p className="font-semibold">
             {user.currentStreak > 0

@@ -11,11 +11,13 @@ import {
   type HotColdBand,
   type HotColdDuelGuess,
   type HotColdDuelState,
+  type LampLook,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DuelCountdown } from '@/components/duel-countdown';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { Button } from '@/components/ui/button';
 import { ScreenSpacer } from '@/components/ui/screen-spacer';
@@ -692,6 +694,7 @@ function ReadyCard({
   onReady: () => void;
   onCancel: () => void;
 }) {
+  const { user } = useAuth();
   const opponent = state.opponent;
   return (
     <div className="flex flex-col gap-4">
@@ -712,8 +715,15 @@ function ReadyCard({
       </p>
 
       <section className="flex flex-col gap-2 glass-card rounded-2xl p-4">
-        <ReadyRow name="Вы" ready={state.youReady} />
-        <ReadyRow name={opponent?.nickname ?? 'Соперник'} ready={opponent?.ready ?? false} />
+        {/* Лампы стоят рядом с именами: пока оба жмут «готов», смотреть
+            на экране больше не на что, и это ровно тот момент, ради
+            которого лампу и покупают. */}
+        <ReadyRow name="Вы" ready={state.youReady} lamp={user?.lamp} />
+        <ReadyRow
+          name={opponent?.nickname ?? 'Соперник'}
+          ready={opponent?.ready ?? false}
+          lamp={opponent?.lamp}
+        />
       </section>
 
       <Button onClick={onReady} disabled={state.youReady}>
@@ -759,10 +769,13 @@ function AbandonedCard({ onBack }: { onBack: () => void }) {
 }
 
 /** Строка «кто готов»: галочка или ожидание. */
-function ReadyRow({ name, ready }: { name: string; ready: boolean }) {
+function ReadyRow({ name, ready, lamp }: { name: string; ready: boolean; lamp?: LampLook | null }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+      <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+        <OilLampFlame size={22} glow={false} look={lamp} />
+        <span className="truncate">{name}</span>
+      </span>
       <span className={clsx('shrink-0 text-sm', ready ? 'text-success' : 'text-text-muted')}>
         {ready ? '✓ готов' : 'ещё думает'}
       </span>

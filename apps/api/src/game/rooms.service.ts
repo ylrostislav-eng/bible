@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DEFAULT_LAMP_LOOK,
   CHILD_MODE_ROOMS_MESSAGE,
   ROOM_INTRO_TOTAL_MS,
   ROOM_MAX_PARTICIPANTS,
@@ -1079,6 +1080,11 @@ export class RoomsService {
       // как `null`, и клиент рисует значок на его месте.
       nickname: this.staffNames.nickname(p.userId, p.user.nickname),
       avatarUrl: p.user.avatarUrl,
+      lamp: {
+        flame: p.user.lampFlame,
+        vessel: p.user.lampVessel,
+        glow: p.user.lampGlow,
+      },
       role: this.admins.roleOf(p.user.telegramId.toString()),
       isLeader: p.userId === leaderId,
       isReady: p.isReady,
@@ -1114,6 +1120,7 @@ export class RoomsService {
             userId,
             nickname: null,
             avatarUrl: null,
+            lamp: DEFAULT_LAMP_LOOK,
             role: 'PLAYER',
             isLeader: false,
             isReady: false,

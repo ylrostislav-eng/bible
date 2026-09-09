@@ -11,6 +11,7 @@ import {
   type ShopActionResult,
   type ShopItemDefinition,
   type ShopItemId,
+  type ShopItemKind,
   type ShopItemState,
   type ShopView,
 } from '@bible-arena/shared';
@@ -23,6 +24,25 @@ type ShopOwner = {
   dailyWordRetries: number;
   avatarFrame: string | null;
   nameColor: string | null;
+  lampFlame: string | null;
+  lampVessel: string | null;
+  lampGlow: string | null;
+};
+
+/**
+ * Куда ложится надетое — по колонке на вид товара.
+ *
+ * Таблицей, а не ветками `if`: видов оформления шесть, и каждая новая
+ * ветка это ещё одно место, где можно забыть про новый вид. Здесь забыть
+ * нельзя — без строки в таблице вид просто не наденется, и это видно
+ * сразу, а не через месяц на чужом экране.
+ */
+const EQUIP_FIELD: Partial<Record<ShopItemKind, keyof ShopOwner>> = {
+  FRAME: 'avatarFrame',
+  NAME_COLOR: 'nameColor',
+  LAMP_FLAME: 'lampFlame',
+  LAMP_VESSEL: 'lampVessel',
+  LAMP_GLOW: 'lampGlow',
 };
 
 @Injectable()
@@ -103,10 +123,12 @@ export class ShopService {
     if (itemId === null) {
       // Без вида товара непонятно, что именно снимать, поэтому снимаем всё
       // оформление разом: это ровно то, что значит «вернуть обычный вид».
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { avatarFrame: null, nameColor: null },
-      });
+      // Список полей берётся из той же таблицы — новый вид снимается сам,
+      // без правки этого места.
+      const cleared = Object.fromEntries(
+        Object.values(EQUIP_FIELD).map((field) => [field, null]),
+      );
+      await this.prisma.user.update({ where: { id: userId }, data: cleared });
       return this.result(userId);
     }
 
@@ -121,12 +143,12 @@ export class ShopService {
     });
     if (!owned) throw new BadRequestException(SHOP_NOT_OWNED_MESSAGE);
 
+    const field = EQUIP_FIELD[item.kind];
+    if (!field) throw new BadRequestException(SHOP_UNKNOWN_ITEM_MESSAGE);
+
     await this.prisma.user.update({
       where: { id: userId },
-      data:
-        item.kind === 'FRAME'
-          ? { avatarFrame: item.value ?? null }
-          : { nameColor: item.value ?? null },
+      data: { [field]: item.value ?? null },
     });
     return this.result(userId);
   }
@@ -179,6 +201,9 @@ export class ShopService {
         dailyWordRetries: true,
         avatarFrame: true,
         nameColor: true,
+        lampFlame: true,
+        lampVessel: true,
+        lampGlow: true,
       },
     });
     return user;
@@ -194,17 +219,15 @@ export class ShopService {
   }
 
   private states(owner: ShopOwner, owned: Set<string>): ShopItemState[] {
-    return SHOP_ITEMS.map((item) => ({
-      id: item.id,
-      owned: isCosmetic(item) && owned.has(item.id),
-      equipped:
-        item.kind === 'FRAME'
-          ? owner.avatarFrame === item.value
-          : item.kind === 'NAME_COLOR'
-            ? owner.nameColor === item.value
-            : false,
-      stock: this.stockIn(owner, item.id),
-    }));
+    return SHOP_ITEMS.map((item) => {
+      const field = EQUIP_FIELD[item.kind];
+      return {
+        id: item.id,
+        owned: isCosmetic(item) && owned.has(item.id),
+        equipped: field ? owner[field] === item.value : false,
+        stock: this.stockIn(owner, item.id),
+      };
+    });
   }
 
   /** Расходники лежат счётчиками в `User` — по колонке на вид. */

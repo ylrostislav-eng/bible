@@ -1,4 +1,5 @@
 import type { AppRole } from './admin';
+import type { LampLook } from './shop';
 import type { GameQuestion } from './game';
 
 /** Hard ceiling on room size — kept modest for now; can grow later once the
@@ -74,6 +75,9 @@ export interface RoomParticipantView {
   userId: string;
   nickname: string | null;
   avatarUrl: string | null;
+  /** Как выглядит его лампа — лобби это то место, ради которого её и
+   * покупают: здесь игроки друг друга и разглядывают. */
+  lamp: LampLook;
   /** Роль — значок рядом с ником в лобби и на табло. */
   role: AppRole;
   isLeader: boolean;

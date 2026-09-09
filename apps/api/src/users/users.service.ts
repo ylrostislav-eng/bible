@@ -1199,6 +1199,11 @@ export class UsersService {
       telegramId: user.telegramId.toString(),
       telegramUsername: user.telegramUsername,
       nickname: user.nickname,
+      lamp: {
+        flame: user.lampFlame,
+        vessel: user.lampVessel,
+        glow: user.lampGlow,
+      },
       avatarUrl: user.avatarUrl,
       country: user.country,
       language: user.language as LanguageCode,

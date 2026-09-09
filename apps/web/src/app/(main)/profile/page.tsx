@@ -101,7 +101,7 @@ export default function ProfilePage() {
         <Card className="flex-col">
           <p className="text-xs text-text-secondary">Серия дней</p>
           <div className="flex items-center gap-1.5">
-            <OilLampFlame size={18} glow={false} />
+            <OilLampFlame size={18} glow={false} look={user.lamp} />
             <p className="text-lg font-bold text-primary">{user.currentStreak}</p>
           </div>
         </Card>

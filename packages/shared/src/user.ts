@@ -2,6 +2,7 @@ import type { QuestionPace, TextScale } from './accessibility';
 import type { AgeBand } from './age';
 import type { AppRole } from './admin';
 import type { LanguageCode } from './language';
+import type { LampLook } from './shop';
 
 export const NICKNAME_MIN_LENGTH = 3;
 export const NICKNAME_MAX_LENGTH = 20;
@@ -64,6 +65,15 @@ export interface UserProfile {
   musicVolume: number;
   /** Interface text size. */
   textScale: TextScale;
+
+  /**
+   * Как выглядит своя лампа: надетые детали из лавки.
+   *
+   * В профиле, а не отдельным запросом, потому что лампу рисует главный
+   * экран — тот самый, что открывается первым и должен рисоваться сразу,
+   * а не догружать вид отдельным кругом к серверу.
+   */
+  lamp: LampLook;
 
   level: number;
   experience: number;

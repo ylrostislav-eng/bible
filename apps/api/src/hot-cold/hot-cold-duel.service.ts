@@ -569,6 +569,14 @@ export class HotColdDuelService {
             // идёт метка роли, а не «Соперник».
             nickname: this.staffNames.label(other.userId, other.user.nickname),
             avatarUrl: other.user.avatarUrl,
+            // Лампу скрытое имя не прячет: она не имя, а вещь, и на
+            // экране готовности это единственное, на что вообще можно
+            // посмотреть, пока ждёшь.
+            lamp: {
+              flame: other.user.lampFlame,
+              vessel: other.user.lampVessel,
+              glow: other.user.lampGlow,
+            },
             // Только числа. Слова остаются на сервере — см. заголовок.
             ranks: readGuesses(other.guesses).map((entry) => entry.rank),
             bestRank: other.bestRank,

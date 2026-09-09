@@ -17,8 +17,17 @@
  * может разъехаться между сервером и экраном.
  */
 
-/** Чем товар является для правил: расходник тратится, оформление надевается. */
-export type ShopItemKind = 'CONSUMABLE' | 'FRAME' | 'NAME_COLOR';
+/**
+ * Чем товар является для правил: расходник тратится, оформление
+ * надевается.
+ *
+ * Виды с `LAMP_` — детали личной лампы. Разделены по слоям рисунка
+ * (пламя, чаша, сияние), а не сложены в одну «лампу целиком», потому что
+ * собранная из частей вещь и есть то, ради чего копят: у каждого своя
+ * комбинация, а не один из четырёх готовых наборов.
+ */
+export type ShopItemKind =
+  'CONSUMABLE' | 'FRAME' | 'NAME_COLOR' | 'LAMP_FLAME' | 'LAMP_VESSEL' | 'LAMP_GLOW';
 
 export type ShopItemId =
   | 'streak_freeze'
@@ -30,7 +39,18 @@ export type ShopItemId =
   | 'color_olive'
   | 'color_sea'
   | 'color_purple'
-  | 'color_rose';
+  | 'color_rose'
+  | 'lamp_flame_azure'
+  | 'lamp_flame_emerald'
+  | 'lamp_flame_violet'
+  | 'lamp_flame_white'
+  | 'lamp_vessel_clay'
+  | 'lamp_vessel_silver'
+  | 'lamp_vessel_bronze'
+  | 'lamp_vessel_gold'
+  | 'lamp_glow_halo'
+  | 'lamp_glow_rays'
+  | 'lamp_glow_stars';
 
 export interface ShopItemDefinition {
   id: ShopItemId;
@@ -152,7 +172,129 @@ export const SHOP_ITEMS: readonly ShopItemDefinition[] = [
     price: 300,
     value: '#e08aa0',
   },
+
+  // --- Своя лампа ---
+  //
+  // Верхний ярус цен, которого экономике не хватало: рамка за 900 берётся
+  // за неделю-полторы, и дальше копить было не для чего. Лампа собирается
+  // месяцами, и у каждого получается своя — в этом и смысл разделения по
+  // слоям, а не продажи готовых наборов.
+  //
+  // Цвет пламени — самое заметное и самое дешёвое: с него начинают.
+  {
+    id: 'lamp_flame_azure',
+    kind: 'LAMP_FLAME',
+    name: 'Лазурное пламя',
+    description: 'Огонь вашей лампы горит холодной синевой.',
+    price: 250,
+    value: 'azure',
+  },
+  {
+    id: 'lamp_flame_emerald',
+    kind: 'LAMP_FLAME',
+    name: 'Изумрудное пламя',
+    description: 'Зелёный огонь — редкий и заметный издалека.',
+    price: 250,
+    value: 'emerald',
+  },
+  {
+    id: 'lamp_flame_violet',
+    kind: 'LAMP_FLAME',
+    name: 'Пурпурное пламя',
+    description: 'Тёмно-фиолетовый огонь с розовой сердцевиной.',
+    price: 400,
+    value: 'violet',
+  },
+  {
+    id: 'lamp_flame_white',
+    kind: 'LAMP_FLAME',
+    name: 'Белое пламя',
+    description: 'Ровный белый свет, почти без цвета. Самое дорогое пламя.',
+    price: 1500,
+    value: 'white',
+  },
+
+  {
+    id: 'lamp_vessel_clay',
+    kind: 'LAMP_VESSEL',
+    name: 'Глиняный сосуд',
+    description: 'Простая обожжённая глина — такая, какой она и была.',
+    price: 150,
+    value: 'clay',
+  },
+  {
+    id: 'lamp_vessel_bronze',
+    kind: 'LAMP_VESSEL',
+    name: 'Бронзовый сосуд',
+    description: 'Тёмная бронза с зеленоватым отливом.',
+    price: 350,
+    value: 'bronze',
+  },
+  {
+    id: 'lamp_vessel_silver',
+    kind: 'LAMP_VESSEL',
+    name: 'Серебряный сосуд',
+    description: 'Холодное серебро.',
+    price: 700,
+    value: 'silver',
+  },
+  {
+    id: 'lamp_vessel_gold',
+    kind: 'LAMP_VESSEL',
+    name: 'Золотой светильник',
+    description: 'Чистое золото — как светильник в скинии. Самая дорогая вещь в лавке.',
+    price: 3000,
+    value: 'gold',
+  },
+
+  {
+    id: 'lamp_glow_halo',
+    kind: 'LAMP_GLOW',
+    name: 'Ореол',
+    description: 'Мягкое кольцо света вокруг пламени.',
+    price: 300,
+    value: 'halo',
+  },
+  {
+    id: 'lamp_glow_rays',
+    kind: 'LAMP_GLOW',
+    name: 'Лучи',
+    description: 'Свет расходится лучами во все стороны.',
+    price: 800,
+    value: 'rays',
+  },
+  {
+    id: 'lamp_glow_stars',
+    kind: 'LAMP_GLOW',
+    name: 'Искры',
+    description: 'Над пламенем поднимаются редкие искры.',
+    price: 2000,
+    value: 'stars',
+  },
 ];
+
+/** Виды, из которых собирается лампа — в порядке отделов на витрине. */
+export const LAMP_KINDS: readonly ShopItemKind[] = ['LAMP_FLAME', 'LAMP_VESSEL', 'LAMP_GLOW'];
+
+export function isLampPart(item: ShopItemDefinition): boolean {
+  return LAMP_KINDS.includes(item.kind);
+}
+
+/**
+ * Как выглядит лампа игрока. Пустые поля — обычная лампа, та же, что была
+ * до всякой лавки: ненадетая деталь это не «сломано», а «как у всех».
+ */
+export interface LampLook {
+  flame: string | null;
+  vessel: string | null;
+  glow: string | null;
+}
+
+export const DEFAULT_LAMP_LOOK: LampLook = {
+  flame: null,
+  vessel: null,
+  glow: null,
+};
 
 export function shopItem(id: string): ShopItemDefinition | undefined {
   return SHOP_ITEMS.find((item) => item.id === id);

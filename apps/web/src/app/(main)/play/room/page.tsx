@@ -15,6 +15,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TournamentIcon } from '@/components/icons/nav-icons';
 import { RoomInvitePicker } from '@/components/room-invite-picker';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { PlayerLabel } from '@/components/ui/player-label';
 import { RoleBadge } from '@/components/ui/role-badge';
 import { Button } from '@/components/ui/button';
@@ -449,6 +450,10 @@ export default function RoomPage() {
             {roomState.participants.map((p) => (
               <div key={p.userId} className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
+                  {/* Лампа участника: лобби — то место, где игроки ждут
+                      старта и разглядывают друг друга, ради этого её и
+                      покупают. */}
+                  <OilLampFlame size={20} glow={false} look={p.lamp} />
                   <span className="truncate text-sm font-medium">
                     <PlayerLabel nickname={p.nickname} role={p.role} />
                     {p.userId === me.userId && ' (вы)'}

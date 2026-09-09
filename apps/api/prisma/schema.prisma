@@ -197,6 +197,19 @@ model User {
   avatarFrame String?
   nameColor   String?
 
+  /// Надетые детали личной лампы: пламя, сосуд, сияние.
+  ///
+  /// Тремя колонками, а не одним JSON: лампу показывают списки игроков —
+  /// лобби, экран готовности дуэли, — и разбирать JSON на каждую строку
+  /// списка ради трёх строковых ключей незачем.
+  ///
+  /// Пустое значение — обычная лампа, та же, что была до лавки. Отсутствие
+  /// детали это «как у всех», а не «сломано», поэтому значения по
+  /// умолчанию тут нет.
+  lampFlame  String?
+  lampVessel String?
+  lampGlow   String?
+
   /// Last time the app was opened at all (touched on every profile fetch) —
   /// separate from `lastActivityDate`, which only tracks the daily-streak
   /// activity. Used for the inactivity rating decay.

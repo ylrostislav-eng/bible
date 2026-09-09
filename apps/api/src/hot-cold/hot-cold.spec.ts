@@ -1,4 +1,5 @@
 import {
+  DEFAULT_LAMP_LOOK,
   HOT_COLD_DUEL_HINT_LIMIT,
   HOT_COLD_DUEL_PERSONAL_HINTS,
   HOT_COLD_DUEL_LOSER_SHARE,
@@ -172,6 +173,7 @@ describe('правила дуэли', () => {
     userId: 'u2',
     nickname: 'соперник',
     avatarUrl: null,
+    lamp: DEFAULT_LAMP_LOOK,
     ranks: [],
     bestRank: null,
     guessCount: 0,

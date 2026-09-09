@@ -17,6 +17,8 @@
  * знаешь, куда он смотрит. Отыграться можно только собственной головой.
  */
 
+import type { LampLook } from './shop';
+
 /** Что сейчас с дуэлью. */
 export type HotColdDuelStatus =
   | 'WAITING'
@@ -224,6 +226,8 @@ export interface HotColdDuelOpponent {
   /** Пусто, пока человек не прошёл онбординг, — как и везде в приложении. */
   nickname: string | null;
   avatarUrl: string | null;
+  /** Его лампа — видна на экране готовности, пока ждут друг друга. */
+  lamp: LampLook;
   /** Места его слов по порядку ходов. Сами слова — никогда. */
   ranks: number[];
   /** Лучшее место, оно же «насколько он близко». */

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  LAMP_KINDS,
   SHOP_ITEMS,
   isCosmetic,
   type ShopActionResult,
@@ -12,6 +13,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { AvatarFrame } from '@/components/ui/avatar-frame';
+import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
@@ -112,7 +114,17 @@ export default function ShopPage() {
   const consumables = SHOP_ITEMS.filter((item) => !isCosmetic(item));
   const frames = SHOP_ITEMS.filter((item) => item.kind === 'FRAME');
   const colors = SHOP_ITEMS.filter((item) => item.kind === 'NAME_COLOR');
+  const lampParts = SHOP_ITEMS.filter((item) => LAMP_KINDS.includes(item.kind));
   const anythingEquipped = view.items.some((item) => item.equipped);
+
+  /** Как выглядела бы лампа, если надеть эту деталь поверх нынешней.
+   * Примерка на своей лампе, а не картинка детали отдельно: сама по себе
+   * «бронза» ничего не говорит, а бронза под своим пламенем — говорит. */
+  const lampWith = (item: ShopItemDefinition) => ({
+    flame: item.kind === 'LAMP_FLAME' ? (item.value ?? null) : (user?.lamp.flame ?? null),
+    vessel: item.kind === 'LAMP_VESSEL' ? (item.value ?? null) : (user?.lamp.vessel ?? null),
+    glow: item.kind === 'LAMP_GLOW' ? (item.value ?? null) : (user?.lamp.glow ?? null),
+  });
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pb-4 pt-6">
@@ -189,6 +201,25 @@ export default function ShopPage() {
               />
             }
             nameColor={item.value}
+          />
+        )}
+      />
+
+      <Section
+        title="Своя лампа"
+        hint="На главном экране и там, где вас встречают"
+        items={lampParts}
+        render={(item) => (
+          <ItemRow
+            key={item.id}
+            item={item}
+            state={stateOf(item.id)}
+            coins={view.coins}
+            busy={busy === item.id}
+            justBought={justBought === item.id}
+            onBuy={() => void act(item.id, 'buy')}
+            onEquip={() => void act(item.id, 'equip')}
+            preview={<OilLampFlame size={38} glow={false} look={lampWith(item)} />}
           />
         )}
       />
@@ -281,9 +312,14 @@ function ItemRow({
       {preview && <div className="flex w-12 justify-center">{preview}</div>}
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
+        {/* Название переносится, а не обрезается: «Пурпурное пламя» и
+            «Золотой светильник» превращались в «Пурпурное…» и «Золотой
+            св…» — покупатель видел многоточие вместо того, что покупает.
+            _Нашлось живой проверкой._ Значки уезжают на свою строку, если
+            не помещаются рядом. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h3
-            className="truncate text-sm font-semibold"
+            className="text-sm font-semibold"
             style={nameColor ? { color: nameColor } : undefined}
           >
             {item.name}
