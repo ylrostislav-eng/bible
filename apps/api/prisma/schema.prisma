@@ -252,6 +252,7 @@ model User {
 
   achievements UserAchievement[]
   shopPurchases ShopPurchase[]
+  diceMatches   DiceMatchPlayer[]
   aliasMatches AliasMatch[]
   dailyWords   DailyWordAttempt[]
   hotColdDays  HotColdAttempt[]
@@ -1275,4 +1276,121 @@ model AdminAction {
   @@index([createdAt])
   @@index([targetUserId, createdAt])
   @@map("admin_actions")
+}
+
+enum DiceMatchStatus {
+  /// Создан, второй игрок ещё не сел за стол.
+  WAITING
+  IN_PROGRESS
+  FINISHED
+  /// Никто не пришёл, или партию бросили не доиграв.
+  ABANDONED
+}
+
+/// Партия в «Кости» — см. `docs/dice.md`.
+///
+/// Правила живут в чистом движке (`packages/shared/src/dice-engine.ts`), а
+/// здесь — только то, что должно пережить перезагрузку страницы и разрыв
+/// связи. Состояние кладётся целиком в `state` одним JSON, потому что оно
+/// и есть одна неделимая вещь: разложенное по колонкам, оно рано или
+/// поздно рассогласуется само с собой — счёт обновился, фаза нет.
+///
+/// Рядом с JSON дублируются только те поля, по которым **ищут**: подбор
+/// соперника и список своих партий не должны разбирать JSON построчно.
+model DiceMatch {
+  id String @id @default(cuid())
+
+  status DiceMatchStatus @default(WAITING)
+
+  /// Код для приглашения друга ссылкой `?startapp=dice_<код>`.
+  inviteCode String @unique
+
+  /// Открыт для подбора: сюда посадят незнакомца, нажавшего «найти
+  /// соперника». Пусто — партия только для того, кому дали код. То же
+  /// разделение, что у дуэлей: «жду друга» и «жду кого угодно» — разные
+  /// намерения, и путать их нельзя.
+  openToMatchmaking Boolean @default(false)
+
+  targetScore Int @default(4000)
+
+  /// Секунды на ход; `null` — без таймера (дружеская партия).
+  turnTimeLimit Int?
+
+  /// Полное состояние партии из движка.
+  state Json
+
+  winnerId String?
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  /// Последнее действие любого из игроков — по нему уборщик находит
+  /// брошенные партии, не трогая те, где просто думают над риском.
+  lastActionAt DateTime @default(now())
+
+  /// Идентификатор последнего применённого действия.
+  ///
+  /// Сеть теряет ответы, а игрок жмёт ещё раз. Без этого повтор запроса
+  /// бросает кости заново и стирает уже выпавшее — то есть отнимает у
+  /// игрока честный бросок из-за плохой связи. С ним тот же
+  /// идентификатор просто возвращает нынешнее состояние.
+  lastActionId String?
+
+  players DiceMatchPlayer[]
+  rolls   DiceRoll[]
+
+  @@index([status, openToMatchmaking, createdAt])
+  @@index([status, lastActionAt])
+  @@map("dice_matches")
+}
+
+model DiceMatchPlayer {
+  id String @id @default(cuid())
+
+  matchId String
+  match   DiceMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Порядок за столом: 0 ходит первым.
+  seat Int
+
+  /// Итоги партии — чтобы статистика не пересобиралась из событий.
+  score      Int @default(0)
+  bustCount  Int @default(0)
+  hotDiceCount Int @default(0)
+  /// Лучший ход за партию: то самое «а я однажды забрал 3200».
+  bestTurn   Int @default(0)
+
+  joinedAt DateTime @default(now())
+
+  @@unique([matchId, userId])
+  @@index([userId])
+  @@map("dice_match_players")
+}
+
+/// Журнал бросков: каждый бросок, сделанный сервером.
+///
+/// Нужен не для игры — игра берёт кости из состояния — а для разбора.
+/// «Мне не выпадало ни одной единицы за десять бросков» проверяется
+/// выборкой, а не верой на слово; и если генератор когда-нибудь окажется
+/// кривым, это будет видно по журналу, а не по жалобам.
+model DiceRoll {
+  id String @id @default(cuid())
+
+  matchId String
+  match   DiceMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId  String
+
+  /// Номер хода и броска внутри хода — по ним собирается повтор партии.
+  turnNumber Int
+  rollNumber Int
+
+  /// Выпавшее: массив чисел 1..6.
+  dice Json
+
+  createdAt DateTime @default(now())
+
+  @@index([matchId, createdAt])
+  @@map("dice_rolls")
 }
