@@ -45,6 +45,7 @@ export function buildTavern(shadows: boolean): Tavern {
   const wood = keep(woodTexture());
   const felt = keep(feltTexture());
   const wall = keep(wallTexture());
+  const textureLoader = new THREE.TextureLoader();
 
   const tableMaterial = keep(
     new THREE.MeshStandardMaterial({ map: wood, roughness: 0.78, metalness: 0.04 }),
@@ -110,6 +111,32 @@ export function buildTavern(shadows: boolean): Tavern {
   wallMesh.position.set(0, 0.5, -1.25);
   root.add(wallMesh);
 
+  // Художественный интерьер из референсов живёт отдельным дальним слоем.
+  // Процедурная стена остаётся под ним как мгновенный fallback на время
+  // мобильной загрузки или при ошибке ассета.
+  const backdropMaterial = keep(
+    new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, toneMapped: true }),
+  );
+  const backdrop = new THREE.Mesh(keep(new THREE.PlaneGeometry(1.28, 2.28)), backdropMaterial);
+  backdrop.position.set(0, 0.55, -1.235);
+  backdrop.visible = false;
+  root.add(backdrop);
+  const backdropTexture = keep(
+    textureLoader.load(
+      '/game/dice/tavern-background.webp',
+      () => {
+        backdrop.visible = true;
+      },
+      undefined,
+      () => {
+        backdrop.visible = false;
+      },
+    ),
+  );
+  backdropTexture.colorSpace = THREE.SRGBColorSpace;
+  backdropTexture.anisotropy = 4;
+  backdropMaterial.map = backdropTexture;
+
   // Свеча: единственный тёплый источник в кадре.
   const candle = new THREE.Group();
   candle.position.copy(CANDLE);
@@ -159,12 +186,11 @@ export function buildTavern(shadows: boolean): Tavern {
 
   let portraitTexture: THREE.Texture | null = null;
   let requestedAppearance: OpponentAppearance | null = null;
-  const loader = new THREE.TextureLoader();
 
   const setOpponent = (appearance: OpponentAppearance) => {
     if (requestedAppearance === appearance) return;
     requestedAppearance = appearance;
-    loader.load(
+    textureLoader.load(
       OPPONENT_ASSETS[appearance],
       (texture) => {
         if (requestedAppearance !== appearance) {
