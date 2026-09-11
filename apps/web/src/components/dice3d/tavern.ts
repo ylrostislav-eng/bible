@@ -20,6 +20,7 @@ export interface Tavern {
   /** Соперник целиком — качается при дыхании и наклоняется на своём ходу. */
   rival: THREE.Group;
   rivalArms: THREE.Group;
+  rivalHead: THREE.Group;
   dispose(): void;
 }
 
@@ -121,7 +122,7 @@ export function buildTavern(shadows: boolean): Tavern {
   candleLight.position.set(CANDLE.x, 0.14, CANDLE.z);
   root.add(candleLight);
 
-  const { group: rival, arms: rivalArms } = buildRival(shadows, keep);
+  const { group: rival, arms: rivalArms, head: rivalHead } = buildRival(shadows, keep);
   root.add(rival);
 
   return {
@@ -130,6 +131,7 @@ export function buildTavern(shadows: boolean): Tavern {
     flame,
     rival,
     rivalArms,
+    rivalHead,
     dispose() {
       for (const item of trash) item.dispose();
     },
@@ -148,7 +150,7 @@ export function buildTavern(shadows: boolean): Tavern {
 function buildRival(
   shadows: boolean,
   keep: <T extends { dispose(): void }>(item: T) => T,
-): { group: THREE.Group; arms: THREE.Group } {
+): { group: THREE.Group; arms: THREE.Group; head: THREE.Group } {
   const group = new THREE.Group();
   group.position.set(0, 0, RIVAL.z);
 
@@ -157,6 +159,18 @@ function buildRival(
   );
   const skin = keep(new THREE.MeshStandardMaterial({ color: 0x8d6b52, roughness: 0.8 }));
   const hoodCloth = keep(new THREE.MeshStandardMaterial({ color: 0x3d3129, roughness: 0.95 }));
+  const faceShadow = keep(new THREE.MeshStandardMaterial({ color: 0x251a15, roughness: 1 }));
+  const eyeGlow = keep(
+    new THREE.MeshStandardMaterial({
+      color: 0x2a160d,
+      emissive: 0x7a3516,
+      emissiveIntensity: 0.3,
+      roughness: 0.8,
+    }),
+  );
+  const metal = keep(
+    new THREE.MeshStandardMaterial({ color: 0x8a6740, roughness: 0.38, metalness: 0.55 }),
+  );
 
   // Плечи уже, чем просятся «по-настоящему»: в узком кадре телефона
   // широкая фигура становится стеной на весь экран и закрывает и стену,
@@ -176,15 +190,18 @@ function buildRival(
   shoulders.castShadow = shadows;
   group.add(shoulders);
 
+  const headGroup = new THREE.Group();
+  headGroup.position.y = RIVAL.headY;
+  group.add(headGroup);
+
   const neck = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.032, 0.042, 0.06, 10)), skin);
-  neck.position.y = 0.36;
-  group.add(neck);
+  neck.position.y = -0.04;
+  headGroup.add(neck);
 
   const head = new THREE.Mesh(keep(new THREE.SphereGeometry(0.058, 18, 14)), skin);
   head.scale.set(1, 1.12, 0.95);
-  head.position.y = RIVAL.headY;
   head.castShadow = shadows;
-  group.add(head);
+  headGroup.add(head);
 
   // Капюшон: полусфера чуть больше головы, открытая к игроку.
   const hood = new THREE.Mesh(
@@ -192,10 +209,47 @@ function buildRival(
     hoodCloth,
   );
   hood.material.side = THREE.DoubleSide;
-  hood.position.set(0, RIVAL.headY + 0.012, -0.012);
+  hood.position.set(0, 0.012, -0.012);
   hood.rotation.x = -0.22;
   hood.castShadow = shadows;
-  group.add(hood);
+  headGroup.add(hood);
+
+  // Глубокий проём и кант дают лицу читаемый силуэт, но оставляют его
+  // стилизованным: нарисованная мимика на такой маленькой фигуре выглядела
+  // бы маской. Глаза ловят отблеск свечи, нос и борода читаются в профиль.
+  const opening = new THREE.Mesh(keep(new THREE.SphereGeometry(0.052, 16, 12)), faceShadow);
+  opening.scale.set(0.9, 1.02, 0.3);
+  opening.position.z = 0.048;
+  headGroup.add(opening);
+
+  const hoodRim = new THREE.Mesh(keep(new THREE.TorusGeometry(0.062, 0.008, 8, 20)), hoodCloth);
+  hoodRim.scale.y = 1.12;
+  hoodRim.position.z = 0.057;
+  hoodRim.castShadow = shadows;
+  headGroup.add(hoodRim);
+
+  const eyeGeometry = keep(new THREE.SphereGeometry(0.005, 8, 6));
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(eyeGeometry, eyeGlow);
+    eye.position.set(side * 0.018, 0.009, 0.064);
+    headGroup.add(eye);
+  }
+
+  const nose = new THREE.Mesh(keep(new THREE.ConeGeometry(0.009, 0.025, 7)), skin);
+  nose.position.set(0, -0.004, 0.068);
+  nose.rotation.x = Math.PI / 2;
+  headGroup.add(nose);
+
+  const beard = new THREE.Mesh(keep(new THREE.ConeGeometry(0.034, 0.075, 10)), hoodCloth);
+  beard.position.set(0, -0.057, 0.035);
+  beard.rotation.z = Math.PI;
+  headGroup.add(beard);
+
+  // Простая застёжка разбивает цельную тёмную массу плаща и ловит свет.
+  const clasp = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.014, 0.014, 0.009, 12)), metal);
+  clasp.position.set(0, 0.29, 0.11);
+  clasp.rotation.x = Math.PI / 2;
+  group.add(clasp);
 
   // Руки на столе: предплечья от плеч к кистям у доски. Именно они
   // делают сидящего сидящим за столом, а не стоящим за ним.
@@ -217,5 +271,5 @@ function buildRival(
   }
   group.add(arms);
 
-  return { group, arms };
+  return { group, arms, head: headGroup };
 }

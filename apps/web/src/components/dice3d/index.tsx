@@ -45,3 +45,4 @@ export function DiceTable3D(props: DiceSceneProps) {
 }
 
 export type { DiceSceneProps };
+export { DICE_ROLL_MS } from './scene';

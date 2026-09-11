@@ -14,7 +14,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DiceTable3D } from '@/components/dice3d';
+import { DICE_ROLL_MS, DiceTable3D } from '@/components/dice3d';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -388,6 +388,22 @@ function DiceMatchScreen({
   // не окном поверх экрана: на телефоне оно перекрывает стол целиком.
   const [confirmResign, setConfirmResign] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const previousAnimatedRoll = useRef(rollKey);
+  const [revealingRoll, setRevealingRoll] = useState(false);
+  const [rollingPlayerId, setRollingPlayerId] = useState<string | null>(null);
+  const rollPlayerId =
+    match.events.find((event) => event.type === 'ROLL_RESULT')?.playerId ?? match.currentPlayerId;
+
+  useEffect(() => {
+    if (previousAnimatedRoll.current === rollKey) return;
+    previousAnimatedRoll.current = rollKey;
+    setRollingPlayerId(rollPlayerId);
+    setRevealingRoll(true);
+    const timer = window.setTimeout(() => setRevealingRoll(false), DICE_ROLL_MS + 350);
+    return () => window.clearTimeout(timer);
+  }, [rollKey, rollPlayerId]);
+
+  const visualMyTurn = revealingRoll ? rollingPlayerId === match.youId : myTurn;
 
   // Уже отложенные сервером кости. Их нельзя ни выбрать снова, ни
   // подсветить: за них заплачено, и на столе они лежат отдельной кучкой.
@@ -451,10 +467,10 @@ function DiceMatchScreen({
           rollKey={rollKey}
           picked={picked}
           locked={locked}
-          hint={myTurn ? hint : []}
-          interactive={myTurn && !finished && !busy}
-          side={myTurn ? 'you' : 'rival'}
-          rivalThinking={!myTurn && !finished}
+          hint={visualMyTurn && !revealingRoll ? hint : []}
+          interactive={visualMyTurn && !revealingRoll && !finished && !busy}
+          side={visualMyTurn ? 'you' : 'rival'}
+          rivalThinking={!visualMyTurn && !revealingRoll && !finished}
           onPick={toggle}
         />
       </div>
@@ -470,7 +486,12 @@ function DiceMatchScreen({
         className="absolute inset-x-0 top-0 flex items-start gap-2 px-3 pt-[calc(var(--safe-top)+0.75rem)]"
         data-testid="dice-score-hud"
       >
-        <ScoreChip player={me} label="Вы" active={myTurn && !finished} target={match.targetScore} />
+        <ScoreChip
+          player={me}
+          label="Вы"
+          active={visualMyTurn && !finished}
+          target={match.targetScore}
+        />
         <div className="shrink-0 rounded-full bg-black/45 px-2.5 py-1 text-center">
           <p className="text-[9px] uppercase leading-none tracking-wide text-white/50">до</p>
           <p className="text-xs font-bold leading-tight text-primary">{match.targetScore}</p>
@@ -478,7 +499,7 @@ function DiceMatchScreen({
         <ScoreChip
           player={rival}
           label={null}
-          active={!myTurn && !finished}
+          active={!visualMyTurn && !finished}
           target={match.targetScore}
           align="right"
         />
@@ -492,7 +513,13 @@ function DiceMatchScreen({
             {/* Очки хода — крупно: это то самое число, которым рискуют. */}
             <div className="flex items-baseline justify-between px-1">
               <p className="text-sm font-medium text-white/80">
-                {myTurn ? 'Ваш ход' : 'Ходит соперник'}
+                {revealingRoll
+                  ? visualMyTurn
+                    ? 'Ваш бросок…'
+                    : 'Бросок соперника…'
+                  : myTurn
+                    ? 'Ваш ход'
+                    : 'Ходит соперник'}
               </p>
               <p className="text-lg font-bold tabular-nums text-primary">
                 +{match.turnScore}
@@ -505,40 +532,42 @@ function DiceMatchScreen({
             {/* В фазе выбора кнопок нет вовсе, и без этой строки экран
                 молчит: игрок видит кости и не понимает, чего от него
                 ждут. _Нашлось живой проверкой._ */}
-            {myTurn && match.phase === 'SELECTING' && picked.length === 0 && (
+            {!revealingRoll && myTurn && match.phase === 'SELECTING' && picked.length === 0 && (
               <p className="text-center text-sm text-white/70">
                 Возьмите кости, которые дают очки — они светятся тёплым
               </p>
             )}
 
-            {myTurn && (match.phase === 'SELECTING' || match.phase === 'DECISION') && (
-              <div className="flex justify-center gap-2" aria-label="Выбор костей списком">
-                {match.dice.map((die, index) => {
-                  const unavailable = locked.includes(index);
-                  const selected = picked.includes(index);
-                  return (
-                    <button
-                      key={index}
-                      type="button"
-                      disabled={busy || unavailable}
-                      aria-pressed={selected}
-                      aria-label={`Кость ${index + 1}: ${die}${unavailable ? ', уже отложена' : ''}`}
-                      onClick={() => toggle(index)}
-                      className={clsx(
-                        'h-10 w-10 rounded-xl border text-sm font-bold backdrop-blur-sm',
-                        unavailable && 'border-white/10 bg-black/40 text-white/30',
-                        !unavailable && !selected && 'border-white/30 bg-black/55 text-white',
-                        selected && 'border-primary bg-primary text-on-primary',
-                      )}
-                    >
-                      {die}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {!revealingRoll &&
+              myTurn &&
+              (match.phase === 'SELECTING' || match.phase === 'DECISION') && (
+                <div className="flex justify-center gap-2" aria-label="Выбор костей списком">
+                  {match.dice.map((die, index) => {
+                    const unavailable = locked.includes(index);
+                    const selected = picked.includes(index);
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        disabled={busy || unavailable}
+                        aria-pressed={selected}
+                        aria-label={`Кость ${index + 1}: ${die}${unavailable ? ', уже отложена' : ''}`}
+                        onClick={() => toggle(index)}
+                        className={clsx(
+                          'h-10 w-10 rounded-xl border text-sm font-bold backdrop-blur-sm',
+                          unavailable && 'border-white/10 bg-black/40 text-white/30',
+                          !unavailable && !selected && 'border-white/30 bg-black/55 text-white',
+                          selected && 'border-primary bg-primary text-on-primary',
+                        )}
+                      >
+                        {die}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-            {lastBust && (
+            {!revealingRoll && lastBust && (
               <p
                 role="status"
                 className="rounded-xl border border-danger/30 bg-black/75 px-3 py-2 text-center text-sm font-semibold text-danger backdrop-blur-sm"
@@ -548,7 +577,7 @@ function DiceMatchScreen({
                   : `${rival?.nickname ?? 'Соперник'} теряет ${lastBust.lostScore} очков хода`}
               </p>
             )}
-            {lastHotDice && (
+            {!revealingRoll && lastHotDice && (
               <p
                 role="status"
                 className="rounded-xl border border-primary/35 bg-black/75 px-3 py-2 text-center text-sm font-semibold text-primary backdrop-blur-sm"
@@ -561,7 +590,7 @@ function DiceMatchScreen({
 
             {error && <p className="text-center text-sm text-danger">{error}</p>}
 
-            {picked.length > 0 && (
+            {!revealingRoll && picked.length > 0 && (
               <Button
                 onClick={() =>
                   onAction({ type: 'SELECT', indexes: picked, actionId: nextActionId() })
@@ -572,7 +601,7 @@ function DiceMatchScreen({
               </Button>
             )}
 
-            {match.actions.includes('ROLL') && picked.length === 0 && (
+            {!revealingRoll && match.actions.includes('ROLL') && picked.length === 0 && (
               <Button
                 onClick={() => onAction({ type: 'ROLL', actionId: nextActionId() })}
                 disabled={busy}
@@ -583,7 +612,7 @@ function DiceMatchScreen({
               </Button>
             )}
 
-            {match.actions.includes('CONTINUE') && picked.length === 0 && (
+            {!revealingRoll && match.actions.includes('CONTINUE') && picked.length === 0 && (
               <Button
                 onClick={() => onAction({ type: 'CONTINUE', actionId: nextActionId() })}
                 disabled={busy}
@@ -592,7 +621,7 @@ function DiceMatchScreen({
               </Button>
             )}
 
-            {match.actions.includes('BANK') && picked.length === 0 && (
+            {!revealingRoll && match.actions.includes('BANK') && picked.length === 0 && (
               <Button
                 variant="secondary"
                 onClick={() => onAction({ type: 'BANK', actionId: nextActionId() })}
@@ -602,7 +631,7 @@ function DiceMatchScreen({
               </Button>
             )}
 
-            {!myTurn && (
+            {!revealingRoll && !myTurn && (
               <p className="py-1 text-center text-sm text-white/50">
                 {rival?.isBot ? `${rival.nickname} делает ход…` : 'Соперник думает…'}
               </p>

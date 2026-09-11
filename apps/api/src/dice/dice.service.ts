@@ -48,7 +48,10 @@ type CreateParams = {
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const INTRO_MS = 2800;
 const HANDOFF_MS = 1500;
-const BOT_STEP_MS = 1650;
+/** Паузы длиннее шага polling: игрок успевает увидеть каждое решение,
+ * однако партия не превращается в ожидание анимаций. */
+const BOT_ROLL_STEP_MS = 2400;
+const BOT_DECISION_STEP_MS = 2100;
 const activeStatuses = ['WAITING', 'IN_PROGRESS'] as const;
 
 @Injectable()
@@ -391,7 +394,12 @@ export class DiceService {
           : null,
         botActionAt:
           active && state.currentPlayerId === DICE_BOT_ID
-            ? new Date(now.getTime() + BOT_STEP_MS)
+            ? new Date(
+                now.getTime() +
+                  (state.phase === 'SELECTING'
+                    ? BOT_ROLL_STEP_MS
+                    : BOT_DECISION_STEP_MS),
+              )
             : null,
       },
     });

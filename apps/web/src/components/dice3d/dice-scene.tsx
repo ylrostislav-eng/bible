@@ -91,7 +91,9 @@ export default function DiceSceneView(props: DiceSceneProps) {
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    const isNewRoll = previousRoll.current !== null && previousRoll.current !== props.rollKey;
+    const changed = previousRoll.current !== props.rollKey;
+    if (!changed) return;
+    const isNewRoll = previousRoll.current !== null;
     previousRoll.current = props.rollKey;
     scene.setDice(props.dice, props.rollKey, isNewRoll && props.dice.length > 0);
   }, [props.dice, props.rollKey]);

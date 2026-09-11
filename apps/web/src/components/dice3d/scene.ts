@@ -397,6 +397,16 @@ export class DiceScene {
     this.tavern.rival.position.z = RIVAL.z + lean;
     this.tavern.rival.rotation.x = lean * 0.9;
     this.tavern.rivalArms.position.y = breath * 0.4;
+    if (!this.reducedMotion) {
+      // В покое взгляд слегка блуждает по столу. Во время решения соперник
+      // наклоняет голову и едва постукивает руками — движение заметно, но
+      // не отвлекает от костей и не превращает ход в длинную заставку.
+      this.tavern.rivalHead.rotation.y = Math.sin(time * 0.37) * 0.045;
+      this.tavern.rivalHead.rotation.x =
+        (this.rivalThinking ? 0.07 : 0.015) + Math.sin(time * 0.63) * 0.012;
+      this.tavern.rivalArms.rotation.x = this.rivalThinking ? Math.sin(time * 2.1) * 0.028 : 0;
+      this.tavern.rivalArms.rotation.y = this.rivalThinking ? Math.sin(time * 1.35) * 0.018 : 0;
+    }
   }
 
   /**
