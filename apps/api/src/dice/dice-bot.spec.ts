@@ -100,6 +100,7 @@ describe('Кости — пропущенный ход', () => {
     const second = timeoutDiceTurn(backToA.state);
     expect(second.state.status).toBe('FINISHED');
     expect(second.state.winnerId).toBe('б');
+    expect(second.state.finishReason).toBe('TIMEOUT');
     expect(second.events.at(-1)).toEqual({
       type: 'GAME_FINISHED',
       winnerId: 'б',

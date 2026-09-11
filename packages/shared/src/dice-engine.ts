@@ -73,6 +73,12 @@ export interface DiceGameState {
   status: DiceMatchStatus;
   winnerId: string | null;
   missedTurns?: Record<string, number>;
+  /**
+   * Почему партия закончилась. Хранится в состоянии, а не читается из
+   * последних событий: события — это последняя порция для анимации, и при
+   * возвращении в законченную партию причина из них уже потеряна.
+   */
+  finishReason?: 'TARGET' | 'RESIGN' | 'TIMEOUT';
 }
 
 export type DiceAction =
@@ -221,7 +227,10 @@ export function timeoutDiceTurn(state: DiceGameState): DiceStepResult {
   if (missed >= 2) {
     const result = applyResign(next, playerId);
     return {
-      state: result.state,
+      state: {
+        ...result.state,
+        finishReason: 'TIMEOUT',
+      },
       events: [
         event,
         { type: 'GAME_FINISHED', winnerId: result.state.winnerId!, reason: 'TIMEOUT' },
@@ -366,6 +375,7 @@ function applyResign(state: DiceGameState, playerId: string): DiceStepResult {
       phase: 'GAME_OVER',
       winnerId,
       turnScore: 0,
+      finishReason: 'RESIGN',
     },
     events: [{ type: 'GAME_FINISHED', winnerId, reason: 'RESIGN' }],
   };
@@ -399,6 +409,7 @@ function endTurn(state: DiceGameState, playerId: string, banked: number): DiceSt
         status: 'FINISHED',
         phase: 'GAME_OVER',
         winnerId: playerId,
+        finishReason: 'TARGET',
       },
       events,
     };

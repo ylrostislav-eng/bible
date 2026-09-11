@@ -263,6 +263,7 @@ describe('Кости — ход и риск', () => {
 
       expect(result.state.status).toBe('FINISHED');
       expect(result.state.winnerId).toBe(A);
+      expect(result.state.finishReason).toBe('TARGET');
       expect(
         result.events.find((event) => event.type === 'GAME_FINISHED'),
       ).toMatchObject({ winnerId: A, reason: 'TARGET' });
@@ -299,6 +300,7 @@ describe('Кости — ход и риск', () => {
     it('сдача отдаёт победу сопернику', () => {
       const result = applyDiceAction(game(), A, { type: 'RESIGN' });
       expect(result.state.winnerId).toBe(B);
+      expect(result.state.finishReason).toBe('RESIGN');
       expect(
         result.events.find((event) => event.type === 'GAME_FINISHED'),
       ).toMatchObject({ reason: 'RESIGN' });

@@ -144,12 +144,15 @@ export default function DicePage() {
 
   // Пока ход соперника — спрашиваем состояние. Свои действия обновляют
   // экран сразу ответом сервера, поэтому опрос нужен только на чужой ход
-  // и на ожидание соперника.
+  // и на ожидание соперника. Ожидание тоже опрашивается: если стол
+  // закрыли уборщиком, экран должен увидеть ABANDONED, а не крутить
+  // «Ждём соперника» вечно.
   const matchId = match?.matchId;
   const waitingForOther =
     match !== null &&
-    match.status === 'IN_PROGRESS' &&
-    (match.currentPlayerId !== match.youId || match.actions.length === 0);
+    (match.status === 'WAITING' ||
+      (match.status === 'IN_PROGRESS' &&
+        (match.currentPlayerId !== match.youId || match.actions.length === 0)));
 
   useEffect(() => {
     if (!matchId || !waitingForOther) return;
@@ -393,6 +396,7 @@ function DiceMatchScreen({
   const rival = match.players.find((player) => player.userId !== match.youId);
   const myTurn = match.currentPlayerId === match.youId;
   const finished = match.status === 'FINISHED';
+  const abandoned = match.status === 'ABANDONED';
   // Сдача необратима и отдаёт победу, поэтому спрашивается дважды — но
   // не окном поверх экрана: на телефоне оно перекрывает стол целиком.
   const [confirmResign, setConfirmResign] = useState(false);
@@ -477,9 +481,9 @@ function DiceMatchScreen({
           picked={picked}
           locked={locked}
           hint={visualMyTurn && !revealingRoll ? hint : []}
-          interactive={visualMyTurn && !revealingRoll && !finished && !busy}
+          interactive={visualMyTurn && !revealingRoll && !finished && !abandoned && !busy}
           side={visualMyTurn ? 'you' : 'rival'}
-          rivalThinking={!visualMyTurn && !revealingRoll && !finished}
+          rivalThinking={!visualMyTurn && !revealingRoll && !finished && !abandoned}
           opponentAppearance={opponentAppearance(match, rival?.userId)}
           onPick={toggle}
         />
@@ -516,13 +520,19 @@ function DiceMatchScreen({
       </div>
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 px-3 pb-[max(0.75rem,var(--safe-bottom))]">
-        {finished ? (
-          <FinishedCard match={match} onLeave={onLeave} onRematch={onRematch} busy={busy} />
+        {finished || abandoned ? (
+          <FinishedCard
+            match={match}
+            abandoned={abandoned}
+            onLeave={onLeave}
+            onRematch={onRematch}
+            busy={busy}
+          />
         ) : (
           <>
             {/* Очки хода — крупно: это то самое число, которым рискуют. */}
             <div className="flex items-baseline justify-between px-1">
-              <p className="text-sm font-medium text-white/80">
+              <p className="flex items-center gap-2 text-sm font-medium text-white/80">
                 {revealingRoll
                   ? visualMyTurn
                     ? 'Ваш бросок…'
@@ -530,6 +540,7 @@ function DiceMatchScreen({
                   : myTurn
                     ? 'Ваш ход'
                     : 'Ходит соперник'}
+                {!revealingRoll && <TurnCountdown key={match.serverNow} match={match} />}
               </p>
               <p className="text-lg font-bold tabular-nums text-primary">
                 +{match.turnScore}
@@ -538,6 +549,14 @@ function DiceMatchScreen({
                 ) : null}
               </p>
             </div>
+
+            {/* Именно эта сумма сгорит при пустом броске — без подписи
+                «Забрать N» выглядит как число само по себе, а не как риск. */}
+            {!revealingRoll && match.turnScore > 0 && (
+              <p className="px-1 text-[11px] text-white/45">
+                {match.turnScore} сгорит, если следующий бросок окажется пустым
+              </p>
+            )}
 
             {/* В фазе выбора кнопок нет вовсе, и без этой строки экран
                 молчит: игрок видит кости и не понимает, чего от него
@@ -746,11 +765,13 @@ function ScoreChip({
 
 function FinishedCard({
   match,
+  abandoned,
   onLeave,
   onRematch,
   busy,
 }: {
   match: DiceMatchView;
+  abandoned: boolean;
   onLeave: () => void;
   onRematch: () => void;
   busy: boolean;
@@ -758,12 +779,54 @@ function FinishedCard({
   const won = match.winnerId === match.youId;
   const me = match.players.find((player) => player.userId === match.youId);
   const rival = match.players.find((player) => player.userId !== match.youId);
+  const rivalName = rival?.nickname ?? 'Соперник';
+
+  // Каждый исход говорит своим текстом, а не общим «Партия окончена»:
+  // сдаться, досидеть таймаут и честно выиграть по очкам — три разные
+  // вещи, и игрок должен понимать, что именно произошло.
+  let title: string;
+  let subtitle: string;
+  if (abandoned) {
+    title = 'Партия не состоялась';
+    subtitle = 'Соперник не сел за стол или партию бросили не доиграв. Наград за неё нет.';
+  } else if (match.finishReason === 'RESIGN') {
+    if (won) {
+      title = 'Победа';
+      subtitle = `${rivalName} сдался`;
+    } else {
+      title = 'Вы сдались';
+      subtitle = 'Партия завершена. Если хочется реванша — соперник увидит предложение.';
+    }
+  } else if (match.finishReason === 'TIMEOUT') {
+    if (won) {
+      title = 'Победа';
+      subtitle = `${rivalName} не успел сделать ход дважды подряд`;
+    } else {
+      title = 'Время вышло';
+      subtitle = 'Вы пропустили два хода подряд — партия завершена';
+    }
+  } else if (match.finishReason === null) {
+    title = won ? 'Победа' : 'Партия окончена';
+    subtitle = 'Для этой партии подробности завершения не сохранились';
+  } else if (won) {
+    title = 'Победа';
+    subtitle = `Вы первым набрали ${match.targetScore} очков`;
+  } else {
+    title = 'Победа соперника';
+    subtitle = `${rivalName} первым набрал ${match.targetScore} очков`;
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/70 p-4 backdrop-blur-sm">
-      <p className="text-center text-lg font-bold text-white">
-        {won ? '🏆 Победа' : 'Партия окончена'}
+      <p
+        className={clsx(
+          'text-center text-lg font-bold text-white',
+          !won && !abandoned && 'text-text-secondary',
+        )}
+      >
+        {title}
       </p>
+      <p className="text-center text-xs leading-relaxed text-white/60">{subtitle}</p>
       <div className="flex justify-center gap-6 text-center">
         <div>
           <p className="text-xs text-white/60">Вы</p>
@@ -774,17 +837,68 @@ function FinishedCard({
           <p className="text-xl font-bold text-white">{rival?.score ?? 0}</p>
         </div>
       </div>
-      <p className="text-center text-xs text-white/50">
-        Ходов: {match.turnNumber} · Hot Dice: {me?.hotDiceCount ?? 0} · Неудачных бросков:{' '}
-        {me?.bustCount ?? 0} · Лучший ход: {me?.bestTurn ?? 0}
-      </p>
-      <Button onClick={onRematch} disabled={busy}>
-        {match.botDifficulty ? 'Сыграть ещё раз' : 'Предложить реванш'}
-      </Button>
+      {!abandoned && (
+        <p className="text-center text-xs text-white/50">
+          Ходов: {match.turnNumber} · Hot Dice: {me?.hotDiceCount ?? 0} · Неудачных бросков:{' '}
+          {me?.bustCount ?? 0} · Лучший ход: {me?.bestTurn ?? 0}
+        </p>
+      )}
+      {!abandoned && (
+        <Button onClick={onRematch} disabled={busy}>
+          {match.botDifficulty ? 'Сыграть ещё раз' : 'Предложить реванш'}
+        </Button>
+      )}
       <button type="button" onClick={onLeave} className="text-sm text-white/60">
         Вернуться в меню
       </button>
     </div>
+  );
+}
+
+/** Счётчик времени хода, когда партия играется по таймеру.
+ *
+ * `serverNow` и `turnDeadlineAt` — серверные часы из одного ответа, их
+ * разница даёт оставшееся время в момент ответа. Локальный `now` только
+ * тикает от этого момента: точности до секунды для счётчика достаточно, а
+ * рассинхрон локальных часов значения не имеет — он вычитается.
+ */
+function TurnCountdown({ match }: { match: DiceMatchView }) {
+  const deadlineMs = match.turnDeadlineAt ? new Date(match.turnDeadlineAt).getTime() : null;
+  const serverAtMs = new Date(match.serverNow).getTime();
+
+  // Момент монтирования — точка отсчёта локальных часов. Родитель ставит
+  // `key={match.serverNow}`, поэтому пересоздание компонента и есть приход
+  // свежего ответа сервера: расхождение часов пересчитывается каждый опрос,
+  // а не копится.
+  const [mountedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (match.turnTimeLimit === null || deadlineMs === null) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [deadlineMs, match.turnTimeLimit]);
+
+  if (match.turnTimeLimit === null || deadlineMs === null) return null;
+  const elapsedLocal = Math.max(0, now - mountedAt);
+  const remaining = deadlineMs - (serverAtMs + elapsedLocal);
+
+  // Округление вверх: при 0.2 секунды игрок должен видеть «1», а не «0»,
+  // иначе последняя секунда мигает и исчезает раньше, чем её прочитали.
+  const seconds = Math.max(0, Math.ceil(remaining / 1000));
+  const urgent = seconds <= 10 && seconds > 0;
+
+  return (
+    <span
+      className={clsx(
+        'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums',
+        urgent ? 'bg-danger/25 text-danger' : 'bg-white/10 text-white/70',
+      )}
+      role="timer"
+      aria-label={`До конца хода ${seconds} секунд`}
+    >
+      {seconds} с
+    </span>
   );
 }
 

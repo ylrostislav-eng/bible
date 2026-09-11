@@ -522,6 +522,7 @@ export class DiceService {
       turnTimeLimit: match.turnTimeLimit,
       status: state.status,
       phase: state.phase,
+      finishReason: state.finishReason ?? null,
       currentPlayerId: state.currentPlayerId,
       youId: userId,
       turnScore: state.turnScore,

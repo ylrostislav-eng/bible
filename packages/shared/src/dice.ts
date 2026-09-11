@@ -254,6 +254,8 @@ export interface DiceMatchView {
   turnTimeLimit: number | null;
   status: import('./dice-engine').DiceMatchStatus;
   phase: import('./dice-engine').DicePhase;
+  /** Почему партия закончилась; `null`, пока идёт. */
+  finishReason: 'TARGET' | 'RESIGN' | 'TIMEOUT' | null;
   currentPlayerId: string | null;
   /** Кто смотрит: чтобы экран не гадал, где «вы», а где соперник. */
   youId: string;
