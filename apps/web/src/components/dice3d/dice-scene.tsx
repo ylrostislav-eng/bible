@@ -3,6 +3,7 @@
 import type { DiceValue } from '@bible-arena/shared';
 import { useEffect, useRef, useState } from 'react';
 import { DiceScene, type SceneSide } from './scene';
+import type { OpponentAppearance } from './tavern';
 
 /**
  * Обёртка сцены для React.
@@ -26,6 +27,7 @@ export interface DiceSceneProps {
   interactive: boolean;
   side: SceneSide;
   rivalThinking: boolean;
+  opponentAppearance: OpponentAppearance;
   onPick: (index: number) => void;
 }
 
@@ -113,6 +115,10 @@ export default function DiceSceneView(props: DiceSceneProps) {
   useEffect(() => {
     sceneRef.current?.setRivalThinking(props.rivalThinking);
   }, [props.rivalThinking]);
+
+  useEffect(() => {
+    sceneRef.current?.setOpponent(props.opponentAppearance);
+  }, [props.opponentAppearance]);
 
   if (failed) {
     return (

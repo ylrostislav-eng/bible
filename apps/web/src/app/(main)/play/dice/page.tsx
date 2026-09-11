@@ -14,7 +14,7 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DICE_ROLL_MS, DiceTable3D } from '@/components/dice3d';
+import { DICE_ROLL_MS, DiceTable3D, type OpponentAppearance } from '@/components/dice3d';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -42,6 +42,15 @@ import { useImmersiveWhile } from '@/lib/immersive-context';
  * в отличие от «горячо-холодно», где всё напряжение в чужом числе,
  * меняющемся на глазах. */
 const POLL_MS = 1500;
+
+function opponentAppearance(match: DiceMatchView, rivalId?: string): OpponentAppearance {
+  if (match.botDifficulty) {
+    return match.botDifficulty === 'MEDIUM' ? 'female-innkeeper' : 'male-traveler';
+  }
+  const stableKey = rivalId ?? match.matchId;
+  const parity = [...stableKey].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  return parity % 2 === 0 ? 'female-innkeeper' : 'male-traveler';
+}
 
 type Screen = 'menu' | 'rules' | 'tutorial' | 'match';
 
@@ -471,6 +480,7 @@ function DiceMatchScreen({
           interactive={visualMyTurn && !revealingRoll && !finished && !busy}
           side={visualMyTurn ? 'you' : 'rival'}
           rivalThinking={!visualMyTurn && !revealingRoll && !finished}
+          opponentAppearance={opponentAppearance(match, rival?.userId)}
           onPick={toggle}
         />
       </div>
@@ -825,6 +835,7 @@ function DiceTutorial({ onFinish }: { onFinish: () => void }) {
           interactive={selecting}
           side="you"
           rivalThinking={false}
+          opponentAppearance="female-innkeeper"
           onPick={(index) =>
             setPicked((current) =>
               current.includes(index)

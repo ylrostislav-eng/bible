@@ -4,7 +4,7 @@ import { buildCup, CUP_HEIGHT, type Cup } from './cup';
 import { createDieBodyGeometry, createDiePipsGeometry, DIE_SIZE, faceUpQuaternion } from './die';
 import { BOARD, CAMERA, CUP_SPOTS, DIE_REST_Y, RIVAL } from './layout';
 import { hashRandom } from './rand';
-import { buildTavern, type Tavern } from './tavern';
+import { buildTavern, type OpponentAppearance, type Tavern } from './tavern';
 
 /**
  * Сцена «Костей»: дуэль от первого лица.
@@ -210,6 +210,10 @@ export class DiceScene {
     this.rivalThinking = value;
   }
 
+  setOpponent(appearance: OpponentAppearance) {
+    this.tavern.setOpponent(appearance);
+  }
+
   resize() {
     const width = this.canvas.clientWidth || 1;
     const height = this.canvas.clientHeight || 1;
@@ -406,7 +410,13 @@ export class DiceScene {
         (this.rivalThinking ? 0.07 : 0.015) + Math.sin(time * 0.63) * 0.012;
       this.tavern.rivalArms.rotation.x = this.rivalThinking ? Math.sin(time * 2.1) * 0.028 : 0;
       this.tavern.rivalArms.rotation.y = this.rivalThinking ? Math.sin(time * 1.35) * 0.018 : 0;
+      const portraitBreath = 1 + Math.sin(time * 1.1) * 0.003;
+      this.tavern.rivalPortrait.scale.set(portraitBreath, portraitBreath, 1);
+      this.tavern.rivalPortrait.rotation.z = Math.sin(time * 0.38) * 0.0035;
     }
+    // Портрет уже нарисован в свете свечи. Очень слабая модуляция связывает
+    // его с живым огнём сцены, не выжигая кожу и детали одежды.
+    this.tavern.rivalPortrait.material.color.setScalar(0.95 + flicker * 0.045);
   }
 
   /**

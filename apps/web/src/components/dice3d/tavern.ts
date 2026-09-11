@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { BOARD, CANDLE, RIVAL, TABLE } from './layout';
 import { feltTexture, wallTexture, woodTexture } from './textures';
 
+export const OPPONENT_APPEARANCES = ['male-traveler', 'female-innkeeper'] as const;
+export type OpponentAppearance = (typeof OPPONENT_APPEARANCES)[number];
+
+const OPPONENT_ASSETS: Record<OpponentAppearance, string> = {
+  'male-traveler': '/game/dice/opponents/male-traveler/idle.webp',
+  'female-innkeeper': '/game/dice/opponents/female-innkeeper/idle.webp',
+};
+
 /**
  * Таверна вокруг стола: столешница, доска, свеча, стена и соперник.
  *
@@ -21,6 +29,8 @@ export interface Tavern {
   rival: THREE.Group;
   rivalArms: THREE.Group;
   rivalHead: THREE.Group;
+  rivalPortrait: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  setOpponent(appearance: OpponentAppearance): void;
   dispose(): void;
 }
 
@@ -122,8 +132,61 @@ export function buildTavern(shadows: boolean): Tavern {
   candleLight.position.set(CANDLE.x, 0.14, CANDLE.z);
   root.add(candleLight);
 
-  const { group: rival, arms: rivalArms, head: rivalHead } = buildRival(shadows, keep);
+  // Контейнер общий для качественного 2.5D-портрета и лёгкого запасного
+  // силуэта. Пока изображение грузится по мобильной сети, стол не пустует.
+  const rival = new THREE.Group();
+  rival.position.set(0, 0, RIVAL.z);
+  const { group: rivalFallback, arms: rivalArms, head: rivalHead } = buildRival(shadows, keep);
+  rival.add(rivalFallback);
+
+  const portraitMaterial = keep(
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      alphaTest: 0.025,
+      depthWrite: false,
+      toneMapped: true,
+    }),
+  );
+  const rivalPortrait = new THREE.Mesh(keep(new THREE.PlaneGeometry(0.56, 0.64)), portraitMaterial);
+  rivalPortrait.position.set(0, 0.3, 0.018);
+  rivalPortrait.visible = false;
+  rivalPortrait.renderOrder = 2;
+  rival.add(rivalPortrait);
   root.add(rival);
+
+  let portraitTexture: THREE.Texture | null = null;
+  let requestedAppearance: OpponentAppearance | null = null;
+  const loader = new THREE.TextureLoader();
+
+  const setOpponent = (appearance: OpponentAppearance) => {
+    if (requestedAppearance === appearance) return;
+    requestedAppearance = appearance;
+    loader.load(
+      OPPONENT_ASSETS[appearance],
+      (texture) => {
+        if (requestedAppearance !== appearance) {
+          texture.dispose();
+          return;
+        }
+        portraitTexture?.dispose();
+        portraitTexture = texture;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 4;
+        portraitMaterial.map = texture;
+        portraitMaterial.needsUpdate = true;
+        rivalPortrait.visible = true;
+        rivalFallback.visible = false;
+      },
+      undefined,
+      () => {
+        // Ошибка картинки не ломает партию: остаётся встроенный силуэт.
+        if (requestedAppearance === appearance) {
+          rivalPortrait.visible = false;
+          rivalFallback.visible = true;
+        }
+      },
+    );
+  };
 
   return {
     root,
@@ -132,7 +195,10 @@ export function buildTavern(shadows: boolean): Tavern {
     rival,
     rivalArms,
     rivalHead,
+    rivalPortrait,
+    setOpponent,
     dispose() {
+      portraitTexture?.dispose();
       for (const item of trash) item.dispose();
     },
   };
@@ -152,7 +218,6 @@ function buildRival(
   keep: <T extends { dispose(): void }>(item: T) => T,
 ): { group: THREE.Group; arms: THREE.Group; head: THREE.Group } {
   const group = new THREE.Group();
-  group.position.set(0, 0, RIVAL.z);
 
   const cloth = keep(
     new THREE.MeshStandardMaterial({ color: 0x2f2a26, roughness: 0.95, metalness: 0 }),
