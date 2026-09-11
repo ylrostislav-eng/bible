@@ -2,10 +2,14 @@
 
 import {
   DICE_DEFAULT_TARGET,
+  DICE_OPPONENTS,
+  DICE_BOT_LEVELS,
   DICE_TARGET_OPTIONS,
   analyzeRoll,
   scoreSelection,
   type DiceMatchView,
+  type DiceBotLevel,
+  type DiceProgress,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -38,7 +42,7 @@ import { useImmersiveWhile } from '@/lib/immersive-context';
  * меняющемся на глазах. */
 const POLL_MS = 1500;
 
-type Screen = 'menu' | 'match';
+type Screen = 'menu' | 'rules' | 'match';
 
 export default function DicePage() {
   const [screen, setScreen] = useState<Screen>('menu');
@@ -48,6 +52,7 @@ export default function DicePage() {
   const [target, setTarget] = useState<number>(DICE_DEFAULT_TARGET);
   const [code, setCode] = useState('');
   const [picked, setPicked] = useState<number[]>([]);
+  const [progress, setProgress] = useState<DiceProgress | null>(null);
 
   /** Ключ броска: по нему сцена понимает, что кости новые. */
   const rollKey = match ? `${match.matchId}:${match.turnNumber}:${match.rollNumber}` : 'none';
@@ -90,6 +95,21 @@ export default function DicePage() {
     [apply],
   );
 
+  const cancelWaiting = useCallback(async () => {
+    if (!match) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiClient.post(`/dice/${match.matchId}/cancel`, {});
+      setMatch(null);
+      setScreen('menu');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось отменить ожидание');
+    } finally {
+      setBusy(false);
+    }
+  }, [match]);
+
   // Возвращение в незаконченную партию: приложение закрыли, матч остался
   // на сервере — и открывается ровно там, где его бросили.
   useEffect(() => {
@@ -104,14 +124,21 @@ export default function DicePage() {
     return () => clearTimeout(timer);
   }, [apply]);
 
+  useEffect(() => {
+    void apiClient
+      .get<DiceProgress>('/dice/progress')
+      .then(setProgress)
+      .catch(() => undefined);
+  }, [match?.status]);
+
   // Пока ход соперника — спрашиваем состояние. Свои действия обновляют
   // экран сразу ответом сервера, поэтому опрос нужен только на чужой ход
   // и на ожидание соперника.
   const matchId = match?.matchId;
   const waitingForOther =
     match !== null &&
-    match.status !== 'FINISHED' &&
-    (match.status === 'WAITING' || match.currentPlayerId !== match.youId);
+    match.status === 'IN_PROGRESS' &&
+    (match.currentPlayerId !== match.youId || match.actions.length === 0);
 
   useEffect(() => {
     if (!matchId || !waitingForOther) return;
@@ -120,15 +147,19 @@ export default function DicePage() {
         .get<DiceMatchView>(`/dice/${matchId}`)
         .then((fresh) => {
           setMatch((current) =>
-            // Не затираем состояние, если игрок уже успел походить:
-            // ответ опроса мог отстать от собственного действия.
-            current && current.matchId === fresh.matchId ? fresh : current,
+            current && current.matchId === fresh.matchId && fresh.version >= current.version
+              ? fresh
+              : current,
           );
         })
         .catch(() => undefined);
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [matchId, waitingForOther]);
+
+  if (screen === 'rules') {
+    return <DiceRules onBack={() => setScreen('menu')} />;
+  }
 
   if (screen === 'menu' || !match) {
     return (
@@ -137,11 +168,16 @@ export default function DicePage() {
         error={error}
         target={target}
         code={code}
+        progress={progress}
         onTarget={setTarget}
         onCode={setCode}
+        onSolo={(difficulty) =>
+          void run(() => apiClient.post('/dice/solo', { targetScore: target, difficulty }))
+        }
         onFind={() => void run(() => apiClient.post('/dice/find', { targetScore: target }))}
         onCreate={() => void run(() => apiClient.post('/dice', { targetScore: target }))}
         onJoin={() => void run(() => apiClient.post('/dice/join-by-code', { code: code.trim() }))}
+        onRules={() => setScreen('rules')}
       />
     );
   }
@@ -154,7 +190,16 @@ export default function DicePage() {
       busy={busy}
       error={error}
       onPick={setPicked}
-      onAction={(body) => void run(() => apiClient.post(`/dice/${match.matchId}/action`, body))}
+      onAction={(body) =>
+        void run(() =>
+          apiClient.post(`/dice/${match.matchId}/action`, {
+            ...body,
+            expectedVersion: match.version,
+          }),
+        )
+      }
+      onRematch={() => void run(() => apiClient.post(`/dice/${match.matchId}/rematch`, {}))}
+      onCancel={() => void cancelWaiting()}
       onLeave={() => {
         setMatch(null);
         setScreen('menu');
@@ -168,21 +213,27 @@ function DiceMenu({
   error,
   target,
   code,
+  progress,
   onTarget,
   onCode,
+  onSolo,
   onFind,
   onCreate,
   onJoin,
+  onRules,
 }: {
   busy: boolean;
   error: string | null;
   target: number;
   code: string;
+  progress: DiceProgress | null;
   onTarget: (value: number) => void;
   onCode: (value: string) => void;
+  onSolo: (difficulty: DiceBotLevel) => void;
   onFind: () => void;
   onCreate: () => void;
   onJoin: () => void;
+  onRules: () => void;
 }) {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
@@ -191,9 +242,11 @@ function DiceMenu({
         <p className="text-xs uppercase tracking-wide text-text-muted">Игра</p>
         <h1 className="text-2xl font-bold">Кости</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
-          Шесть костей на двоих. Бросаете, откладываете то, что даёт очки, и решаете: забрать
-          накопленное или рискнуть и бросить ещё. Не выпало ничего — ход сгорает целиком.
+          Атмосферная дуэль за столом. Заберите очки вовремя — или рискните всем ради большого хода.
         </p>
+        <button type="button" onClick={onRules} className="mt-2 text-sm text-primary">
+          Как играть и считать очки
+        </button>
       </div>
 
       <Card className="flex-col gap-3">
@@ -219,6 +272,45 @@ function DiceMenu({
         </div>
       </Card>
 
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="font-semibold">Играть самостоятельно</h2>
+          <p className="text-sm text-text-secondary">
+            Программа бросает те же честные кости. Отличается только характер решений.
+          </p>
+        </div>
+        {DICE_BOT_LEVELS.map((difficulty, index) => {
+          const opponent = DICE_OPPONENTS[difficulty];
+          const previous = DICE_BOT_LEVELS[index - 1];
+          const locked = previous ? !progress?.wins[previous] : false;
+          return (
+            <button
+              key={difficulty}
+              type="button"
+              disabled={busy || locked}
+              onClick={() => onSolo(difficulty)}
+              className="rounded-2xl border border-border bg-surface p-4 text-left disabled:opacity-45"
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="font-semibold">{opponent.name}</span>
+                <span className="text-xs text-primary">
+                  {locked
+                    ? `Откроется после победы над ${DICE_OPPONENTS[previous].name}`
+                    : opponent.label}
+                </span>
+              </span>
+              <span className="mt-1 block text-sm text-text-secondary">{opponent.description}</span>
+            </button>
+          );
+        })}
+      </section>
+
+      <div className="flex items-center gap-3 py-1">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs uppercase tracking-wide text-text-muted">или с человеком</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
       {error && <p className="text-sm text-danger">{error}</p>}
 
       <Button onClick={onFind} disabled={busy}>
@@ -230,19 +322,19 @@ function DiceMenu({
 
       <Card className="flex-col gap-2">
         <p className="text-sm font-semibold">Войти по коду</p>
-        <div className="flex gap-2">
+        <div className="flex min-w-0 gap-2">
           <input
             value={code}
             onChange={(event) => onCode(event.target.value.toUpperCase())}
             placeholder="КОД"
-            maxLength={12}
-            className="h-12 flex-1 rounded-xl bg-surface-hover px-4 text-center text-lg font-bold tracking-widest outline-none"
+            maxLength={6}
+            className="h-12 min-w-0 flex-1 rounded-xl bg-surface-hover px-3 text-center text-lg font-bold tracking-widest outline-none"
           />
           <button
             type="button"
             onClick={onJoin}
             disabled={busy || code.trim().length < 4}
-            className="h-12 rounded-xl bg-surface-hover px-5 text-sm font-semibold disabled:text-text-muted"
+            className="h-12 shrink-0 rounded-xl bg-surface-hover px-4 text-sm font-semibold disabled:text-text-muted"
           >
             Войти
           </button>
@@ -260,6 +352,8 @@ function DiceMatchScreen({
   error,
   onPick,
   onAction,
+  onRematch,
+  onCancel,
   onLeave,
 }: {
   match: DiceMatchView;
@@ -269,6 +363,8 @@ function DiceMatchScreen({
   error: string | null;
   onPick: (indexes: number[]) => void;
   onAction: (body: { type: string; indexes?: number[]; actionId?: string }) => void;
+  onRematch: () => void;
+  onCancel: () => void;
   onLeave: () => void;
 }) {
   const me = match.players.find((player) => player.userId === match.youId);
@@ -284,8 +380,13 @@ function DiceMatchScreen({
   const locked = match.selected;
   // Подсказка «что тут вообще даёт очки» — тем же кодом, каким считает
   // сервер. Не выбор за игрока: выбирает он, в этом стратегия.
-  const hint = match.dice.length
-    ? analyzeRoll(match.dice).bestIndexes.filter((index) => !locked.includes(index))
+  const availableIndexes = match.dice.flatMap((_, index) =>
+    locked.includes(index) ? [] : [index],
+  );
+  const hint = availableIndexes.length
+    ? analyzeRoll(availableIndexes.map((index) => match.dice[index])).bestIndexes.map(
+        (index) => availableIndexes[index],
+      )
     : [];
   const pickedPoints = picked.length ? scoreSelection(match.dice, picked) : null;
 
@@ -298,7 +399,9 @@ function DiceMatchScreen({
   // бросило кости заново (см. `docs/dice.md`).
   const actionId = useRef(0);
   const nextActionId = () =>
-    `${match.matchId}:${match.turnNumber}:${match.rollNumber}:${++actionId.current}`;
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${match.matchId}:${match.version}:${Date.now()}:${++actionId.current}`;
 
   if (match.status === 'WAITING') {
     return (
@@ -314,8 +417,8 @@ function DiceMatchScreen({
             {match.inviteCode}
           </p>
         </Card>
-        <Button variant="secondary" onClick={onLeave}>
-          Назад
+        <Button variant="secondary" onClick={onCancel} disabled={busy}>
+          Отменить ожидание
         </Button>
       </div>
     );
@@ -364,7 +467,7 @@ function DiceMatchScreen({
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 px-3 pb-[max(0.75rem,var(--safe-bottom))]">
         {finished ? (
-          <FinishedCard match={match} onLeave={onLeave} />
+          <FinishedCard match={match} onLeave={onLeave} onRematch={onRematch} busy={busy} />
         ) : (
           <>
             {/* Очки хода — крупно: это то самое число, которым рискуют. */}
@@ -386,6 +489,44 @@ function DiceMatchScreen({
             {myTurn && match.phase === 'SELECTING' && picked.length === 0 && (
               <p className="text-center text-sm text-white/70">
                 Возьмите кости, которые дают очки — они светятся тёплым
+              </p>
+            )}
+
+            {myTurn && (match.phase === 'SELECTING' || match.phase === 'DECISION') && (
+              <div className="flex justify-center gap-2" aria-label="Выбор костей списком">
+                {match.dice.map((die, index) => {
+                  const unavailable = locked.includes(index);
+                  const selected = picked.includes(index);
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      disabled={busy || unavailable}
+                      aria-pressed={selected}
+                      aria-label={`Кость ${index + 1}: ${die}${unavailable ? ', уже отложена' : ''}`}
+                      onClick={() => toggle(index)}
+                      className={clsx(
+                        'h-10 w-10 rounded-xl border text-sm font-bold backdrop-blur-sm',
+                        unavailable && 'border-white/10 bg-black/40 text-white/30',
+                        !unavailable && !selected && 'border-white/30 bg-black/55 text-white',
+                        selected && 'border-primary bg-primary text-on-primary',
+                      )}
+                    >
+                      {die}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {match.events.some((event) => event.type === 'BUST') && (
+              <p className="rounded-xl bg-danger/15 px-3 py-2 text-center text-sm text-danger">
+                Пустой бросок — очки этого хода сгорели
+              </p>
+            )}
+            {match.events.some((event) => event.type === 'HOT_DICE') && (
+              <p className="rounded-xl bg-primary/15 px-3 py-2 text-center text-sm text-primary">
+                Hot Dice — все шесть снова в игре
               </p>
             )}
 
@@ -432,7 +573,11 @@ function DiceMatchScreen({
               </Button>
             )}
 
-            {!myTurn && <p className="py-1 text-center text-sm text-white/50">Соперник думает…</p>}
+            {!myTurn && (
+              <p className="py-1 text-center text-sm text-white/50">
+                {rival?.isBot ? `${rival.nickname} делает ход…` : 'Соперник думает…'}
+              </p>
+            )}
 
             {/* Два разных выхода, и путать их нельзя. «Свернуть» — уйти с
                 экрана, партия ждёт и открывается снова при возвращении.
@@ -522,7 +667,17 @@ function ScoreChip({
   );
 }
 
-function FinishedCard({ match, onLeave }: { match: DiceMatchView; onLeave: () => void }) {
+function FinishedCard({
+  match,
+  onLeave,
+  onRematch,
+  busy,
+}: {
+  match: DiceMatchView;
+  onLeave: () => void;
+  onRematch: () => void;
+  busy: boolean;
+}) {
   const won = match.winnerId === match.youId;
   const me = match.players.find((player) => player.userId === match.youId);
   const rival = match.players.find((player) => player.userId !== match.youId);
@@ -546,7 +701,56 @@ function FinishedCard({ match, onLeave }: { match: DiceMatchView; onLeave: () =>
         Ходов: {match.turnNumber} · Hot Dice: {me?.hotDiceCount ?? 0} · Неудачных бросков:{' '}
         {me?.bustCount ?? 0} · Лучший ход: {me?.bestTurn ?? 0}
       </p>
-      <Button onClick={onLeave}>Ещё партия</Button>
+      <Button onClick={onRematch} disabled={busy}>
+        {match.botDifficulty ? 'Сыграть ещё раз' : 'Предложить реванш'}
+      </Button>
+      <button type="button" onClick={onLeave} className="text-sm text-white/60">
+        Вернуться в меню
+      </button>
+    </div>
+  );
+}
+
+function DiceRules({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pb-10 pt-6">
+      <button type="button" onClick={onBack} className="self-start text-sm text-text-secondary">
+        ← Назад
+      </button>
+      <div>
+        <h1 className="text-2xl font-bold">Как играть</h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          В каждом броске отложите хотя бы одну комбинацию. Затем сохраните очки или рискните:
+          пустой бросок сожжёт всё, что набрано за этот ход.
+        </p>
+      </div>
+      <Card className="flex-col gap-3">
+        <RuleRow label="Одна единица" score="100" />
+        <RuleRow label="Одна пятёрка" score="50" />
+        <RuleRow label="Три единицы" score="1000" />
+        <RuleRow label="Три двойки / тройки / …" score="200 / 300 / …" />
+        <RuleRow label="1–2–3–4–5" score="500" />
+        <RuleRow label="2–3–4–5–6" score="750" />
+        <RuleRow label="1–2–3–4–5–6" score="1500" />
+      </Card>
+      <Card className="flex-col gap-2 text-sm text-text-secondary">
+        <p>Четвёртая одинаковая кость удваивает цену тройки, пятая удваивает снова.</p>
+        <p>
+          Если зачтены все шесть, наступает Hot Dice: снова бросаете шесть, сохраняя очки хода и
+          риск потерять их.
+        </p>
+        <p>Три пары очков не дают.</p>
+      </Card>
+      <Button onClick={onBack}>Понятно</Button>
+    </div>
+  );
+}
+
+function RuleRow({ label, score }: { label: string; score: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border pb-3 last:border-0 last:pb-0">
+      <span className="text-sm">{label}</span>
+      <span className="shrink-0 font-semibold text-primary">{score}</span>
     </div>
   );
 }

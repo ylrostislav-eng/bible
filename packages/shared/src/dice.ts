@@ -224,6 +224,7 @@ export function describeSelection(dice: readonly DiceValue[], indexes: readonly 
 
 /** Игрок за столом — так его видит другой игрок. */
 export interface DicePlayerView {
+  isBot?: boolean;
   userId: string;
   nickname: string | null;
   role: import('./admin').AppRole;
@@ -243,6 +244,11 @@ export interface DicePlayerView {
  */
 export interface DiceMatchView {
   matchId: string;
+  version: number;
+  botDifficulty: import('./dice-bot').DiceBotLevel | null;
+  serverNow: string;
+  turnStartedAt: string | null;
+  turnDeadlineAt: string | null;
   inviteCode: string;
   targetScore: number;
   turnTimeLimit: number | null;

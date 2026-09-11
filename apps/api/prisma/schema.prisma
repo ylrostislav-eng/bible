@@ -1300,6 +1300,15 @@ enum DiceMatchStatus {
 model DiceMatch {
   id String @id @default(cuid())
 
+  /// Программа не заводится как пользователь и не попадает в рейтинги людей.
+  botDifficulty String?
+  version Int @default(0)
+  turnStartedAt DateTime?
+  botActionAt DateTime?
+  lastEvents Json @default("[]")
+  rematchOfId String? @unique
+  targetOpponentId String?
+
   status DiceMatchStatus @default(WAITING)
 
   /// Код для приглашения друга ссылкой `?startapp=dice_<код>`.
@@ -1338,9 +1347,11 @@ model DiceMatch {
 
   players DiceMatchPlayer[]
   rolls   DiceRoll[]
+  actions DiceMatchAction[]
 
   @@index([status, openToMatchmaking, createdAt])
   @@index([status, lastActionAt])
+  @@index([status, botActionAt])
   @@map("dice_matches")
 }
 
@@ -1365,8 +1376,27 @@ model DiceMatchPlayer {
   joinedAt DateTime @default(now())
 
   @@unique([matchId, userId])
+  @@unique([matchId, seat])
   @@index([userId])
   @@map("dice_match_players")
+}
+
+/// Долговечная защита от повтора и журнал событий. userId может быть
+/// идентификатором программы, поэтому внешнего ключа на users здесь нет.
+model DiceMatchAction {
+  id String @id @default(cuid())
+  matchId String
+  match DiceMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId String
+  actionId String
+  payload Json
+  version Int
+  events Json
+  createdAt DateTime @default(now())
+
+  @@unique([matchId, userId, actionId])
+  @@index([matchId, version])
+  @@map("dice_match_actions")
 }
 
 /// Журнал бросков: каждый бросок, сделанный сервером.

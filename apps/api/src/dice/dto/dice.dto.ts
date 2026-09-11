@@ -1,4 +1,8 @@
-import { DICE_TARGET_OPTIONS } from '@bible-arena/shared';
+import {
+  DICE_BOT_LEVELS,
+  DICE_TARGET_OPTIONS,
+  type DiceBotLevel,
+} from '@bible-arena/shared';
 import {
   ArrayMaxSize,
   IsArray,
@@ -48,6 +52,15 @@ export class DiceFindOpponentDto {
   targetScore?: number;
 }
 
+export class CreateDiceSoloDto {
+  @IsOptional()
+  @IsIn(DICE_TARGET_OPTIONS)
+  targetScore?: number;
+
+  @IsIn(DICE_BOT_LEVELS)
+  difficulty!: DiceBotLevel;
+}
+
 /**
  * Действие игрока.
  *
@@ -72,4 +85,11 @@ export class DiceActionDto {
   @IsString()
   @Length(1, 64)
   actionId?: string;
+
+  /** Версия, которую видел игрок при нажатии. Устаревшая команда не
+   * применяется к уже изменившемуся столу. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  expectedVersion?: number;
 }

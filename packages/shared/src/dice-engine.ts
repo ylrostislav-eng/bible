@@ -43,11 +43,14 @@ export type DicePhase =
   | 'BUST'
   | 'GAME_OVER';
 
-export type DiceMatchStatus = 'WAITING' | 'IN_PROGRESS' | 'FINISHED';
+export type DiceMatchStatus = 'WAITING' | 'IN_PROGRESS' | 'FINISHED' | 'ABANDONED';
 
 export interface DicePlayerState {
   userId: string;
   score: number;
+  bustCount?: number;
+  hotDiceCount?: number;
+  bestTurn?: number;
 }
 
 export interface DiceGameState {
@@ -69,6 +72,7 @@ export interface DiceGameState {
   phase: DicePhase;
   status: DiceMatchStatus;
   winnerId: string | null;
+  missedTurns?: Record<string, number>;
 }
 
 export type DiceAction =
@@ -93,7 +97,9 @@ export type DiceEvent =
   | { type: 'HOT_DICE'; playerId: string }
   | { type: 'BUST'; playerId: string; lostScore: number }
   | { type: 'TURN_ENDED'; playerId: string; bankedScore: number }
-  | { type: 'GAME_FINISHED'; winnerId: string; reason: 'TARGET' | 'RESIGN' };
+  | { type: 'TURN_TIMED_OUT'; playerId: string; lostScore: number }
+  | { type: 'GAME_ABANDONED' }
+  | { type: 'GAME_FINISHED'; winnerId: string; reason: 'TARGET' | 'RESIGN' | 'TIMEOUT' };
 
 export interface DiceStepResult {
   state: DiceGameState;
@@ -168,7 +174,9 @@ export function applyDiceAction(
   action: DiceAction,
   roll?: DiceValue[],
 ): DiceStepResult {
-  if (state.status === 'FINISHED') throw new DiceRuleError(DICE_MATCH_OVER);
+  if (state.status === 'FINISHED' || state.status === 'ABANDONED') {
+    throw new DiceRuleError(DICE_MATCH_OVER);
+  }
   if (state.status === 'WAITING') throw new DiceRuleError(DICE_WRONG_PHASE);
 
   // Сдача — единственное действие вне очереди, и это принципиально.
@@ -185,6 +193,8 @@ export function applyDiceAction(
     throw new DiceRuleError(DICE_NOT_YOUR_TURN);
   }
 
+  // Осмысленное действие прерывает серию пропущенных ходов.
+  state = { ...state, missedTurns: { ...state.missedTurns, [playerId]: 0 } };
   switch (action.type) {
     case 'ROLL':
       return applyRoll(state, playerId, roll);
@@ -197,6 +207,29 @@ export function applyDiceAction(
     case 'RESIGN':
       return applyResign(state, playerId);
   }
+}
+
+/** Вызывается только сервером по сохранённому сроку, не по часам клиента. */
+export function timeoutDiceTurn(state: DiceGameState): DiceStepResult {
+  if (state.status !== 'IN_PROGRESS' || !state.currentPlayerId) {
+    throw new DiceRuleError(DICE_MATCH_OVER);
+  }
+  const playerId = state.currentPlayerId;
+  const missed = (state.missedTurns?.[playerId] ?? 0) + 1;
+  const next = { ...state, missedTurns: { ...state.missedTurns, [playerId]: missed } };
+  const event: DiceEvent = { type: 'TURN_TIMED_OUT', playerId, lostScore: state.turnScore };
+  if (missed >= 2) {
+    const result = applyResign(next, playerId);
+    return {
+      state: result.state,
+      events: [
+        event,
+        { type: 'GAME_FINISHED', winnerId: result.state.winnerId!, reason: 'TIMEOUT' },
+      ],
+    };
+  }
+  const result = endTurn(next, playerId, 0);
+  return { state: result.state, events: [event, ...result.events] };
 }
 
 function applyRoll(

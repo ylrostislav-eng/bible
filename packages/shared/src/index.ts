@@ -27,3 +27,4 @@ export * from './hot-cold-riddle';
 export * from './shop';
 export * from './dice';
 export * from './dice-engine';
+export * from './dice-bot';

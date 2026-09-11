@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
 import {
   CreateDiceMatchDto,
+  CreateDiceSoloDto,
   DiceActionDto,
   DiceFindOpponentDto,
   DiceInviteCodeDto,
@@ -41,6 +42,19 @@ export class DiceController {
     return this.dice.waitingOpponents(user.sub);
   }
 
+  @Get('progress')
+  progress(@CurrentUser() user: JwtPayload) {
+    return this.dice.progress(user.sub);
+  }
+
+  @Post('solo')
+  solo(@CurrentUser() user: JwtPayload, @Body() dto: CreateDiceSoloDto) {
+    return this.dice.create(user.sub, {
+      targetScore: dto.targetScore,
+      botDifficulty: dto.difficulty,
+    });
+  }
+
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateDiceMatchDto) {
     return this.dice.create(user.sub, dto);
@@ -67,7 +81,23 @@ export class DiceController {
     @Param('id') id: string,
     @Body() dto: DiceActionDto,
   ) {
-    return this.dice.act(user.sub, id, toAction(dto), dto.actionId);
+    return this.dice.act(
+      user.sub,
+      id,
+      toAction(dto),
+      dto.actionId,
+      dto.expectedVersion,
+    );
+  }
+
+  @Post(':id/cancel')
+  cancel(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.dice.cancel(user.sub, id);
+  }
+
+  @Post(':id/rematch')
+  rematch(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.dice.rematch(user.sub, id);
   }
 
   /** Состояние партии. Отдаётся только её участнику — проверяет сервис. */
