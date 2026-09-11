@@ -35,6 +35,7 @@ export default function DiceSceneView(props: DiceSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<DiceScene | null>(null);
   const pickRef = useRef(props.onPick);
+  const initialOpponentAppearance = useRef(props.opponentAppearance);
   const previousRoll = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -75,6 +76,10 @@ export default function DiceSceneView(props: DiceSceneProps) {
       (window as unknown as Record<string, unknown>).__dice = scene;
     }
     scene.resize();
+    // Соперник должен быть выбран до первого кадра. Иначе сцена успевает
+    // один раз показать встроенный силуэт, прежде чем следующий React-эффект
+    // передаст портрет из состояния матча.
+    scene.setOpponent(initialOpponentAppearance.current);
     scene.start();
 
     const observer = new ResizeObserver(() => scene.resize());

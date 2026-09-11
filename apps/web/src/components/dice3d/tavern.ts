@@ -160,7 +160,8 @@ export function buildTavern(shadows: boolean): Tavern {
   root.add(candleLight);
 
   // Контейнер общий для качественного 2.5D-портрета и лёгкого запасного
-  // силуэта. Пока изображение грузится по мобильной сети, стол не пустует.
+  // силуэта. Силуэт показывается только при ошибке загрузки: иначе он
+  // заметно мелькает перед портретом даже на быстрой сети.
   const rival = new THREE.Group();
   rival.position.set(0, 0, RIVAL.z);
   const { group: rivalFallback, arms: rivalArms, head: rivalHead } = buildRival(shadows, keep);
@@ -190,6 +191,8 @@ export function buildTavern(shadows: boolean): Tavern {
   const setOpponent = (appearance: OpponentAppearance) => {
     if (requestedAppearance === appearance) return;
     requestedAppearance = appearance;
+    rivalPortrait.visible = false;
+    rivalFallback.visible = false;
     textureLoader.load(
       OPPONENT_ASSETS[appearance],
       (texture) => {
