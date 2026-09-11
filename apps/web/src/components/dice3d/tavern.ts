@@ -147,8 +147,12 @@ export function buildTavern(shadows: boolean): Tavern {
       toneMapped: true,
     }),
   );
-  const rivalPortrait = new THREE.Mesh(keep(new THREE.PlaneGeometry(0.56, 0.64)), portraitMaterial);
-  rivalPortrait.position.set(0, 0.3, 0.018);
+  // Нижняя треть намеренно уходит за дальнюю кромку настоящего стола.
+  // У прозрачного портрета нет ног и стула: если показать его нижний край,
+  // персонаж выглядит подвешенным в воздухе. Запас перекрытия сохраняется
+  // и при покачивании, и на узком вертикальном экране.
+  const rivalPortrait = new THREE.Mesh(keep(new THREE.PlaneGeometry(0.62, 0.72)), portraitMaterial);
+  rivalPortrait.position.set(0, 0.24, 0.07);
   rivalPortrait.visible = false;
   rivalPortrait.renderOrder = 2;
   rival.add(rivalPortrait);
