@@ -10,6 +10,7 @@ import {
   type DiceMatchView,
   type DiceBotLevel,
   type DiceProgress,
+  type DiceValue,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -42,7 +43,7 @@ import { useImmersiveWhile } from '@/lib/immersive-context';
  * меняющемся на глазах. */
 const POLL_MS = 1500;
 
-type Screen = 'menu' | 'rules' | 'match';
+type Screen = 'menu' | 'rules' | 'tutorial' | 'match';
 
 export default function DicePage() {
   const [screen, setScreen] = useState<Screen>('menu');
@@ -69,7 +70,8 @@ export default function DicePage() {
    * камеру._ Заодно всплывающее «вас вызвали на дуэль» перестаёт
    * закрывать соперника — оно приходилось ровно на его голову.
    */
-  const atTable = screen === 'match' && match !== null && match.status !== 'WAITING';
+  const atTable =
+    screen === 'tutorial' || (screen === 'match' && match !== null && match.status !== 'WAITING');
   useImmersiveWhile(atTable);
 
   const apply = useCallback((view: DiceMatchView) => {
@@ -161,6 +163,10 @@ export default function DicePage() {
     return <DiceRules onBack={() => setScreen('menu')} />;
   }
 
+  if (screen === 'tutorial') {
+    return <DiceTutorial onFinish={() => setScreen('menu')} />;
+  }
+
   if (screen === 'menu' || !match) {
     return (
       <DiceMenu
@@ -178,6 +184,7 @@ export default function DicePage() {
         onCreate={() => void run(() => apiClient.post('/dice', { targetScore: target }))}
         onJoin={() => void run(() => apiClient.post('/dice/join-by-code', { code: code.trim() }))}
         onRules={() => setScreen('rules')}
+        onTutorial={() => setScreen('tutorial')}
       />
     );
   }
@@ -221,6 +228,7 @@ function DiceMenu({
   onCreate,
   onJoin,
   onRules,
+  onTutorial,
 }: {
   busy: boolean;
   error: string | null;
@@ -234,6 +242,7 @@ function DiceMenu({
   onCreate: () => void;
   onJoin: () => void;
   onRules: () => void;
+  onTutorial: () => void;
 }) {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
@@ -271,6 +280,10 @@ function DiceMenu({
             ))}
         </div>
       </Card>
+
+      <Button variant="secondary" onClick={onTutorial} disabled={busy}>
+        Научиться за минуту
+      </Button>
 
       <section className="flex flex-col gap-3">
         <div>
@@ -374,6 +387,7 @@ function DiceMatchScreen({
   // Сдача необратима и отдаёт победу, поэтому спрашивается дважды — но
   // не окном поверх экрана: на телефоне оно перекрывает стол целиком.
   const [confirmResign, setConfirmResign] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   // Уже отложенные сервером кости. Их нельзя ни выбрать снова, ни
   // подсветить: за них заплачено, и на столе они лежат отдельной кучкой.
@@ -389,6 +403,8 @@ function DiceMatchScreen({
       )
     : [];
   const pickedPoints = picked.length ? scoreSelection(match.dice, picked) : null;
+  const lastBust = match.events.find((event) => event.type === 'BUST');
+  const lastHotDice = match.events.find((event) => event.type === 'HOT_DICE');
 
   const toggle = (index: number) => {
     if (locked.includes(index)) return;
@@ -522,14 +538,24 @@ function DiceMatchScreen({
               </div>
             )}
 
-            {match.events.some((event) => event.type === 'BUST') && (
-              <p className="rounded-xl bg-danger/15 px-3 py-2 text-center text-sm text-danger">
-                Пустой бросок — очки этого хода сгорели
+            {lastBust && (
+              <p
+                role="status"
+                className="rounded-xl border border-danger/30 bg-black/75 px-3 py-2 text-center text-sm font-semibold text-danger backdrop-blur-sm"
+              >
+                {lastBust.playerId === match.youId
+                  ? `Неудачный бросок — сгорело ${lastBust.lostScore} очков`
+                  : `${rival?.nickname ?? 'Соперник'} теряет ${lastBust.lostScore} очков хода`}
               </p>
             )}
-            {match.events.some((event) => event.type === 'HOT_DICE') && (
-              <p className="rounded-xl bg-primary/15 px-3 py-2 text-center text-sm text-primary">
-                Hot Dice — все шесть снова в игре
+            {lastHotDice && (
+              <p
+                role="status"
+                className="rounded-xl border border-primary/35 bg-black/75 px-3 py-2 text-center text-sm font-semibold text-primary backdrop-blur-sm"
+              >
+                {lastHotDice.playerId === match.youId
+                  ? 'Hot Dice! Все шесть принесли очки — бросайте их снова'
+                  : `Hot Dice у ${rival?.nickname ?? 'соперника'} — снова в игре все шесть`}
               </p>
             )}
 
@@ -592,6 +618,13 @@ function DiceMatchScreen({
             <div className="flex items-center justify-center gap-5 pt-0.5">
               <button
                 type="button"
+                onClick={() => setShowRules(true)}
+                className="text-xs text-white/45 underline-offset-4 hover:text-white/70 hover:underline"
+              >
+                Правила
+              </button>
+              <button
+                type="button"
                 onClick={onLeave}
                 className="text-xs text-white/45 underline-offset-4 hover:text-white/70 hover:underline"
               >
@@ -617,6 +650,8 @@ function DiceMatchScreen({
           </>
         )}
       </div>
+
+      {showRules && <DiceRulesOverlay onClose={() => setShowRules(false)} />}
     </div>
   );
 }
@@ -714,6 +749,185 @@ function FinishedCard({
   );
 }
 
+const TUTORIAL_ROLLS: readonly DiceValue[][] = [
+  [1, 5, 2, 3, 4, 6],
+  [3, 3, 3, 2, 4, 6],
+  [3, 3, 3, 2, 4, 6],
+  [2, 3, 4, 6, 2, 3],
+  [1, 2, 3, 4, 5, 6],
+];
+
+/** Короткая постановочная партия: она работает только на клиенте, не
+ * создаёт матч и потому никогда не выдаёт награды или статистику. */
+function DiceTutorial({ onFinish }: { onFinish: () => void }) {
+  const [step, setStep] = useState(0);
+  const [picked, setPicked] = useState<number[]>([]);
+  const dice = TUTORIAL_ROLLS[Math.min(step, TUTORIAL_ROLLS.length - 1)];
+  const selecting = step === 0 || step === 1;
+  const required = step === 0 ? [0, 1] : [0, 1, 2];
+  const ready =
+    selecting &&
+    picked.length === required.length &&
+    required.every((index) => picked.includes(index));
+
+  const advance = () => {
+    setPicked([]);
+    setStep((current) => current + 1);
+  };
+
+  const finish = () => {
+    try {
+      localStorage.setItem('dice-tutorial-complete', '1');
+    } catch {
+      // Обучение не зависит от доступности локального хранилища.
+    }
+    onFinish();
+  };
+
+  return (
+    <div className="relative mx-auto h-[var(--app-height)] w-full max-w-md overflow-hidden bg-black">
+      <div className="absolute inset-0">
+        <DiceTable3D
+          dice={dice}
+          rollKey={`tutorial:${step}`}
+          picked={picked}
+          locked={[]}
+          hint={selecting ? required : []}
+          interactive={selecting}
+          side="you"
+          rivalThinking={false}
+          onPick={(index) =>
+            setPicked((current) =>
+              current.includes(index)
+                ? current.filter((value) => value !== index)
+                : [...current, index],
+            )
+          }
+        />
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[calc(var(--safe-top)+8rem)] bg-gradient-to-b from-black/85 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-80 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
+
+      <div className="absolute inset-x-0 top-0 px-4 pt-[calc(var(--safe-top)+0.75rem)]">
+        <div className="flex items-center justify-between text-xs text-white/65">
+          <span>Обучение · без наград</span>
+          <button type="button" onClick={finish} className="pointer-events-auto text-white/80">
+            Пропустить
+          </button>
+        </div>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/15">
+          <div
+            className="h-full rounded-full bg-primary transition-[width]"
+            style={{ width: `${((step + 1) / 5) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(var(--safe-bottom)+1rem)]">
+        <div className="rounded-2xl border border-white/10 bg-black/75 p-4 backdrop-blur-md">
+          {step === 0 && (
+            <TutorialCopy
+              title="Единицы и пятёрки"
+              text="Одиночная единица даёт 100, пятёрка — 50. Коснитесь обеих светящихся костей."
+            />
+          )}
+          {step === 1 && (
+            <TutorialCopy
+              title="Три одинаковых"
+              text="Три тройки вместе дают 300 очков. Выберите всю комбинацию."
+            />
+          )}
+          {step === 2 && (
+            <TutorialCopy
+              title="Забрать или рискнуть"
+              text="После выбора можно сохранить очки или продолжить. Риск приносит больше, но пустой бросок сжигает весь счёт хода."
+            />
+          )}
+          {step === 3 && (
+            <TutorialCopy
+              title="Bust — пустой бросок"
+              text="Здесь нет ни одной комбинации. Очки хода сгорели, а ход перешёл сопернику. Очки прошлых ходов сохраняются."
+              tone="danger"
+            />
+          )}
+          {step >= 4 && (
+            <TutorialCopy
+              title="Hot Dice!"
+              text="Если очки дали все шесть костей, вы снова бросаете шесть и сохраняете набранное за ход. Можно продолжить риск или забрать очки."
+              tone="primary"
+            />
+          )}
+
+          {selecting ? (
+            <Button onClick={advance} disabled={!ready} className="mt-4 w-full">
+              {ready
+                ? `Отложить · +${scoreSelection(dice, picked) ?? 0}`
+                : 'Выберите подсвеченные кости'}
+            </Button>
+          ) : step < 4 ? (
+            <Button onClick={advance} className="mt-4 w-full">
+              {step === 2 ? 'Рискнуть и бросить' : 'Понятно'}
+            </Button>
+          ) : (
+            <Button onClick={finish} className="mt-4 w-full">
+              Сыграть настоящую партию
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TutorialCopy({
+  title,
+  text,
+  tone,
+}: {
+  title: string;
+  text: string;
+  tone?: 'danger' | 'primary';
+}) {
+  return (
+    <div>
+      <p
+        className={clsx(
+          'text-lg font-bold text-white',
+          tone === 'danger' && 'text-danger',
+          tone === 'primary' && 'text-primary',
+        )}
+      >
+        {title}
+      </p>
+      <p className="mt-1 text-sm leading-relaxed text-white/70">{text}</p>
+    </div>
+  );
+}
+
+function DiceRulesOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="absolute inset-0 z-30 flex items-end bg-black/70 px-3 pb-[calc(var(--safe-bottom)+0.75rem)] pt-[calc(var(--safe-top)+0.75rem)] backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Правила игры в кости"
+    >
+      <div className="max-h-full w-full overflow-y-auto rounded-2xl border border-white/10 bg-surface p-4 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-bold">Как считать очки</h2>
+          <button type="button" onClick={onClose} className="text-sm text-text-secondary">
+            Закрыть
+          </button>
+        </div>
+        <DiceRulesContent />
+        <Button onClick={onClose} className="mt-4 w-full">
+          Продолжить партию
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DiceRules({ onBack }: { onBack: () => void }) {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pb-10 pt-6">
@@ -727,6 +941,15 @@ function DiceRules({ onBack }: { onBack: () => void }) {
           пустой бросок сожжёт всё, что набрано за этот ход.
         </p>
       </div>
+      <DiceRulesContent />
+      <Button onClick={onBack}>Понятно</Button>
+    </div>
+  );
+}
+
+function DiceRulesContent() {
+  return (
+    <div className="flex flex-col gap-3">
       <Card className="flex-col gap-3">
         <RuleRow label="Одна единица" score="100" />
         <RuleRow label="Одна пятёрка" score="50" />
@@ -744,7 +967,6 @@ function DiceRules({ onBack }: { onBack: () => void }) {
         </p>
         <p>Три пары очков не дают.</p>
       </Card>
-      <Button onClick={onBack}>Понятно</Button>
     </div>
   );
 }
