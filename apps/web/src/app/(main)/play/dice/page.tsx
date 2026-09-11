@@ -445,12 +445,15 @@ function DiceMatchScreen({
 
       {/* Затемнение под надписями: на светлом дереве белый текст без него
           не читается, а сплошная плашка закрыла бы стол. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[calc(var(--safe-top)+7rem)] bg-gradient-to-b from-black/70 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
 
       {/* Счёт обоих и цель — первое, что нужно, чтобы решить, рисковать
           ли: 700 очков хода значат разное при 3800 и при 200. */}
-      <div className="absolute inset-x-0 top-0 flex items-start gap-2 px-3 pt-3">
+      <div
+        className="absolute inset-x-0 top-0 flex items-start gap-2 px-3 pt-[calc(var(--safe-top)+0.75rem)]"
+        data-testid="dice-score-hud"
+      >
         <ScoreChip player={me} label="Вы" active={myTurn && !finished} target={match.targetScore} />
         <div className="shrink-0 rounded-full bg-black/45 px-2.5 py-1 text-center">
           <p className="text-[9px] uppercase leading-none tracking-wide text-white/50">до</p>
