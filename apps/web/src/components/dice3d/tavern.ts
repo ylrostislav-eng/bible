@@ -147,12 +147,11 @@ export function buildTavern(shadows: boolean): Tavern {
       toneMapped: true,
     }),
   );
-  // Нижняя треть намеренно уходит за дальнюю кромку настоящего стола.
-  // У прозрачного портрета нет ног и стула: если показать его нижний край,
-  // персонаж выглядит подвешенным в воздухе. Запас перекрытия сохраняется
-  // и при покачивании, и на узком вертикальном экране.
+  // Нижний срез остаётся за дальней кромкой, а локти совпадают с уровнем
+  // столешницы. Если поднять плоскость выше — виден обрезанный торс; если
+  // опустить ниже — стол перекрывает предплечья и человек будто сидит под ним.
   const rivalPortrait = new THREE.Mesh(keep(new THREE.PlaneGeometry(0.62, 0.72)), portraitMaterial);
-  rivalPortrait.position.set(0, 0.24, 0.07);
+  rivalPortrait.position.set(0, 0.305, 0.055);
   rivalPortrait.visible = false;
   rivalPortrait.renderOrder = 2;
   rival.add(rivalPortrait);
