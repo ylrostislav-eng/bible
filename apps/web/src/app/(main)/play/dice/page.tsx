@@ -44,7 +44,7 @@ import { reportClientError } from '@/lib/telemetry';
  * в отличие от «горячо-холодно», где всё напряжение в чужом числе,
  * меняющемся на глазах. */
 const POLL_MS = 1500;
-const BUST_RESULT_HOLD_MS = 2500;
+const MOMENT_MS = 2000;
 
 function opponentAppearance(match: DiceMatchView, rivalId?: string): OpponentAppearance {
   if (match.botDifficulty) {
@@ -165,6 +165,14 @@ export default function DicePage() {
     (match.status === 'WAITING' ||
       (match.status === 'IN_PROGRESS' &&
         (match.currentPlayerId !== match.youId || match.actions.length === 0)));
+  const handoffAt =
+    match?.status === 'IN_PROGRESS' &&
+    match.currentPlayerId === match.youId &&
+    match.phase === 'ROLLING' &&
+    match.actions.length === 0
+      ? match.turnStartedAt
+      : null;
+  const refreshInterval = match?.phase === 'BUST' ? 500 : POLL_MS;
 
   useEffect(() => {
     if (!matchId || !waitingForOther) return;
@@ -186,16 +194,22 @@ export default function DicePage() {
         // Краткий обрыв связи не выкидывает из партии: следующий опрос
         // продолжит с того же состояния.
       } finally {
-        if (!cancelled) timer = setTimeout(poll, POLL_MS);
+        if (!cancelled) timer = setTimeout(poll, refreshInterval);
       }
     };
 
-    timer = setTimeout(poll, POLL_MS);
+    // После хода соперника сервер ненадолго закрывает действия, чтобы
+    // переход успел показаться. Спрашиваем сразу после этого срока, а не
+    // попадаем случайно перед ним и не ждём ещё один полный цикл.
+    const firstDelay = handoffAt
+      ? Math.max(100, new Date(handoffAt).getTime() - Date.now() + 150)
+      : refreshInterval;
+    timer = setTimeout(poll, firstDelay);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [matchId, waitingForOther]);
+  }, [handoffAt, matchId, refreshInterval, waitingForOther]);
 
   if (screen === 'rules') {
     return <DiceRules onBack={() => setScreen('menu')} />;
@@ -438,7 +452,7 @@ function DiceMatchScreen({
     previousAnimatedRoll.current = rollKey;
     setRollingPlayerId(rollPlayerId);
     setRevealingRoll(true);
-    const resultHold = match.phase === 'BUST' ? BUST_RESULT_HOLD_MS : 350;
+    const resultHold = match.phase === 'BUST' ? 0 : 350;
     const timer = window.setTimeout(() => setRevealingRoll(false), DICE_ROLL_MS + resultHold);
     return () => window.clearTimeout(timer);
   }, [match.phase, rollKey, rollPlayerId]);
@@ -593,26 +607,7 @@ function DiceMatchScreen({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
 
       {moment && (
-        <>
-          <div
-            className={clsx(
-              'pointer-events-none absolute inset-0 z-10',
-              moment.tone === 'bust' ? 'dice-bust-wash' : 'dice-hot-wash',
-            )}
-          />
-          <p
-            key={`${match.version}:${moment.tone}`}
-            role="status"
-            className={clsx(
-              'dice-moment pointer-events-none absolute left-1/2 top-[68%] z-20 w-max max-w-[calc(100%-1.5rem)] rounded-xl border bg-black/80 px-4 py-2 text-center text-sm font-bold shadow-xl backdrop-blur-sm',
-              moment.tone === 'bust'
-                ? 'border-danger/45 text-danger'
-                : 'border-primary/45 text-primary',
-            )}
-          >
-            {moment.text}
-          </p>
-        </>
+        <DiceMoment key={`${match.version}:${moment.tone}`} tone={moment.tone} text={moment.text} />
       )}
 
       {!finished && !abandoned && (
@@ -810,6 +805,36 @@ function DiceMatchScreen({
 
       {showRules && <DiceRulesOverlay onClose={() => setShowRules(false)} />}
     </div>
+  );
+}
+
+function DiceMoment({ tone, text }: { tone: 'bust' | 'hot' | 'bank'; text: string }) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(false), MOMENT_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!visible) return null;
+  return (
+    <>
+      <div
+        className={clsx(
+          'pointer-events-none absolute inset-0 z-10',
+          tone === 'bust' ? 'dice-bust-wash' : 'dice-hot-wash',
+        )}
+      />
+      <p
+        role="status"
+        className={clsx(
+          'dice-moment pointer-events-none absolute left-1/2 top-[68%] z-20 w-max max-w-[calc(100%-1.5rem)] rounded-xl border bg-black/80 px-4 py-2 text-center text-sm font-bold shadow-xl backdrop-blur-sm',
+          tone === 'bust' ? 'border-danger/45 text-danger' : 'border-primary/45 text-primary',
+        )}
+      >
+        {text}
+      </p>
+    </>
   );
 }
 

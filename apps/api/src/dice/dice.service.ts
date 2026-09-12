@@ -49,8 +49,8 @@ type CreateParams = {
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const INTRO_MS = 2800;
 const HANDOFF_MS = 1500;
-/** Полный бросок (1,44 с), 2,5 секунды на кости и короткий показ итога. */
-const BUST_HANDOFF_MS = 4500;
+/** Полный бросок (1,44 с) и две секунды на чтение результата. */
+const BUST_HANDOFF_MS = 3500;
 /** Паузы длиннее шага polling: игрок успевает увидеть каждое решение,
  * однако партия не превращается в ожидание анимаций. */
 const BOT_ROLL_STEP_MS = 2400;
