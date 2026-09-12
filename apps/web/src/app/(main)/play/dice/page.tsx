@@ -532,7 +532,7 @@ function DiceMatchScreen({
             : 'Пустой бросок',
         }
       : lastHotDice
-        ? { tone: 'hot' as const, text: 'Hot Dice · снова в игре все шесть' }
+        ? { tone: 'hot' as const, text: 'Все кости принесли очки · бросайте снова' }
         : ownBank > 0
           ? { tone: 'bank' as const, text: `+${ownBank} в общий счёт` }
           : rivalBank > 0
@@ -968,8 +968,8 @@ function FinishedCard({
       </div>
       {!abandoned && (
         <p className="text-center text-xs text-white/50">
-          Ходов: {match.turnNumber} · Hot Dice: {me?.hotDiceCount ?? 0} · Неудачных бросков:{' '}
-          {me?.bustCount ?? 0} · Лучший ход: {me?.bestTurn ?? 0}
+          Ходов: {match.turnNumber} · Удачных бросков всеми костями: {me?.hotDiceCount ?? 0} ·
+          Пустых бросков: {me?.bustCount ?? 0} · Лучший ход: {me?.bestTurn ?? 0}
         </p>
       )}
       {!abandoned && (
@@ -1128,14 +1128,14 @@ function DiceTutorial({ onFinish }: { onFinish: () => void }) {
           )}
           {step === 3 && (
             <TutorialCopy
-              title="Bust — пустой бросок"
+              title="Пустой бросок"
               text="Здесь нет ни одной комбинации. Очки хода сгорели, а ход перешёл сопернику. Очки прошлых ходов сохраняются."
               tone="danger"
             />
           )}
           {step >= 4 && (
             <TutorialCopy
-              title="Hot Dice!"
+              title="Все кости принесли очки"
               text="Если очки дали все шесть костей, вы снова бросаете шесть и сохраняете набранное за ход. Можно продолжить риск или забрать очки."
               tone="primary"
             />
@@ -1245,8 +1245,8 @@ function DiceRulesContent() {
       <Card className="flex-col gap-2 text-sm text-text-secondary">
         <p>Четвёртая одинаковая кость удваивает цену тройки, пятая удваивает снова.</p>
         <p>
-          Если зачтены все шесть, наступает Hot Dice: снова бросаете шесть, сохраняя очки хода и
-          риск потерять их.
+          Если очки дали все шесть костей, снова бросаете шесть, сохраняя очки хода и риск потерять
+          их.
         </p>
         <p>Три пары очков не дают.</p>
       </Card>
