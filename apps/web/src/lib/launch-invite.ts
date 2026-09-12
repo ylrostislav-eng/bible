@@ -4,7 +4,8 @@ import { retrieveLaunchParams } from '@telegram-apps/sdk-react';
 export type LaunchInvite =
   | { kind: 'duel'; sessionId: string }
   | { kind: 'room'; inviteId: string }
-  | { kind: 'dice'; matchId: string };
+  | { kind: 'dice'; matchId: string }
+  | { kind: 'hot-cold-duel'; duelId: string };
 
 /**
  * Приглашение, с которым открыли приложение из уведомления бота.
@@ -39,8 +40,8 @@ function startParamInvite(): string | null {
 }
 
 /**
- * Форматы: `duel_<id партии>`, `room_<id приглашения>` и
- * `dice_<id партии>`. Рядом живёт четвёртый, `ref_<токен>`, — он про
+ * Форматы: `duel_<id партии>`, `room_<id приглашения>`, `dice_<id партии>` и
+ * `hot-cold_<id партии>`. Рядом живёт пятый, `ref_<токен>`, — он про
  * приглашение в друзья и разбирается на сервере при входе; здесь он
  * намеренно не наш случай и даёт `null`.
  */
@@ -55,6 +56,9 @@ function parseInvite(value: string | null): LaunchInvite | null {
 
   const dice = /^dice_([A-Za-z0-9_-]{1,64})$/.exec(value);
   if (dice) return { kind: 'dice', matchId: dice[1] };
+
+  const hotCold = /^hot-cold_([A-Za-z0-9_-]{1,64})$/.exec(value);
+  if (hotCold) return { kind: 'hot-cold-duel', duelId: hotCold[1] };
 
   return null;
 }

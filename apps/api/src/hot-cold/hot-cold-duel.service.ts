@@ -33,11 +33,15 @@ import {
   hotColdReward,
   type HotColdDuelGuess,
   type HotColdDuelState,
+  type PendingHotColdDuelInvite,
   type WaitingOpponentsView,
 } from '@bible-arena/shared';
 import { blockedWith, MATCH_ATTEMPTS } from '../common/matchmaking';
 import { generateInviteCode } from '../game/invite-code';
 import { StaffNameMask } from '../auth/staff-name-mask.service';
+import { ContactPolicyService } from '../contact/contact-policy.service';
+import { InviteNotifierService } from '../notifications/invite-notifier.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PresenceService } from '../presence/presence.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -110,6 +114,9 @@ export class HotColdDuelService {
     private readonly semantics: SemanticsService,
     private readonly staffNames: StaffNameMask,
     private readonly presence: PresenceService,
+    private readonly contacts: ContactPolicyService,
+    private readonly notifications: NotificationsService,
+    private readonly inviteNotifier: InviteNotifierService,
   ) {}
 
   private readonly rankings = new Map<string, SemanticRanking>();
@@ -278,12 +285,34 @@ export class HotColdDuelService {
     if (targetUserId === userId) {
       throw new BadRequestException('Нельзя вызвать самого себя');
     }
+    if (targetUserId) {
+      // Тот же рубеж, что у личного вызова в дуэли и в «Кости»: детский
+      // режим, мут, взаимный бан — без этого личный вызов был бы дырой в
+      // ограничениях, которые ставит сервер везде, куда можно позвать
+      // конкретного человека.
+      await this.contacts.assertCanReach(userId, targetUserId);
+    }
     const existing = await this.activeFor(userId);
     if (existing) {
       // Вторая дуэль поверх незакрытой — верный способ бросить обе.
       throw new BadRequestException(
         'У вас уже есть незаконченная дуэль — сначала доиграйте её',
       );
+    }
+    if (targetUserId) {
+      const outstanding = await this.prisma.hotColdDuel.findFirst({
+        where: {
+          status: 'WAITING',
+          targetUserId,
+          players: { some: { userId } },
+        },
+        select: { id: true },
+      });
+      if (outstanding) {
+        throw new BadRequestException(
+          'Вы уже пригласили этого игрока — дождитесь ответа',
+        );
+      }
     }
     const word = await this.pickWord(
       targetUserId ? [userId, targetUserId] : [userId],
@@ -297,7 +326,99 @@ export class HotColdDuelService {
         players: { create: { userId } },
       },
     });
+    if (targetUserId) {
+      // Вне очереди и без ожидания — партия уже создана, и падать из-за
+      // недоступного Telegram она не должна (см. `InviteNotifierService`).
+      const host = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { nickname: true },
+      });
+      void this.inviteNotifier.notifyHotColdChallenge({
+        toUserId: targetUserId,
+        fromNickname: this.staffNames.label(userId, host?.nickname ?? null),
+        duelId: duel.id,
+      });
+    }
     return duel.id;
+  }
+
+  /** Неотвеченные личные вызовы, ждущие именно этого игрока. */
+  async pendingInvites(userId: string): Promise<PendingHotColdDuelInvite[]> {
+    const duels = await this.prisma.hotColdDuel.findMany({
+      where: { status: 'WAITING', targetUserId: userId },
+      include: {
+        players: { include: { user: { select: { nickname: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return duels.map((duel) => {
+      const host = duel.players[0];
+      return {
+        duelId: duel.id,
+        fromUserId: host?.userId ?? '',
+        fromNickname: this.staffNames.label(
+          host?.userId ?? '',
+          host?.user.nickname ?? null,
+        ),
+        createdAt: duel.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /** Ответ на личный вызов: принять — сесть за стол, отклонить — закрыть
+   * его насовсем. */
+  async respondToInvite(
+    userId: string,
+    duelId: string,
+    action: 'ACCEPT' | 'DECLINE',
+  ): Promise<{ duelId: string } | { declined: true }> {
+    if (action === 'ACCEPT') {
+      return { duelId: await this.joinDuel(userId, duelId) };
+    }
+    // `updateMany` с условием «ещё ждёт» — тот же приём, что у входа по
+    // коду чуть выше и у победы дальше в файле: два ответа на одно
+    // приглашение (accept и decline одновременно) не могут разойтись по
+    // факту, потому что применится только первый `updateMany`.
+    const duel = await this.prisma.hotColdDuel.findUnique({
+      where: { id: duelId },
+      select: { targetUserId: true, players: { select: { userId: true } } },
+    });
+    if (!duel || duel.targetUserId !== userId) {
+      throw new NotFoundException('Приглашение уже неактуально');
+    }
+    const declined = await this.prisma.hotColdDuel.updateMany({
+      where: { id: duelId, status: 'WAITING' },
+      data: { status: 'ABANDONED', finishedAt: new Date() },
+    });
+    if (declined.count === 0) {
+      throw new NotFoundException('Приглашение уже неактуально');
+    }
+    const hostUserId = duel.players[0]?.userId;
+    if (hostUserId) {
+      void this.notifications
+        .recordHotColdDecline({ userId: hostUserId, declinedByUserId: userId })
+        .catch(() => {});
+    }
+    return { declined: true };
+  }
+
+  /** Отменить свой же неотвеченный вызов — тот же атомарный приём, что и
+   * у отказа: применяется только к столу, который ещё ждёт. */
+  async cancel(userId: string, duelId: string): Promise<void> {
+    const duel = await this.prisma.hotColdDuel.findUnique({
+      where: { id: duelId },
+      select: { players: { select: { userId: true }, take: 1 } },
+    });
+    if (!duel || duel.players[0]?.userId !== userId) {
+      throw new NotFoundException('Дуэль не найдена');
+    }
+    const cancelled = await this.prisma.hotColdDuel.updateMany({
+      where: { id: duelId, status: 'WAITING' },
+      data: { status: 'ABANDONED', finishedAt: new Date() },
+    });
+    if (cancelled.count === 0) {
+      throw new BadRequestException('Соперник уже сел за стол');
+    }
   }
 
   /**
@@ -390,11 +511,25 @@ export class HotColdDuelService {
     return { total };
   }
 
-  /** Незакрытая дуэль игрока, если есть. */
+  /**
+   * Незакрытая дуэль игрока, если есть.
+   *
+   * `READY_CHECK` — тоже незакрытая, и раньше она сюда не попадала: только
+   * `WAITING` и `IN_PROGRESS`. Пока оба ждали отсчёта, стол существовал на
+   * сервере, но для этого метода как будто не было вовсе — а на нём стоит
+   * и восстановление активной партии при заходе на экран, и главный
+   * рубеж «уже есть незаконченная дуэль» в `create()`/`findOpponent()`.
+   * _Найдено живым прогоном личных приглашений: принявший вызов из
+   * глобального попапа (а не с самого экрана «Горячо-холодно») попадал не
+   * на стол, а обратно в лобби — страница переходила по адресу, её
+   * собственный эффект перечитывал `/active`, получал `null` и стирал
+   * только что принятую партию из вида. Партия при этом была жива —
+   * просто невидима._
+   */
   async activeFor(userId: string): Promise<string | null> {
     const found = await this.prisma.hotColdDuel.findFirst({
       where: {
-        status: { in: ['WAITING', 'IN_PROGRESS'] },
+        status: { in: ['WAITING', 'READY_CHECK', 'IN_PROGRESS'] },
         players: { some: { userId } },
       },
       select: { id: true },

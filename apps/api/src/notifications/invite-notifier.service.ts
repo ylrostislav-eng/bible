@@ -95,6 +95,24 @@ export class InviteNotifierService {
     });
   }
 
+  /** «Такой-то вызывает вас в «Горячо-холодно»». */
+  async notifyHotColdChallenge(params: {
+    toUserId: string;
+    fromNickname: string | null;
+    duelId: string;
+  }): Promise<void> {
+    await this.notify({
+      toUserId: params.toUserId,
+      invite: `hot-cold_${params.duelId}`,
+      buttonLabel: 'Открыть вызов',
+      text: (link) =>
+        [
+          `${playerLabel(params.fromNickname)} вызывает вас в «Горячо-холодно».`,
+          link ? `Открыть: ${link}` : 'Откройте приложение, чтобы ответить.',
+        ].join('\n'),
+    });
+  }
+
   /** «Такой-то зовёт вас в комнату». */
   async notifyRoomInvite(params: {
     toUserId: string;

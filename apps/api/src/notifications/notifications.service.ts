@@ -58,6 +58,22 @@ export class NotificationsService {
     });
   }
 
+  /** Личный вызов в «Горячо-холодно» — тот же случай: адресован ровно
+   * одному человеку, и без этого отказ молча стирал приглашение у
+   * отправителя без единого следа. */
+  async recordHotColdDecline(params: {
+    userId: string;
+    declinedByUserId: string;
+  }): Promise<void> {
+    await this.prisma.declineNotice.create({
+      data: {
+        userId: params.userId,
+        declinedByUserId: params.declinedByUserId,
+        kind: 'HOT_COLD_CHALLENGE',
+      },
+    });
+  }
+
   /** All notices still waiting to be shown to `userId`, oldest first — the
    * `IncomingNotifications`-style poller on the client shows them one at a
    * time and dismisses each as it's seen. */

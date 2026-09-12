@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 import { useIncomingDiceChallenges } from '@/lib/incoming-dice-challenges-context';
+import { useIncomingHotColdChallenges } from '@/lib/incoming-hot-cold-challenges-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { parseLaunchInvite, type LaunchInvite } from '@/lib/launch-invite';
 
@@ -27,6 +28,8 @@ import { parseLaunchInvite, type LaunchInvite } from '@/lib/launch-invite';
 export function LaunchInviteNotice() {
   const { challenges, loaded: challengesLoaded } = useIncomingChallenges();
   const { challenges: diceChallenges, loaded: diceChallengesLoaded } = useIncomingDiceChallenges();
+  const { challenges: hotColdChallenges, loaded: hotColdChallengesLoaded } =
+    useIncomingHotColdChallenges();
   const { invites, loaded: invitesLoaded } = useIncomingRoomInvites();
 
   // Читается ленивым инициализатором, а не в эффекте: параметр запуска не
@@ -47,13 +50,17 @@ export function LaunchInviteNotice() {
       ? challengesLoaded
       : invite?.kind === 'dice'
         ? diceChallengesLoaded
-        : invitesLoaded;
+        : invite?.kind === 'hot-cold-duel'
+          ? hotColdChallengesLoaded
+          : invitesLoaded;
   const present =
     invite?.kind === 'duel'
       ? challenges.some((c) => c.sessionId === invite.sessionId)
       : invite?.kind === 'dice'
         ? diceChallenges.some((c) => c.matchId === invite.matchId)
-        : invites.some((i) => invite && i.inviteId === invite.inviteId);
+        : invite?.kind === 'hot-cold-duel'
+          ? hotColdChallenges.some((c) => c.duelId === invite.duelId)
+          : invites.some((i) => invite && i.inviteId === invite.inviteId);
 
   /**
    * Ответ даётся один раз, вскоре после запуска, — и больше не
@@ -169,7 +176,9 @@ function takeLaunchInviteOnce(): LaunchInvite | null {
       ? `duel_${invite.sessionId}`
       : invite.kind === 'dice'
         ? `dice_${invite.matchId}`
-        : `room_${invite.inviteId}`;
+        : invite.kind === 'hot-cold-duel'
+          ? `hot-cold_${invite.duelId}`
+          : `room_${invite.inviteId}`;
   try {
     if (sessionStorage.getItem(HANDLED_KEY) === key) {
       cachedInvite = null;

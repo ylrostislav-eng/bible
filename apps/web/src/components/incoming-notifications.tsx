@@ -5,9 +5,11 @@ import { useState } from 'react';
 import { useActiveGame } from '@/lib/active-game-context';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 import { useIncomingDiceChallenges } from '@/lib/incoming-dice-challenges-context';
+import { useIncomingHotColdChallenges } from '@/lib/incoming-hot-cold-challenges-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { DiceChallengePopup } from './incoming-dice-challenge-modal';
 import { ChallengePopup } from './incoming-challenge-modal';
+import { HotColdChallengePopup } from './incoming-hot-cold-challenge-modal';
 import { InvitePopup } from './incoming-room-invite-modal';
 
 /**
@@ -22,9 +24,10 @@ import { InvitePopup } from './incoming-room-invite-modal';
  * doesn't feel like the end of the line.
  *
  * A duel challenge goes first when several are waiting, then a dice
- * challenge, then a room invite: duel and dice are both a direct 1-on-1
- * summons from one specific person, where a room invite is an open seat that
- * keeps just as well for the few seconds it takes to answer the other one.
+ * challenge, then a hot-cold-duel challenge, then a room invite: duel, dice
+ * and hot-cold-duel are all a direct 1-on-1 summons from one specific
+ * person, where a room invite is an open seat that keeps just as well for
+ * the few seconds it takes to answer the other one.
  *
  * Dismissals ("Позже") are tracked here rather than inside each popup so
  * that deferring one genuinely hands the screen to the other — with the
@@ -36,6 +39,7 @@ export function IncomingNotifications() {
   const { activeGame } = useActiveGame();
   const { challenges } = useIncomingChallenges();
   const { challenges: diceChallenges } = useIncomingDiceChallenges();
+  const { challenges: hotColdChallenges } = useIncomingHotColdChallenges();
   const { invites } = useIncomingRoomInvites();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
@@ -62,6 +66,11 @@ export function IncomingNotifications() {
   // который остался смотреть на «Победа» после прошлой партии, не
   // появлялось нигде, пока он не уходил в меню руками._
   const diceChallenge = diceChallenges.find((c) => !dismissedIds.has(c.matchId));
+  // Тот же случай, что и у «Костей»: `/hot-cold/duel` — один адрес на все
+  // подэкраны режима (меню, ожидание, отсчёт, партия, итог), и подавление
+  // по адресу спрятало бы новый вызов от того, кто остался смотреть на
+  // экран итога прошлой партии.
+  const hotColdChallenge = hotColdChallenges.find((c) => !dismissedIds.has(c.duelId));
   const invite =
     pathname === '/play/room' ? undefined : invites.find((i) => !dismissedIds.has(i.inviteId));
 
@@ -74,9 +83,11 @@ export function IncomingNotifications() {
         queuedNote={
           diceChallenge
             ? 'Вас также зовут в кости — покажем следующим'
-            : invite
-              ? 'Вас также зовут в комнату — покажем следующим'
-              : undefined
+            : hotColdChallenge
+              ? 'Вас также зовут в «Горячо-холодно» — покажем следующим'
+              : invite
+                ? 'Вас также зовут в комнату — покажем следующим'
+                : undefined
         }
       />
     );
@@ -88,6 +99,23 @@ export function IncomingNotifications() {
         key={diceChallenge.matchId}
         challenge={diceChallenge}
         onDismiss={() => dismiss(diceChallenge.matchId)}
+        queuedNote={
+          hotColdChallenge
+            ? 'Вас также зовут в «Горячо-холодно» — покажем следующим'
+            : invite
+              ? 'Вас также зовут в комнату — покажем следующим'
+              : undefined
+        }
+      />
+    );
+  }
+
+  if (hotColdChallenge) {
+    return (
+      <HotColdChallengePopup
+        key={hotColdChallenge.duelId}
+        challenge={hotColdChallenge}
+        onDismiss={() => dismiss(hotColdChallenge.duelId)}
         queuedNote={invite ? 'Вас также зовут в комнату — покажем следующим' : undefined}
       />
     );

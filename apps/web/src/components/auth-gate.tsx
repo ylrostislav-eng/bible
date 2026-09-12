@@ -8,6 +8,7 @@ import { DeclineNoticesProvider } from '@/lib/decline-notices-context';
 import { ImmersiveProvider, useImmersive } from '@/lib/immersive-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { IncomingDiceChallengesProvider } from '@/lib/incoming-dice-challenges-context';
+import { IncomingHotColdChallengesProvider } from '@/lib/incoming-hot-cold-challenges-context';
 import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { SwipeBackNavigation, SwipeBackProvider } from '@/lib/swipe-back-context';
@@ -96,13 +97,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         <SwipeBackProvider>
           <IncomingChallengesProvider>
             <IncomingDiceChallengesProvider>
-              <IncomingRoomInvitesProvider>
-                <DeclineNoticesProvider>
-                  <ImmersiveProvider>
-                    <AppChrome>{children}</AppChrome>
-                  </ImmersiveProvider>
-                </DeclineNoticesProvider>
-              </IncomingRoomInvitesProvider>
+              <IncomingHotColdChallengesProvider>
+                <IncomingRoomInvitesProvider>
+                  <DeclineNoticesProvider>
+                    <ImmersiveProvider>
+                      <AppChrome>{children}</AppChrome>
+                    </ImmersiveProvider>
+                  </DeclineNoticesProvider>
+                </IncomingRoomInvitesProvider>
+              </IncomingHotColdChallengesProvider>
             </IncomingDiceChallengesProvider>
           </IncomingChallengesProvider>
         </SwipeBackProvider>

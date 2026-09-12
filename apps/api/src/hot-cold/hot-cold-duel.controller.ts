@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { IsOptional, IsString, Length } from 'class-validator';
+import { IsIn, IsOptional, IsString, Length } from 'class-validator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
@@ -17,6 +17,11 @@ export class JoinHotColdDuelDto {
   @IsString()
   @Length(4, 12)
   code!: string;
+}
+
+export class RespondHotColdInviteDto {
+  @IsIn(['ACCEPT', 'DECLINE'])
+  action!: 'ACCEPT' | 'DECLINE';
 }
 
 /**
@@ -66,6 +71,32 @@ export class HotColdDuelController {
     @Body() dto: JoinHotColdDuelDto,
   ) {
     return { duelId: await this.duels.joinByCode(currentUser.sub, dto.code) };
+  }
+
+  /** Личные вызовы, ждущие ответа именно от меня. */
+  @Get('pending-invites')
+  async pendingInvites(@CurrentUser() currentUser: JwtPayload) {
+    return this.duels.pendingInvites(currentUser.sub);
+  }
+
+  @Post(':id/respond')
+  async respond(
+    @CurrentUser() currentUser: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: RespondHotColdInviteDto,
+  ) {
+    return this.duels.respondToInvite(currentUser.sub, id, dto.action);
+  }
+
+  /** Отменить свой же неотвеченный вызов — до того, как за стол сел кто-то
+   * второй. */
+  @Post(':id/cancel')
+  async cancel(
+    @CurrentUser() currentUser: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    await this.duels.cancel(currentUser.sub, id);
+    return { ok: true };
   }
 
   @Get(':id')

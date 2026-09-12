@@ -333,6 +333,14 @@ export interface HotColdDuelState {
   reward: HotColdDuelReward | null;
 }
 
+/** Личный вызов другу — ждёт ответа. */
+export interface PendingHotColdDuelInvite {
+  duelId: string;
+  fromUserId: string;
+  fromNickname: string | null;
+  createdAt: string;
+}
+
 /**
  * Что сказать про исход.
  *

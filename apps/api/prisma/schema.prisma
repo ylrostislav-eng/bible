@@ -725,6 +725,7 @@ enum DeclineNoticeKind {
   DUEL_CHALLENGE
   ROOM_INVITE
   DICE_CHALLENGE
+  HOT_COLD_CHALLENGE
 }
 
 /// A one-shot "your invite was declined" notice for the person who sent it —

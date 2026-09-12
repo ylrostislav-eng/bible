@@ -17,6 +17,7 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DuelCountdown } from '@/components/duel-countdown';
+import { PlayerList } from '@/components/player-list';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import { WaitingOpponents } from '@/components/ui/waiting-opponents';
 import { ApiError, apiClient } from '@/lib/api';
 import { useActiveGame } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
+import { useIncomingHotColdChallenges } from '@/lib/incoming-hot-cold-challenges-context';
 import { playSound, useSoundWhen } from '@/lib/sound';
 import { useHotColdDuel } from '@/lib/use-hot-cold-duel';
 import { useBlockSwipeBack } from '@/lib/swipe-back-context';
@@ -55,6 +57,8 @@ export default function HotColdDuelPage() {
   const { user } = useAuth();
   const { setActiveGame } = useActiveGame();
   const [duelId, setDuelId] = useState<string | null>(null);
+  /** Пока нет партии — либо лобби, либо экран выбора, кого позвать лично. */
+  const [screen, setScreen] = useState<'lobby' | 'invite'>('lobby');
   const [starting, setStarting] = useState(false);
   const [code, setCode] = useState('');
   const [guess, setGuess] = useState('');
@@ -242,12 +246,22 @@ export default function HotColdDuelPage() {
     inputRef.current?.focus();
   }, [guess, duel]);
 
+  if (!duelId && screen === 'invite') {
+    return (
+      <InviteScreen
+        onInvited={(newDuelId) => setDuelId(newDuelId)}
+        onBack={() => setScreen('lobby')}
+      />
+    );
+  }
+
   if (!duelId) {
     return (
       <Lobby
         code={code}
         onCode={setCode}
         onFind={() => void findOpponent()}
+        onInviteFriend={() => setScreen('invite')}
         onStart={() => void start()}
         onJoin={() => void join()}
         busy={starting}
@@ -417,6 +431,7 @@ function Lobby({
   code,
   onCode,
   onFind,
+  onInviteFriend,
   onStart,
   onJoin,
   busy,
@@ -425,6 +440,7 @@ function Lobby({
   code: string;
   onCode: (value: string) => void;
   onFind: () => void;
+  onInviteFriend: () => void;
   onStart: () => void;
   onJoin: () => void;
   busy: boolean;
@@ -465,15 +481,27 @@ function Lobby({
         {busy ? <Spinner /> : 'Найти соперника'}
       </Button>
 
+      {/* Личный вызов другу — тем же приёмом, что у дуэли по вопросам и у
+          «Костей»: выбор из списка игроков, а не голый код. Раньше кнопка
+          «Пригласить» на самом деле заводила открытый код (зайдёт кто
+          угодно) — назвать её «Пригласить» было неточно: приглашения
+          конкретному человеку эта кнопка не делала вовсе. */}
+      <button
+        type="button"
+        onClick={onInviteFriend}
+        disabled={busy}
+        className="rounded-xl bg-surface-hover px-5 py-3 text-sm font-semibold transition hover:bg-border disabled:text-text-muted"
+      >
+        Пригласить друга
+      </button>
+
       <button
         type="button"
         onClick={onStart}
         disabled={busy}
-        // Гасим цветом текста, а не прозрачностью: кнопка лежит прямо на
-        // обоях экрана, и полупрозрачной сквозь неё видно картинку.
-        className="rounded-xl bg-surface-hover px-5 py-3 text-sm font-semibold transition hover:bg-border disabled:text-text-muted"
+        className="text-center text-sm text-text-secondary"
       >
-        Пригласить
+        …или создать по коду
       </button>
 
       <div className="flex flex-col gap-2">
@@ -505,6 +533,105 @@ function Lobby({
       </div>
 
       <ScreenBack href="/play" label="Назад к играм" />
+    </div>
+  );
+}
+
+/**
+ * Кого позвать лично — тот же приём, что у «Кого вызвать?» в дуэли по
+ * вопросам и «Кого пригласить?» в костях: список игроков вместо голого
+ * кода, и входящие вызовы видны прямо здесь же, инлайн — как и у них.
+ */
+function InviteScreen({
+  onInvited,
+  onBack,
+}: {
+  onInvited: (duelId: string) => void;
+  onBack: () => void;
+}) {
+  const { challenges: pending, removeChallenge } = useIncomingHotColdChallenges();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onInvite = async (friendUserId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await apiClient.post<{ duelId: string }>('/hot-cold/duel', {
+        targetUserId: friendUserId,
+      });
+      onInvited(response.duelId);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось отправить приглашение');
+      throw cause;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const respond = async (duelId: string, action: 'ACCEPT' | 'DECLINE') => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (action === 'ACCEPT') {
+        await apiClient.post(`/hot-cold/duel/${duelId}/respond`, { action });
+        removeChallenge(duelId);
+        onInvited(duelId);
+      } else {
+        await apiClient.post(`/hot-cold/duel/${duelId}/respond`, { action });
+        removeChallenge(duelId);
+      }
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Не получилось ответить на вызов');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div>
+        <h1 className="text-xl font-bold">Кого вызвать?</h1>
+        <p className="mt-2 text-sm text-text-secondary">
+          Выберите игрока или найдите его по нику — одно слово на двоих, кто найдёт первым.
+        </p>
+      </div>
+
+      {pending.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4">
+          <p className="text-sm font-semibold">Вас вызывают</p>
+          {pending.map((invite) => (
+            <div key={invite.duelId} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{invite.fromNickname ?? 'Игрок'}</p>
+                <p className="text-xs text-text-muted">Горячо-холодно</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void respond(invite.duelId, 'ACCEPT')}
+                  className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary disabled:opacity-50"
+                >
+                  Принять
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void respond(invite.duelId, 'DECLINE')}
+                  className="h-9 rounded-lg bg-surface-hover px-3 text-xs text-text-secondary disabled:opacity-50"
+                >
+                  Отклонить
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <PlayerList mode="invite" onInvite={onInvite} />
+      <ScreenBack onClick={onBack} />
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ContactModule } from '../contact/contact.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PresenceModule } from '../presence/presence.module';
 import { UsersModule } from '../users/users.module';
 import { HotColdDuelController } from './hot-cold-duel.controller';
@@ -8,7 +10,7 @@ import { HotColdController } from './hot-cold.controller';
 import { HotColdService } from './hot-cold.service';
 
 @Module({
-  imports: [UsersModule, PresenceModule],
+  imports: [UsersModule, PresenceModule, ContactModule, NotificationsModule],
   controllers: [HotColdController, HotColdDuelController],
   providers: [HotColdService, HotColdDuelService, HotColdDuelGateway],
 })
