@@ -24,6 +24,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { useImmersiveWhile } from '@/lib/immersive-context';
 import { useSoundWhen } from '@/lib/sound';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 import { reportClientError } from '@/lib/telemetry';
 
 /**
@@ -85,6 +86,7 @@ export default function DicePage() {
   const atTable =
     screen === 'tutorial' || (screen === 'match' && match !== null && match.status !== 'WAITING');
   useImmersiveWhile(atTable);
+  useBlockSwipeBack(atTable);
 
   const apply = useCallback((view: DiceMatchView) => {
     setMatch(view);

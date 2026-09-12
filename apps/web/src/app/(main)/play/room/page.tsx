@@ -34,6 +34,7 @@ import { useSound, useSoundWhen } from '@/lib/sound';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useRoomSocket } from '@/lib/use-room-socket';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 
 const PUBLIC_ROOMS_POLL_MS = 5000;
 
@@ -82,6 +83,7 @@ export default function RoomPage() {
     answer,
     leave,
   } = useRoomSocket(sessionId);
+  useBlockSwipeBack(roomState?.status === 'IN_PROGRESS');
 
   // Keeps the global "active game" record pointed at whichever room this
   // page is actually showing — but not once we've been removed: without

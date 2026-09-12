@@ -9,6 +9,7 @@ import { ImmersiveProvider, useImmersive } from '@/lib/immersive-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
 import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
+import { SwipeBackNavigation, SwipeBackProvider } from '@/lib/swipe-back-context';
 import { DeclineNoticeToast } from './decline-notice-toast';
 import { IncomingNotifications } from './incoming-notifications';
 import { LaunchInviteNotice } from './launch-invite-notice';
@@ -91,15 +92,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <TextScaleProvider>
       <ActiveGameProvider>
-        <IncomingChallengesProvider>
-          <IncomingRoomInvitesProvider>
-            <DeclineNoticesProvider>
-              <ImmersiveProvider>
-                <AppChrome>{children}</AppChrome>
-              </ImmersiveProvider>
-            </DeclineNoticesProvider>
-          </IncomingRoomInvitesProvider>
-        </IncomingChallengesProvider>
+        <SwipeBackProvider>
+          <IncomingChallengesProvider>
+            <IncomingRoomInvitesProvider>
+              <DeclineNoticesProvider>
+                <ImmersiveProvider>
+                  <AppChrome>{children}</AppChrome>
+                </ImmersiveProvider>
+              </DeclineNoticesProvider>
+            </IncomingRoomInvitesProvider>
+          </IncomingChallengesProvider>
+        </SwipeBackProvider>
       </ActiveGameProvider>
     </TextScaleProvider>
   );
@@ -137,6 +140,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   // «element was detached from the DOM»._
   return (
     <>
+      <SwipeBackNavigation />
       {/* Отступ снизу закрывает не только навигацию, но и плавающие кнопки:
           музыка и приглашения стоят в 6rem от низа и сами высотой 3.5rem,
           то есть занимают до 9.5rem. _С прежними 6rem последняя карточка на

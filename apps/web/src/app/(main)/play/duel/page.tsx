@@ -40,6 +40,7 @@ import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
 import { useSound, useSoundWhen } from '@/lib/sound';
 import { useIntroCountdown } from '@/lib/use-intro-countdown';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 
 const POLL_INTERVAL_MS = 1200;
 /** Set by the friends-tab "Вызвать" flow right before it navigates here, so
@@ -88,6 +89,7 @@ export default function DuelPage() {
     return activeGame?.type === 'duel' ? activeGame.sessionId : null;
   });
   const [duelState, setDuelState] = useState<DuelState | null>(null);
+  useBlockSwipeBack(duelState?.status === 'IN_PROGRESS');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [, setRewardsApplied] = useState(false);
 

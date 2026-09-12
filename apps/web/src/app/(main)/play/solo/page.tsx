@@ -27,6 +27,7 @@ import { useAuth } from '@/lib/auth-context';
 import { pluralCoins, pluralDays } from '@/lib/plural';
 import { useSound } from '@/lib/sound';
 import { useSyncProfileOnce } from '@/lib/use-sync-profile-once';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 
 type Phase = 'setup' | 'question' | 'summary';
 
@@ -59,6 +60,7 @@ export default function PlayPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [summary, setSummary] = useState<GameSummary | null>(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(0);
+  useBlockSwipeBack(phase === 'question');
 
   const startGame = useCallback(async () => {
     setLoading(true);

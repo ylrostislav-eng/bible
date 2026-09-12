@@ -25,6 +25,7 @@ import { ApiError, apiClient } from '@/lib/api';
 import { pluralCoins } from '@/lib/plural';
 import { HOT_COLD_HEAT_SOUNDS } from '@/lib/hot-cold-sound';
 import { useSound } from '@/lib/sound';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 
 /**
  * «Горячо-холодно».
@@ -63,6 +64,7 @@ export default function HotColdPage() {
   // обработчиков: так в зависимостях стоит число, а не весь объект,
   // меняющийся на каждый ход.
   const round = state?.round;
+  useBlockSwipeBack(Boolean(state && !state.finished));
 
   useEffect(() => {
     let cancelled = false;

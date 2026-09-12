@@ -28,6 +28,7 @@ import {
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useImmersiveWhile } from '@/lib/immersive-context';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 import { useDebounced } from '@/lib/use-debounced';
 
 /** Собирает query-строку фильтров: она одна и та же для подсчёта колоды и
@@ -68,6 +69,7 @@ export default function AliasPage() {
   // оно меняется на каждое слово, и эффект, завязанный на него, отпускал бы
   // и заново запрашивал блокировку экрана после каждого ответа.
   const inSetup = match === null;
+  useBlockSwipeBack(!inSetup);
 
   useEffect(() => {
     if (!inSetup) return undefined;

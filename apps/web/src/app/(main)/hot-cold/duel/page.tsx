@@ -28,6 +28,7 @@ import { useActiveGame } from '@/lib/active-game-context';
 import { useAuth } from '@/lib/auth-context';
 import { playSound, useSoundWhen } from '@/lib/sound';
 import { useHotColdDuel } from '@/lib/use-hot-cold-duel';
+import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 
 /**
  * Дуэль «горячо-холодно».
@@ -83,6 +84,7 @@ export default function HotColdDuelPage() {
 
   const duel = useHotColdDuel(duelId);
   const { state } = duel;
+  useBlockSwipeBack(state?.status === 'IN_PROGRESS');
 
   // Незакрытая дуэль важнее пустого экрана: человек мог закрыть вкладку
   // посреди партии, и вернуть его надо туда же, а не в меню.
