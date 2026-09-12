@@ -38,7 +38,7 @@ function BooksView({ onSelectBook }: { onSelectBook: (bookId: number) => void })
       <div className="flex items-center gap-3">
         <ScreenIcon icon={LearnIcon} />
         <div>
-          <h1 className="text-xl font-bold">Изучение</h1>
+          <h1 className="text-xl font-bold">Библия</h1>
           <p className="text-sm text-text-secondary">Синодальный перевод</p>
         </div>
       </div>
@@ -104,7 +104,7 @@ function ChaptersView({
         ))}
       </div>
 
-      {/* «Изучение» — единственный раздел, где выход остался и в шапке
+      {/* «Библия» — единственный раздел, где выход остался и в шапке
           тоже: список глав и текст главы прокручиваются на несколько
           экранов, и выход, до которого надо долистать, выходом быть
           перестаёт. Нижний при этом такой же, как везде. */}
@@ -649,7 +649,7 @@ function readChapterFromQuery(params: URLSearchParams): { bookId: number; chapte
  *
  * Хранилище может быть недоступно (приватный просмотр, запрет на данные
  * сайтов) и тогда бросает на каждом обращении — отсюда `try` вокруг обеих
- * половин: без закладки «Изучение» работает как раньше, а падать из-за неё
+ * половин: без закладки «Библия» работает как раньше, а падать из-за неё
  * не должно.
  */
 const LAST_READ_KEY = 'bible-arena:last-read';

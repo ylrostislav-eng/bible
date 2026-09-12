@@ -71,7 +71,7 @@ export function ReadingComfortSection() {
         {/* Said plainly, because otherwise the setting looks broken the
             first time someone starts a duel and the clock is back. */}
         <p className="text-xs text-text-secondary">
-          Действует в режиме «Изучение». В дуэлях и комнатах таймер общий для всех игроков, поэтому
+          Действует в разделе «Библия». В дуэлях и комнатах таймер общий для всех игроков, поэтому
           там он не меняется.
         </p>
       </div>

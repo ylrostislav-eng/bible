@@ -12,7 +12,7 @@ import { modeTheme } from '@/lib/mode-theme';
 
 const QUICK_LINKS = [
   { href: '/play', label: 'Играть', icon: PlayIcon },
-  { href: '/learn', label: 'Изучение', icon: LearnIcon },
+  { href: '/learn', label: 'Библия', icon: LearnIcon },
   { href: '/tournaments', label: 'Турниры', icon: TournamentIcon },
   { href: '/settings', label: 'Настройки', icon: SettingsIcon },
 ] as const;

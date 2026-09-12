@@ -22,7 +22,7 @@ export const ACHIEVEMENT_CATEGORY_NAMES: Record<AchievementCategory, string> = {
   STREAK: 'Постоянство',
   GAMES: 'Игры',
   DUELS: 'Дуэли',
-  LEARNING: 'Изучение',
+  LEARNING: 'Библия',
   SOCIAL: 'Друзья',
 };
 
@@ -154,7 +154,7 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
     coins: 200,
   },
 
-  // Изучение считается по разным главам и разным книгам, а не по числу
+  // Чтение Библии считается по разным главам и разным книгам, а не по числу
   // проверок: иначе выгоднее гонять одну знакомую главу по кругу, а смысл
   // ровно обратный — пройти Писание вширь.
   {
