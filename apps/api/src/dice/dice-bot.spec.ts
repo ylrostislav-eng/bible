@@ -51,7 +51,7 @@ describe('Кости — программные соперники', () => {
   }
 
   it('любой характер сразу сохраняет победные очки', () => {
-    for (const level of ['EASY', 'MEDIUM', 'HARD'] as const) {
+    for (const level of ['EASY', 'MEDIUM'] as const) {
       const state: DiceGameState = {
         ...game(),
         phase: 'DECISION',

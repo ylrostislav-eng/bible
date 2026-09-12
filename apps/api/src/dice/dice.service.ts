@@ -789,7 +789,7 @@ export class DiceService {
       },
       select: { botDifficulty: true, winnerId: true },
     });
-    const wins = { EASY: 0, MEDIUM: 0, HARD: 0 };
+    const wins = { EASY: 0, MEDIUM: 0 };
     for (const row of rows)
       if (
         row.winnerId === userId &&
