@@ -285,6 +285,7 @@ export class HotColdDuelService {
     if (targetUserId === userId) {
       throw new BadRequestException('Нельзя вызвать самого себя');
     }
+    if (openToMatchmaking) await this.assertPublicSearch(userId);
     if (targetUserId) {
       // Тот же рубеж, что у личного вызова в дуэли и в «Кости»: детский
       // режим, мут, взаимный бан — без этого личный вызов был бы дырой в
@@ -435,6 +436,7 @@ export class HotColdDuelService {
   async findOpponent(
     userId: string,
   ): Promise<{ duelId: string; matched: boolean }> {
+    await this.assertPublicSearch(userId);
     const mine = await this.activeFor(userId);
     if (mine) return { duelId: mine, matched: false };
 
@@ -479,6 +481,28 @@ export class HotColdDuelService {
   }
 
   /**
+   * Рубеж перед публичным поиском: детский аккаунт не должен встретить
+   * незнакомца, а мут не должен позволять звать кого попало через код или
+   * подбор в обход того же правила, что стоит у прямого вызова.
+   *
+   * Тот же приём, что в «Костях» (`assertPublicSearch` там): сам себе
+   * `assertCanReach` — способ переиспользовать проверку мута, не заводя
+   * для неё отдельный публичный метод в `ContactPolicyService`.
+   */
+  private async assertPublicSearch(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { ageBand: true },
+    });
+    if (user.ageBand === 'CHILD') {
+      throw new ForbiddenException(
+        'В детском режиме дуэль доступна только с друзьями',
+      );
+    }
+    await this.contacts.assertCanReach(userId, userId);
+  }
+
+  /**
    * Сколько человек сейчас ищут соперника в этом режиме.
    *
    * Та же мерка, что и в дуэли по вопросам: очередь — это сами ждущие
@@ -490,6 +514,11 @@ export class HotColdDuelService {
    * у всех одинаковая — одно слово на двоих.
    */
   async waitingOpponents(userId: string): Promise<WaitingOpponentsView> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { ageBand: true },
+    });
+    if (user.ageBand === 'CHILD') return { total: 0 };
     const waiting = await this.prisma.hotColdDuel.findMany({
       where: {
         status: 'WAITING',
@@ -571,6 +600,21 @@ export class HotColdDuelService {
     }
     if (duel.players.length >= 2) {
       throw new BadRequestException('В дуэли уже двое');
+    }
+
+    const host = duel.players[0]?.userId;
+    if (host) {
+      // Проверка в обе стороны: тот же рубеж, что у личного вызова, — но
+      // здесь он нужен ещё и для входа по коду и по подбору, где вызова не
+      // было вовсе. Без неё ребёнок мог сесть к незнакомцу по случайно
+      // полученному коду или через «найти соперника», хотя ровно это
+      // должно быть закрыто тем же правилом, что и прямой вызов.
+      // _Найдено этим аудитом: `findOpponent()` не проверял ни `ageBand`,
+      // ни `ContactPolicyService` вовсе — единственная защита была
+      // взаимный бан, а детского правила не было ни здесь, ни при входе в
+      // публичный поиск._
+      await this.contacts.assertCanReach(userId, host);
+      await this.contacts.assertCanReach(host, userId);
     }
 
     // `updateMany` с условием «ещё ждёт»: двое, нажавших «войти»

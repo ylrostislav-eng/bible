@@ -49,6 +49,7 @@ interface PlayerRow {
 interface UserRow {
   id: string;
   nickname: string | null;
+  ageBand: string | null;
 }
 
 function fakeContacts(deny?: (from: string, to: string) => string | null) {
@@ -197,10 +198,18 @@ function fakeDb(users: UserRow[]) {
     ),
   };
 
+  const findUser = ({ where }: { where: { id: string } }) => {
+    const row = usersById.get(where.id);
+    return row
+      ? { id: row.id, nickname: row.nickname, ageBand: row.ageBand }
+      : null;
+  };
   const user = {
-    findUnique: jest.fn(({ where }: { where: { id: string } }) => {
-      const row = usersById.get(where.id);
-      return row ? { id: row.id, nickname: row.nickname } : null;
+    findUnique: jest.fn(findUser),
+    findUniqueOrThrow: jest.fn((args: { where: { id: string } }) => {
+      const found = findUser(args);
+      if (!found) throw new NotFoundException('Пользователь не найден');
+      return found;
     }),
   };
 
@@ -219,12 +228,17 @@ function fakeDb(users: UserRow[]) {
     findMany: jest.fn(() => []),
   };
 
+  const roomBan = {
+    findMany: jest.fn(() => []),
+  };
+
   const prisma = {
     hotColdDuel,
     hotColdDuelPlayer,
     user,
     aliasWord,
     hotColdAttempt,
+    roomBan,
   } as unknown as PrismaService;
 
   return { prisma, duels, players };
@@ -282,8 +296,12 @@ function service(
   );
 }
 
-function player(id: string, nickname: string): UserRow {
-  return { id, nickname };
+function player(
+  id: string,
+  nickname: string,
+  ageBand: string | null = null,
+): UserRow {
+  return { id, nickname, ageBand };
 }
 
 describe('личные приглашения в «Горячо-холодно»', () => {
@@ -427,5 +445,86 @@ describe('личные приглашения в «Горячо-холодно»
     const duelId = await duels.create('a', 'b');
     await duels.respondToInvite('b', duelId, 'ACCEPT');
     await expect(duels.cancel('a', duelId)).rejects.toThrow('уже сел за стол');
+  });
+});
+
+/**
+ * Детский режим и публичный поиск.
+ *
+ * До этого аудита `findOpponent`/`joinDuel` не спрашивали ни `ageBand`, ни
+ * `ContactPolicyService` вовсе — единственной защитой был взаимный бан.
+ * У «Костей» ровно этот путь закрыт в три слоя (`assertPublicSearch` на
+ * входе в подбор, та же проверка внутри `create` с `openToMatchmaking`, и
+ * двусторонний `assertCanReach` в точке, где садится второй игрок); здесь
+ * не было ни одного. Ребёнок мог оказаться в партии со случайным
+ * взрослым — через подбор или просто через код, который куда-то
+ * пересылают.
+ */
+describe('«Горячо-холодно»: детский режим и публичный поиск', () => {
+  it('ребёнок не может открыть публичный поиск', async () => {
+    const { prisma } = fakeDb([player('a', 'Аня', 'CHILD')]);
+    const duels = service(prisma);
+    await expect(duels.create('a', undefined, true)).rejects.toThrow(
+      'детском режиме',
+    );
+  });
+
+  it('«найти соперника» недоступно ребёнку', async () => {
+    const { prisma } = fakeDb([player('a', 'Аня', 'CHILD')]);
+    const duels = service(prisma);
+    await expect(duels.findOpponent('a')).rejects.toThrow('детском режиме');
+  });
+
+  it('счётчик ожидающих соперников для ребёнка всегда ноль', async () => {
+    const { prisma } = fakeDb([player('a', 'Аня', 'CHILD')]);
+    const duels = service(prisma);
+    await expect(duels.waitingOpponents('a')).resolves.toEqual({ total: 0 });
+  });
+
+  it('вход по коду проверяет контактную политику против хозяина стола', async () => {
+    const { prisma, duels: rows } = fakeDb([
+      player('a', 'Аня'),
+      player('b', 'Боря'),
+    ]);
+    const hostDuelId = await service(prisma).create('a');
+    const code = rows.find((d) => d.id === hostDuelId)!.inviteCode;
+
+    const contacts = fakeContacts((from, to) =>
+      from === 'b' && to === 'a' ? 'Этот игрок недоступен' : null,
+    );
+    await expect(
+      service(prisma, contacts).joinByCode('b', code),
+    ).rejects.toThrow('недоступен');
+  });
+
+  it('вход по коду проверяет контактную политику и со стороны хозяина', async () => {
+    // Тот же вход, но запрет смотрит с другой стороны: без второго вызова
+    // `assertCanReach` в `joinDuel` это прошло бы — только первое
+    // направление и проверялось бы.
+    const { prisma, duels: rows } = fakeDb([
+      player('a', 'Аня'),
+      player('b', 'Боря'),
+    ]);
+    const hostDuelId = await service(prisma).create('a');
+    const code = rows.find((d) => d.id === hostDuelId)!.inviteCode;
+
+    const contacts = fakeContacts((from, to) =>
+      from === 'a' && to === 'b' ? 'Этот игрок недоступен' : null,
+    );
+    await expect(
+      service(prisma, contacts).joinByCode('b', code),
+    ).rejects.toThrow('недоступен');
+  });
+
+  it('вход по коду по-прежнему работает, когда контактная политика не против', async () => {
+    const { prisma, duels: rows } = fakeDb([
+      player('a', 'Аня'),
+      player('b', 'Боря'),
+    ]);
+    const hostDuelId = await service(prisma).create('a');
+    const code = rows.find((d) => d.id === hostDuelId)!.inviteCode;
+
+    const duelId = await service(prisma).joinByCode('b', code);
+    expect(duelId).toBe(hostDuelId);
   });
 });
