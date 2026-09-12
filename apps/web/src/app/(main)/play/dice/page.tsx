@@ -517,6 +517,30 @@ function DiceMatchScreen({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[calc(var(--safe-top)+7rem)] bg-gradient-to-b from-black/70 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
 
+      {!finished && !abandoned && (
+        /* HUD привязан к самой сцене, а не к меняющей высоту колонке
+           действий: свободная полоса столешницы между локтями и доской. */
+        <div
+          className="pointer-events-none absolute inset-x-0 top-[52.5%] z-10 px-3"
+          data-testid="dice-score-hud"
+        >
+          <div className="flex h-[3.25rem] items-start gap-2">
+            <ScoreChip player={me} label="Вы" active={visualMyTurn} target={match.targetScore} />
+            <div className="shrink-0 rounded-full bg-black/70 px-2.5 py-1 text-center shadow-lg backdrop-blur-sm">
+              <p className="text-[9px] uppercase leading-none tracking-wide text-white/50">до</p>
+              <p className="text-xs font-bold leading-tight text-primary">{match.targetScore}</p>
+            </div>
+            <ScoreChip
+              player={rival}
+              label={null}
+              active={!visualMyTurn}
+              target={match.targetScore}
+              align="right"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 px-3 pb-[max(0.75rem,var(--safe-bottom))]">
         {finished || abandoned ? (
           <FinishedCard
@@ -528,23 +552,6 @@ function DiceMatchScreen({
           />
         ) : (
           <>
-            {/* Счёт живёт рядом с решениями игрока, а не поверх лица
-                соперника. Нижняя safe-area уже учтена контейнером. */}
-            <div className="flex items-start gap-2" data-testid="dice-score-hud">
-              <ScoreChip player={me} label="Вы" active={visualMyTurn} target={match.targetScore} />
-              <div className="shrink-0 rounded-full bg-black/55 px-2.5 py-1 text-center backdrop-blur-sm">
-                <p className="text-[9px] uppercase leading-none tracking-wide text-white/50">до</p>
-                <p className="text-xs font-bold leading-tight text-primary">{match.targetScore}</p>
-              </div>
-              <ScoreChip
-                player={rival}
-                label={null}
-                active={!visualMyTurn}
-                target={match.targetScore}
-                align="right"
-              />
-            </div>
-
             {/* Очки хода — крупно: это то самое число, которым рискуют. */}
             <div className="flex items-baseline justify-between px-1">
               <p className="flex items-center gap-2 text-sm font-medium text-white/80">
