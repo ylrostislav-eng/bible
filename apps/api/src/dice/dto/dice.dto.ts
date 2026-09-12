@@ -16,24 +16,12 @@ import {
   Min,
 } from 'class-validator';
 
-/** Секунды на ход: меньше половины минуты — не подумать, больше пяти —
- * уже не таймер, а вечность на том конце. */
-const TURN_LIMIT_MIN = 30;
-const TURN_LIMIT_MAX = 300;
-
 export class CreateDiceMatchDto {
   @IsOptional()
   @IsIn(DICE_TARGET_OPTIONS, {
     message: 'Такой цели у партии быть не может',
   })
   targetScore?: number;
-
-  /** `null` — без таймера: так играют с друзьями. */
-  @IsOptional()
-  @IsInt()
-  @Min(TURN_LIMIT_MIN)
-  @Max(TURN_LIMIT_MAX)
-  turnTimeLimit?: number | null;
 
   @IsOptional()
   @IsBoolean()

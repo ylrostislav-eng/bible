@@ -559,6 +559,22 @@ describe('DiceService — персональные приглашения', () =
     expect(joined.status).toBe('IN_PROGRESS');
   });
 
+  it('личный вызов тоже ограничен по времени на ход — не только случайный подбор', async () => {
+    // Раньше личные столы создавались вовсе без таймера («так играют с
+    // друзьями»), и партнёр, который просто не бросает кости, был не
+    // ограничен ничем, кроме уборщика брошенных партий (часы, а не
+    // секунды) — второй игрок сидел и ждал непонятно чего. Решение
+    // владельца: тот же таймер, что и в случайном подборе, для всех
+    // столов с живым соперником.
+    const { prisma } = fakeDb([player('a', 'Аня'), player('b', 'Боря')]);
+    const dice = service(prisma);
+    const view = await dice.challenge('a', 'b', 4000);
+    expect(view.turnTimeLimit).toBe(60);
+
+    const accepted = await dice.respondToInvite('b', view.matchId, 'ACCEPT');
+    expect('turnTimeLimit' in accepted && accepted.turnTimeLimit).toBe(60);
+  });
+
   it('принятие сажает за стол и убирает приглашение из списка', async () => {
     const { prisma } = fakeDb([player('a', 'Аня'), player('b', 'Боря')]);
     const dice = service(prisma);

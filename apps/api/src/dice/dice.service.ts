@@ -45,12 +45,19 @@ type Match = Prisma.DiceMatchGetPayload<{ include: { players: true } }>;
 type Tx = Prisma.TransactionClient;
 type CreateParams = {
   targetScore?: number;
-  turnTimeLimit?: number | null;
   openToMatchmaking?: boolean;
   botDifficulty?: DiceBotLevel;
 };
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const INTRO_MS = 2800;
+/** Секунд на ход у любого стола с живым соперником — личный вызов, вход
+ * по коду или случайный подбор, разницы нет. Раньше личные столы и вход
+ * по коду создавались вовсе без таймера («так играют с друзьями»), но это
+ * оказалось не удобством, а дырой: партнёр, который просто не бросает
+ * кости, не ограничен ничем, кроме уборщика брошенных партий (часы, а не
+ * секунды) — второй игрок сидит и ждёт непонятно чего. Партии с
+ * программой таймер по-прежнему не нужен: программа не «зависает». */
+const TURN_TIME_LIMIT_SECONDS = 60;
 const HANDOFF_MS = 1500;
 /** Полный бросок (1,44 с) и две секунды на чтение результата. */
 const BUST_HANDOFF_MS = 3500;
@@ -247,7 +254,7 @@ export class DiceService {
         botDifficulty: bot,
         status: state.status,
         state: json(state),
-        turnTimeLimit: bot ? null : (params.turnTimeLimit ?? null),
+        turnTimeLimit: bot ? null : TURN_TIME_LIMIT_SECONDS,
         openToMatchmaking: !bot && (params.openToMatchmaking ?? false),
         startedAt: starts,
         turnStartedAt: starts,
@@ -355,7 +362,6 @@ export class DiceService {
       }
       return this.createIn(tx, userId, {
         targetScore: target,
-        turnTimeLimit: 60,
         openToMatchmaking: true,
       });
     });
@@ -764,7 +770,6 @@ export class DiceService {
         userId,
         {
           targetScore: old.targetScore,
-          turnTimeLimit: old.turnTimeLimit,
           botDifficulty:
             (old.botDifficulty as DiceBotLevel | null) ?? undefined,
         },
