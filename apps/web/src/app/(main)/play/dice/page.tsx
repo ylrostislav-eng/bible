@@ -602,6 +602,17 @@ function DiceMatchScreen({
   const rollResult = match.events.find((event) => event.type === 'ROLL_RESULT');
   const rollPlayerId = rollResult?.playerId;
 
+  // `match.phase` нарочно не в списке зависимостей. Между броском и тем,
+  // как счётчик снова уйдёт в `false`, фаза успевает смениться сама
+  // (SELECTING → DECISION → HOT_DICE выбором костей) — и раньше это было
+  // зависимостью эффекта: смена фазы перезапускала его, старый таймер
+  // гасило `clearTimeout` из cleanup, а ранний выход по «этот бросок уже
+  // отыгран» (`previousAnimatedRoll.current === rollKey`) не ставил
+  // новый. `revealingRoll` застревал в `true` навсегда — кнопки хода
+  // спрятаны именно под этим флагом, и стол чинил только перезаход.
+  // _Нашлось живой партией двух ботов: обычная выборка костей быстрее
+  // после броска, чем гаснет анимация, — ровно то, что делает не только
+  // сценарий, но и любой не самый медленный игрок._
   useEffect(() => {
     if (!rollPlayerId || previousAnimatedRoll.current === rollKey) return;
     previousAnimatedRoll.current = rollKey;
@@ -610,7 +621,8 @@ function DiceMatchScreen({
     const resultHold = match.phase === 'BUST' ? 0 : 350;
     const timer = window.setTimeout(() => setRevealingRoll(false), DICE_ROLL_MS + resultHold);
     return () => window.clearTimeout(timer);
-  }, [match.phase, rollKey, rollPlayerId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rollKey, rollPlayerId]);
 
   const visualMyTurn = revealingRoll ? rollingPlayerId === match.youId : myTurn;
 
