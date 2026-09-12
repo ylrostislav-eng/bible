@@ -272,3 +272,11 @@ export interface DiceMatchView {
   /** События последнего действия: по ним экран запускает анимации. */
   events: import('./dice-engine').DiceEvent[];
 }
+
+export interface PendingDiceInvite {
+  matchId: string;
+  fromUserId: string;
+  fromNickname: string | null;
+  targetScore: number;
+  createdAt: string;
+}

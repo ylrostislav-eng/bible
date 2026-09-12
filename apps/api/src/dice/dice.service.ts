@@ -26,6 +26,7 @@ import {
   type DiceEvent,
   type DiceGameState,
   type DiceMatchView,
+  type PendingDiceInvite,
   type DiceProgress,
   type DiceStepResult,
   type DiceValue,
@@ -101,6 +102,90 @@ export class DiceService {
       return this.createIn(tx, userId, params);
     });
     return this.view(id, userId);
+  }
+
+  async challenge(userId: string, opponentId: string, targetScore: number) {
+    if (opponentId === userId)
+      throw new BadRequestException('Нельзя пригласить самого себя');
+    await this.contacts.assertCanReach(userId, opponentId);
+    const opponent = await this.prisma.user.findUnique({
+      where: { id: opponentId },
+      select: { id: true },
+    });
+    if (!opponent) throw new NotFoundException('Игрок не найден');
+
+    const id = await this.queue(async (tx) => {
+      if (await this.active(tx, userId))
+        throw new ConflictException(
+          'Сначала завершите или отмените свой текущий стол',
+        );
+      const outstanding = await tx.diceMatch.findFirst({
+        where: {
+          status: 'WAITING',
+          targetOpponentId: opponentId,
+          players: { some: { userId } },
+        },
+        select: { id: true },
+      });
+      if (outstanding)
+        throw new ConflictException(
+          'Вы уже пригласили этого игрока — дождитесь ответа',
+        );
+      return this.createIn(tx, userId, { targetScore }, undefined, opponentId);
+    });
+    return this.view(id, userId);
+  }
+
+  async pendingInvites(userId: string): Promise<PendingDiceInvite[]> {
+    const matches = await this.prisma.diceMatch.findMany({
+      where: { status: 'WAITING', targetOpponentId: userId },
+      include: {
+        players: { include: { user: { select: { nickname: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return matches.map((match) => {
+      const host = match.players[0];
+      return {
+        matchId: match.id,
+        fromUserId: host?.userId ?? '',
+        fromNickname: this.staffNames.label(
+          host?.userId ?? '',
+          host?.user.nickname ?? null,
+        ),
+        targetScore: match.targetScore,
+        createdAt: match.createdAt.toISOString(),
+      };
+    });
+  }
+
+  async respondToInvite(
+    userId: string,
+    matchId: string,
+    action: 'ACCEPT' | 'DECLINE',
+  ) {
+    const match = await this.prisma.diceMatch.findUnique({
+      where: { id: matchId },
+    });
+    if (
+      !match ||
+      match.status !== 'WAITING' ||
+      match.targetOpponentId !== userId
+    )
+      throw new NotFoundException('Приглашение уже неактуально');
+    if (action === 'DECLINE') {
+      await this.prisma.diceMatch.updateMany({
+        where: { id: matchId, status: 'WAITING', targetOpponentId: userId },
+        data: {
+          status: 'ABANDONED',
+          finishedAt: new Date(),
+          lastActionAt: new Date(),
+        },
+      });
+      return { declined: true as const };
+    }
+    await this.join(userId, matchId);
+    return this.view(matchId, userId);
   }
 
   private async createIn(

@@ -10,11 +10,13 @@ import {
   type DiceMatchView,
   type DiceBotLevel,
   type DiceProgress,
+  type PendingDiceInvite,
   type DiceValue,
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DICE_ROLL_MS, DiceTable3D, type OpponentAppearance } from '@/components/dice3d';
+import { PlayerList } from '@/components/player-list';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { OilLampFlame } from '@/components/ui/oil-lamp-flame';
@@ -56,7 +58,7 @@ function opponentAppearance(match: DiceMatchView, rivalId?: string): OpponentApp
   return parity % 2 === 0 ? 'female-innkeeper' : 'male-traveler';
 }
 
-type Screen = 'menu' | 'rules' | 'tutorial' | 'match';
+type Screen = 'menu' | 'invite' | 'rules' | 'tutorial' | 'match';
 
 export default function DicePage() {
   const [screen, setScreen] = useState<Screen>('menu');
@@ -67,6 +69,7 @@ export default function DicePage() {
   const [code, setCode] = useState('');
   const [picked, setPicked] = useState<number[]>([]);
   const [progress, setProgress] = useState<DiceProgress | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<PendingDiceInvite[]>([]);
 
   /** Ключ броска: по нему сцена понимает, что кости новые. */
   const rollKey = match ? `${match.matchId}:${match.turnNumber}:${match.rollNumber}` : 'none';
@@ -156,6 +159,25 @@ export default function DicePage() {
       .catch(() => undefined);
   }, [match?.status]);
 
+  useEffect(() => {
+    if (match) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const invites = await apiClient.get<PendingDiceInvite[]>('/dice/pending-invites');
+        if (!cancelled) setPendingInvites(invites);
+      } catch {
+        // Следующий опрос восстановит список после краткого обрыва связи.
+      }
+    };
+    void poll();
+    const interval = setInterval(() => void poll(), 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [match]);
+
   // Пока ход соперника — спрашиваем состояние. Свои действия обновляют
   // экран сразу ответом сервера, поэтому опрос нужен только на чужой ход
   // и на ожидание соперника. Ожидание тоже опрашивается: если стол
@@ -221,6 +243,56 @@ export default function DicePage() {
     return <DiceTutorial onFinish={() => setScreen('menu')} />;
   }
 
+  if (screen === 'invite' && !match) {
+    return (
+      <DiceInviteScreen
+        target={target}
+        pending={pendingInvites}
+        onInvite={async (friendUserId) => {
+          setBusy(true);
+          setError(null);
+          try {
+            apply(
+              await apiClient.post<DiceMatchView>('/dice/challenge', {
+                friendUserId,
+                targetScore: target,
+              }),
+            );
+          } catch (cause) {
+            setError(
+              cause instanceof ApiError ? cause.message : 'Не удалось отправить приглашение',
+            );
+            throw cause;
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onRespond={async (invite, action) => {
+          setBusy(true);
+          setError(null);
+          try {
+            const response = await apiClient.post<DiceMatchView | { declined: true }>(
+              `/dice/${invite.matchId}/respond`,
+              { action },
+            );
+            setPendingInvites((items) => items.filter((item) => item.matchId !== invite.matchId));
+            if ('matchId' in response) apply(response);
+          } catch (cause) {
+            setError(
+              cause instanceof ApiError ? cause.message : 'Не удалось ответить на приглашение',
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onCreateCode={() => void run(() => apiClient.post('/dice', { targetScore: target }))}
+        onBack={() => setScreen('menu')}
+        busy={busy}
+        error={error}
+      />
+    );
+  }
+
   if (screen === 'menu' || !match) {
     return (
       <DiceMenu
@@ -235,7 +307,7 @@ export default function DicePage() {
           void run(() => apiClient.post('/dice/solo', { targetScore: target, difficulty }))
         }
         onFind={() => void run(() => apiClient.post('/dice/find', { targetScore: target }))}
-        onCreate={() => void run(() => apiClient.post('/dice', { targetScore: target }))}
+        onCreate={() => setScreen('invite')}
         onJoin={() => void run(() => apiClient.post('/dice/join-by-code', { code: code.trim() }))}
         onRules={() => setScreen('rules')}
         onTutorial={() => setScreen('tutorial')}
@@ -266,6 +338,76 @@ export default function DicePage() {
         setScreen('menu');
       }}
     />
+  );
+}
+
+function DiceInviteScreen({
+  target,
+  pending,
+  busy,
+  error,
+  onInvite,
+  onRespond,
+  onCreateCode,
+  onBack,
+}: {
+  target: number;
+  pending: PendingDiceInvite[];
+  busy: boolean;
+  error: string | null;
+  onInvite: (userId: string) => Promise<void>;
+  onRespond: (invite: PendingDiceInvite, action: 'ACCEPT' | 'DECLINE') => Promise<void>;
+  onCreateCode: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-6">
+      <div>
+        <h1 className="text-xl font-bold">Кого пригласить?</h1>
+        <p className="mt-2 text-sm text-text-secondary">
+          Выберите игрока или найдите его по нику. Партия будет идти до {target} очков.
+        </p>
+      </div>
+
+      {pending.length > 0 && (
+        <Card className="flex-col gap-3">
+          <p className="text-sm font-semibold">Вас приглашают за стол</p>
+          {pending.map((invite) => (
+            <div key={invite.matchId} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{invite.fromNickname ?? 'Игрок'}</p>
+                <p className="text-xs text-text-muted">Игра до {invite.targetScore} очков</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onRespond(invite, 'ACCEPT')}
+                  className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary disabled:opacity-50"
+                >
+                  Принять
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onRespond(invite, 'DECLINE')}
+                  className="h-9 rounded-lg bg-surface-hover px-3 text-xs text-text-secondary disabled:opacity-50"
+                >
+                  Отклонить
+                </button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <PlayerList mode="invite" onInvite={onInvite} />
+      <button type="button" onClick={onCreateCode} className="text-sm text-text-secondary">
+        …или создать стол по коду
+      </button>
+      <ScreenBack onClick={onBack} />
+    </div>
   );
 }
 

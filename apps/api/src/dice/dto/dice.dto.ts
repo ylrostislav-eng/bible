@@ -46,6 +46,19 @@ export class DiceInviteCodeDto {
   code!: string;
 }
 
+export class DiceChallengeDto {
+  @IsString()
+  friendUserId!: string;
+
+  @IsIn(DICE_TARGET_OPTIONS)
+  targetScore!: number;
+}
+
+export class DiceChallengeResponseDto {
+  @IsIn(['ACCEPT', 'DECLINE'])
+  action!: 'ACCEPT' | 'DECLINE';
+}
+
 export class DiceFindOpponentDto {
   @IsOptional()
   @IsIn(DICE_TARGET_OPTIONS)

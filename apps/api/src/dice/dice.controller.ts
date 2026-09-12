@@ -14,6 +14,8 @@ import type { JwtPayload } from '../auth/jwt-payload.interface';
 import {
   CreateDiceMatchDto,
   CreateDiceSoloDto,
+  DiceChallengeDto,
+  DiceChallengeResponseDto,
   DiceActionDto,
   DiceFindOpponentDto,
   DiceInviteCodeDto,
@@ -65,6 +67,16 @@ export class DiceController {
     return this.dice.findOpponent(user.sub, dto.targetScore);
   }
 
+  @Post('challenge')
+  challenge(@CurrentUser() user: JwtPayload, @Body() dto: DiceChallengeDto) {
+    return this.dice.challenge(user.sub, dto.friendUserId, dto.targetScore);
+  }
+
+  @Get('pending-invites')
+  pendingInvites(@CurrentUser() user: JwtPayload) {
+    return this.dice.pendingInvites(user.sub);
+  }
+
   @Post('join-by-code')
   joinByCode(@CurrentUser() user: JwtPayload, @Body() dto: DiceInviteCodeDto) {
     return this.dice.byInviteCode(user.sub, dto.code);
@@ -73,6 +85,15 @@ export class DiceController {
   @Post(':id/join')
   join(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.dice.join(user.sub, id);
+  }
+
+  @Post(':id/respond')
+  respond(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: DiceChallengeResponseDto,
+  ) {
+    return this.dice.respondToInvite(user.sub, id, dto.action);
   }
 
   @Post(':id/action')
