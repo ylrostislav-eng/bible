@@ -37,6 +37,7 @@ import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { generateInviteCode } from '../game/invite-code';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { rollDice } from './dice-rng';
 
@@ -68,6 +69,7 @@ export class DiceService {
     private readonly admins: AdminRegistry,
     private readonly contacts: ContactPolicyService,
     private readonly inviteNotifier: InviteNotifierService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Одна короткая очередь в БД: работает и при двух экземплярах API.
@@ -196,12 +198,24 @@ export class DiceService {
     // Внутри общей очереди и под блокировкой строки — тем же путём, что и
     // ACCEPT: два ответа на одно приглашение не могут разойтись по факту,
     // даже если оба ушли с клиента почти одновременно.
+    let hostUserId: string | undefined;
     await this.queue(async (tx) => {
       const match = await this.lock(tx, matchId);
       if (match.status !== 'WAITING' || match.targetOpponentId !== userId)
         throw new NotFoundException('Приглашение уже неактуально');
+      hostUserId = match.players[0]?.userId;
       await this.abandon(tx, match);
     });
+    // Вне очереди и без ожидания — как у дуэли: отказ уже состоялся, и
+    // падать из-за того, что запись уведомления не удалась, он не должен.
+    // Раньше этого не было вовсе: приглашение просто исчезало у
+    // отправителя без единого следа (задача #54 «уведомлять — везде» до
+    // «Костей» не дошла, потому что личный вызов в кости появился позже).
+    if (hostUserId) {
+      void this.notifications
+        .recordDiceDecline({ userId: hostUserId, declinedByUserId: userId })
+        .catch(() => {});
+    }
     return { declined: true as const };
   }
 

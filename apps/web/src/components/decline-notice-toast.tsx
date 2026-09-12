@@ -29,7 +29,9 @@ export function DeclineNoticeToast() {
   const message =
     notice.kind === 'DUEL_CHALLENGE'
       ? `Ваш вызов на дуэль к ${nickname} отклонён`
-      : `Приглашение в «${notice.roomName ?? 'комнату'}» для ${nickname} отклонено`;
+      : notice.kind === 'DICE_CHALLENGE'
+        ? `Ваш вызов в «Кости» к ${nickname} отклонён`
+        : `Приглашение в «${notice.roomName ?? 'комнату'}» для ${nickname} отклонено`;
 
   return (
     <div className="app-band fixed top-0 z-40 flex justify-center px-4 pt-[calc(var(--safe-top)+0.75rem)]">

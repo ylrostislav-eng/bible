@@ -8,6 +8,7 @@ import type { AdminRegistry } from '../auth/admin-registry.service';
 import type { StaffNameMask } from '../auth/staff-name-mask.service';
 import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { InviteNotifierService } from '../notifications/invite-notifier.service';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import { DiceService } from './dice.service';
 
@@ -379,6 +380,7 @@ function service(
     fromNickname: string | null;
     matchId: string;
   }> = [],
+  declined: Array<{ userId: string; declinedByUserId: string }> = [],
 ): DiceService {
   const staffNames = {
     nickname: (_id: string, nickname: string | null) => nickname,
@@ -398,7 +400,23 @@ function service(
       return Promise.resolve();
     },
   } as unknown as InviteNotifierService;
-  return new DiceService(prisma, staffNames, admins, contacts, inviteNotifier);
+  const notifications = {
+    recordDiceDecline: (params: {
+      userId: string;
+      declinedByUserId: string;
+    }) => {
+      declined.push(params);
+      return Promise.resolve();
+    },
+  } as unknown as NotificationsService;
+  return new DiceService(
+    prisma,
+    staffNames,
+    admins,
+    contacts,
+    inviteNotifier,
+    notifications,
+  );
 }
 
 function player(id: string, nickname: string): UserRow {
@@ -553,12 +571,18 @@ describe('DiceService — персональные приглашения', () =
 
   it('отклонение возвращает {declined: true} и закрывает стол насовсем', async () => {
     const { prisma } = fakeDb([player('a', 'Аня'), player('b', 'Боря')]);
-    const dice = service(prisma);
+    const declined: Array<{ userId: string; declinedByUserId: string }> = [];
+    const dice = service(prisma, undefined, undefined, declined);
     const view = await dice.challenge('a', 'b', 4000);
 
     const result = await dice.respondToInvite('b', view.matchId, 'DECLINE');
     expect(result).toEqual({ declined: true });
     expect(await dice.pendingInvites('b')).toEqual([]);
+
+    // Отправитель узнаёт об отказе — раньше приглашение просто пропадало
+    // у него из вида без единого следа (задача #54 «уведомлять — везде»
+    // до «Костей» не дошла).
+    expect(declined).toEqual([{ userId: 'a', declinedByUserId: 'b' }]);
 
     // Стол закрыт по-настоящему: сесть за него после отказа уже нельзя.
     await expect(dice.join('b', view.matchId)).rejects.toThrow(
