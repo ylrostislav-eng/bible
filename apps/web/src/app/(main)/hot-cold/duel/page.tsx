@@ -55,7 +55,7 @@ const BAND_STYLE: Record<HotColdBand, { bar: string; dot: string; text: string }
 
 export default function HotColdDuelPage() {
   const { user } = useAuth();
-  const { setActiveGame } = useActiveGame();
+  const { activeGame, setActiveGame } = useActiveGame();
   const [duelId, setDuelId] = useState<string | null>(null);
   /** Пока нет партии — либо лобби, либо экран выбора, кого позвать лично. */
   const [screen, setScreen] = useState<'lobby' | 'invite'>('lobby');
@@ -98,6 +98,26 @@ export default function HotColdDuelPage() {
       .then((response) => setDuelId(response.duelId))
       .catch(() => setDuelId(null));
   }, []);
+
+  // Принятие личного вызова через глобальный попап пишет в `activeGame` и
+  // делает `router.push('/hot-cold/duel')` — но если получатель и так уже
+  // стоит на этой странице (в лобби, а не за столом), переход на тот же
+  // путь ничего не меняет: страница не перемонтируется, а `duelId` как был
+  // `null`, так и остаётся. Тот же баг, что и в «Костях» (см.
+  // `docs/checklist.md`), только здесь никакая жалоба ещё не приходила —
+  // нашлось само при проверке того фикса. Лечится так же: следить не за
+  // навигацией, а за `activeGame` — сигналом, который accept гарантированно
+  // оставляет после себя, — и перечитывать активный стол при несовпадении.
+  useEffect(() => {
+    if (activeGame?.type !== 'hot-cold-duel') return;
+    if (duelId === activeGame.sessionId) return;
+    apiClient
+      .get<{ duelId: string | null }>('/hot-cold/duel/active')
+      .then((response) => {
+        if (response.duelId) setDuelId(response.duelId);
+      })
+      .catch(() => undefined);
+  }, [activeGame, duelId]);
 
   // Разбор после игры приходит отдельным запросом: до конца партии он и
   // есть ответ, поэтому сервер его просто не отдаёт.
