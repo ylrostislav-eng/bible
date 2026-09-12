@@ -15,7 +15,13 @@ import {
 } from '@bible-arena/shared';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DICE_ROLL_MS, DiceTable3D, type OpponentAppearance } from '@/components/dice3d';
+import {
+  CUP_LIFT_MS,
+  DICE_ROLL_MS,
+  DiceTable3D,
+  RELEASE_MS,
+  type OpponentAppearance,
+} from '@/components/dice3d';
 import { PlayerList } from '@/components/player-list';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -692,7 +698,24 @@ function DiceMatchScreen({
       ? (lastTurnEnded?.bankedScore ?? 0)
       : 0;
 
-  useSoundWhen('roll', revealingRoll);
+  // Один показ броска — три реплики на его настоящих мгновениях, а не
+  // одна в момент начала: кубок сперва поднимается, потом дребезжит
+  // (`CUP_LIFT_MS`/`CUP_SHAKE_MS` в dice3d/scene.ts), и только после
+  // наклона кости летят и стукаются об стол (`RELEASE_MS` — миг, когда
+  // они покидают кубок; первый заметный удар — чуть позже, кости летят
+  // не одновременно). Тайминг звука взят из констант самой сцены, а не
+  // подобран на глаз — иначе один из них разъехался бы с анимацией при
+  // следующей правке скорости броска.
+  useEffect(() => {
+    if (!revealingRoll) return;
+    playSound('roll');
+    const shakeTimer = window.setTimeout(() => playSound('shake'), CUP_LIFT_MS);
+    const landTimer = window.setTimeout(() => playSound('land'), RELEASE_MS + 230);
+    return () => {
+      window.clearTimeout(shakeTimer);
+      window.clearTimeout(landTimer);
+    };
+  }, [revealingRoll]);
   useSoundWhen('burnt', Boolean(lastBust && !revealingRoll));
   useSoundWhen('reward', Boolean(lastHotDice));
   useSoundWhen('reward', ownBank > 0);

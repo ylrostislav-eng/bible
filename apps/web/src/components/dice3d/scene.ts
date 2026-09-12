@@ -29,11 +29,13 @@ import { buildTavern, type OpponentAppearance, type Tavern } from './tavern';
  * обжигались на плоском столе).
  */
 
-const CUP_LIFT_MS = 140;
-const CUP_SHAKE_MS = 360;
+/** Экспортируются: звук синхронизирует свои реплики с этими же мгновениями
+ * анимации (`sound.tsx` не знает о сцене ничего, кроме тайминга). */
+export const CUP_LIFT_MS = 140;
+export const CUP_SHAKE_MS = 360;
 const CUP_TILT_MS = 160;
 /** Когда кости покидают кубок. */
-const RELEASE_MS = CUP_LIFT_MS + CUP_SHAKE_MS + CUP_TILT_MS;
+export const RELEASE_MS = CUP_LIFT_MS + CUP_SHAKE_MS + CUP_TILT_MS;
 const FLIGHT_MS = 780;
 /** Сколько длится бросок целиком. */
 export const DICE_ROLL_MS = RELEASE_MS + FLIGHT_MS;

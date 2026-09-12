@@ -113,6 +113,33 @@ const RECIPES: Record<SoundName, Recipe> = {
     gain: 0.12,
     type: 'square',
   },
+  // Дребезг: частая дробь из двух соседних высот — под встряхивание
+  // кубка (`CUP_SHAKE_MS` в dice3d/scene.ts), не под музыку.
+  shake: {
+    notes: [
+      { hz: 260, ms: 32 },
+      { hz: 300, ms: 30 },
+      { hz: 250, ms: 34 },
+      { hz: 310, ms: 30 },
+      { hz: 255, ms: 34 },
+      { hz: 305, ms: 30 },
+      { hz: 245, ms: 34 },
+      { hz: 295, ms: 30 },
+      { hz: 260, ms: 36 },
+    ],
+    gain: 0.08,
+    type: 'square',
+  },
+  // Глухой стук: низкая частота и быстрый спад — кости, упавшие на
+  // сукно стола, а не сыгранная нота.
+  land: {
+    notes: [
+      { hz: 95, ms: 45 },
+      { hz: 70, ms: 90 },
+    ],
+    gain: 0.16,
+    type: 'sawtooth',
+  },
   win: {
     notes: [
       { hz: 523, ms: 110 },
@@ -149,6 +176,7 @@ const HAPTICS: Partial<Record<SoundName, number | number[]>> = {
   wrong: [18, 40, 18],
   burnt: [18, 40, 18],
   roll: 12,
+  land: 16,
   win: [20, 60, 20],
   lose: 40,
 };

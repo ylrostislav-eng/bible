@@ -46,4 +46,4 @@ export function DiceTable3D(props: DiceSceneProps) {
 
 export type { DiceSceneProps };
 export type { OpponentAppearance } from './tavern';
-export { DICE_ROLL_MS } from './scene';
+export { CUP_LIFT_MS, DICE_ROLL_MS, RELEASE_MS } from './scene';
