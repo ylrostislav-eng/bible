@@ -7,6 +7,7 @@ import {
   applyDiceAction,
   availableDiceActions,
   createDiceGame,
+  resolveDiceBust,
   type DiceEvent,
   type DiceGameState,
   type DiceValue,
@@ -157,7 +158,7 @@ describe('Кости — ход и риск', () => {
   });
 
   describe('Bust', () => {
-    it('бросок без комбинаций сжигает очки хода и передаёт ход', () => {
+    it('бросок без комбинаций остаётся на столе до отложенной передачи хода', () => {
       let state = act(game(), A, { type: 'ROLL' }, roll(1, 1, 1, 2, 3, 4));
       state = act(state, A, { type: 'SELECT', indexes: [0, 1, 2] }); // 1000
       state = act(state, A, { type: 'CONTINUE' });
@@ -169,7 +170,15 @@ describe('Кости — ход и риск', () => {
       expect(result.state.turnScore).toBe(0);
       // Общий счёт не уменьшается: за прошлые ходы уже заплачено.
       expect(result.state.players[0].score).toBe(0);
-      expect(result.state.currentPlayerId).toBe(B);
+      expect(result.state.currentPlayerId).toBe(A);
+      expect(result.state.phase).toBe('BUST');
+      expect(result.state.dice).toEqual([2, 3, 4]);
+      expect(availableDiceActions(result.state, A)).toEqual([]);
+
+      const resolved = resolveDiceBust(result.state);
+      expect(resolved.state.currentPlayerId).toBe(B);
+      expect(resolved.state.phase).toBe('ROLLING');
+      expect(resolved.state.dice).toEqual([]);
     });
 
     it('Bust не отбирает того, что было забрано раньше', () => {

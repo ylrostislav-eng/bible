@@ -241,6 +241,15 @@ export function timeoutDiceTurn(state: DiceGameState): DiceStepResult {
   return { state: result.state, events: [event, ...result.events] };
 }
 
+/** Завершает показ пустого броска. До этого момента выпавшие кости
+ * остаются в состоянии, чтобы все клиенты успели показать результат. */
+export function resolveDiceBust(state: DiceGameState): DiceStepResult {
+  if (state.status !== 'IN_PROGRESS' || state.phase !== 'BUST' || !state.currentPlayerId) {
+    throw new DiceRuleError(DICE_WRONG_PHASE);
+  }
+  return endTurn(state, state.currentPlayerId, 0);
+}
+
 function applyRoll(
   state: DiceGameState,
   playerId: string,
@@ -269,12 +278,17 @@ function applyRoll(
     // Всё накопленное за ход сгорает. Общий счёт не трогаем — за прошлые
     // ходы уже заплачено.
     events.push({ type: 'BUST', playerId, lostScore: state.turnScore });
-    const after = endTurn(
-      { ...state, dice: [...roll], selected: [], turnScore: 0, phase: 'BUST' },
-      playerId,
-      0,
-    );
-    return { state: after.state, events: [...events, ...after.events] };
+    return {
+      state: {
+        ...state,
+        dice: [...roll],
+        selected: [],
+        turnScore: 0,
+        rollNumber: state.rollNumber + 1,
+        phase: 'BUST',
+      },
+      events,
+    };
   }
 
   return {

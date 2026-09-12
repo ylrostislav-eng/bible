@@ -19,6 +19,7 @@ import {
   chooseDiceBotAction,
   createDiceGame,
   joinDiceGame,
+  resolveDiceBust,
   timeoutDiceTurn,
   type DiceAction,
   type DiceBotLevel,
@@ -48,6 +49,8 @@ type CreateParams = {
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const INTRO_MS = 2800;
 const HANDOFF_MS = 1500;
+/** Полный бросок (1,44 с), 2,5 секунды на кости и короткий показ итога. */
+const BUST_HANDOFF_MS = 4500;
 /** Паузы длиннее шага polling: игрок успевает увидеть каждое решение,
  * однако партия не превращается в ожидание анимаций. */
 const BOT_ROLL_STEP_MS = 2400;
@@ -393,14 +396,16 @@ export class DiceService {
             : match.turnStartedAt
           : null,
         botActionAt:
-          active && state.currentPlayerId === DICE_BOT_ID
-            ? new Date(
-                now.getTime() +
-                  (state.phase === 'SELECTING'
-                    ? BOT_ROLL_STEP_MS
-                    : BOT_DECISION_STEP_MS),
-              )
-            : null,
+          active && state.phase === 'BUST'
+            ? new Date(now.getTime() + BUST_HANDOFF_MS)
+            : active && state.currentPlayerId === DICE_BOT_ID
+              ? new Date(
+                  now.getTime() +
+                    (state.phase === 'SELECTING'
+                      ? BOT_ROLL_STEP_MS
+                      : BOT_DECISION_STEP_MS),
+                )
+              : null,
       },
     });
     await tx.diceMatchAction.create({
@@ -428,7 +433,21 @@ export class DiceService {
     await this.prisma.$transaction(async (tx) => {
       const match = await this.lock(tx, matchId);
       if (match.status !== 'IN_PROGRESS') return;
-      if (this.expired(match)) {
+      const state = this.stateOf(match);
+      if (state.phase === 'BUST') {
+        // Бросок уже был принят вовремя. Старый дедлайн хода не должен
+        // оборвать показ результата раньше отдельного срока Bust.
+        if (!match.botActionAt || match.botActionAt.getTime() > Date.now())
+          return;
+        await this.saveStep(
+          tx,
+          match,
+          resolveDiceBust(state),
+          'server:bust',
+          `bust:${match.version}`,
+          { type: 'RESOLVE_BUST' },
+        );
+      } else if (this.expired(match)) {
         await this.saveStep(
           tx,
           match,
@@ -442,7 +461,6 @@ export class DiceService {
         match.botActionAt &&
         match.botActionAt.getTime() <= Date.now()
       ) {
-        const state = this.stateOf(match);
         if (state.currentPlayerId !== DICE_BOT_ID) return;
         await this.perform(
           tx,

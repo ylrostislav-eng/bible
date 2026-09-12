@@ -42,6 +42,7 @@ import { useImmersiveWhile } from '@/lib/immersive-context';
  * в отличие от «горячо-холодно», где всё напряжение в чужом числе,
  * меняющемся на глазах. */
 const POLL_MS = 1500;
+const BUST_RESULT_HOLD_MS = 2500;
 
 function opponentAppearance(match: DiceMatchView, rivalId?: string): OpponentAppearance {
   if (match.botDifficulty) {
@@ -427,17 +428,18 @@ function DiceMatchScreen({
   const previousAnimatedRoll = useRef(rollKey);
   const [revealingRoll, setRevealingRoll] = useState(false);
   const [rollingPlayerId, setRollingPlayerId] = useState<string | null>(null);
-  const rollPlayerId =
-    match.events.find((event) => event.type === 'ROLL_RESULT')?.playerId ?? match.currentPlayerId;
+  const rollResult = match.events.find((event) => event.type === 'ROLL_RESULT');
+  const rollPlayerId = rollResult?.playerId;
 
   useEffect(() => {
-    if (previousAnimatedRoll.current === rollKey) return;
+    if (!rollPlayerId || previousAnimatedRoll.current === rollKey) return;
     previousAnimatedRoll.current = rollKey;
     setRollingPlayerId(rollPlayerId);
     setRevealingRoll(true);
-    const timer = window.setTimeout(() => setRevealingRoll(false), DICE_ROLL_MS + 350);
+    const resultHold = match.phase === 'BUST' ? BUST_RESULT_HOLD_MS : 350;
+    const timer = window.setTimeout(() => setRevealingRoll(false), DICE_ROLL_MS + resultHold);
     return () => window.clearTimeout(timer);
-  }, [rollKey, rollPlayerId]);
+  }, [match.phase, rollKey, rollPlayerId]);
 
   const visualMyTurn = revealingRoll ? rollingPlayerId === match.youId : myTurn;
 
