@@ -27,6 +27,13 @@ import { useAuth } from './auth-context';
  * запасом — а вот фоновая музыка так не делается, и она будет отдельно,
  * настоящими записями.
  *
+ * Исключение — три звука кубка в «Костях» (`roll`/`shake`/`land`,
+ * `AUDIO_FILES` ниже): осциллятор не смог передать деревянный стук и
+ * дребезг костей, живая проверка это подтвердила на слух. Для них
+ * рецепт остался только как запасной вариант — на случай, если файл ещё
+ * не успел загрузиться и раскодироваться к моменту первого броска.
+ * Происхождение файлов — `docs/assets.md`.
+ *
  * ## Что здесь важно не сломать
  *
  * - **Контекст создаётся лениво и только после жеста игрока.** Браузер не
@@ -169,6 +176,18 @@ const RECIPES: Record<SoundName, Recipe> = {
   },
 };
 
+/**
+ * Настоящие записи вместо рецепта — только для звуков кубка (см. выше).
+ * `gain` играет ту же роль, что и в `Recipe`: файлы Kenney нормализованы
+ * почти под самый потолок, и без своей громкости на каждый были бы
+ * заметно громче синтезированных соседей.
+ */
+const AUDIO_FILES: Partial<Record<SoundName, { src: string; gain: number }>> = {
+  roll: { src: '/game/dice/sounds/roll.mp3', gain: 0.5 },
+  shake: { src: '/game/dice/sounds/shake.mp3', gain: 0.45 },
+  land: { src: '/game/dice/sounds/land.mp3', gain: 0.6 },
+};
+
 /** Вибро: короткая на отклик, двойная на плохое. */
 const HAPTICS: Partial<Record<SoundName, number | number[]>> = {
   tap: 8,
@@ -228,6 +247,10 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
   // Отдельным состоянием, а не только ссылкой: музыке надо узнать, что
   // контекст появился, а изменение ссылки перерисовку не вызывает.
   const [unlocked, setUnlocked] = useState(false);
+  // Раскодированные буферы `AUDIO_FILES`. Пока буфера нет (ещё не
+  // загрузился или сеть подвела) — `play()` использует рецепт: тот же
+  // приём отказоустойчивости, что и у фоновой музыки.
+  const buffersRef = useRef<Partial<Record<SoundName, AudioBuffer>>>({});
 
   const settings = useMemo<SoundSettings>(
     () => ({
@@ -260,6 +283,25 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
         // Свежий контекст на части браузеров рождается приостановленным даже
         // внутри жеста — без этого первый звук просто теряется.
         void created.resume().catch(() => undefined);
+        // Загрузка и раскодирование — сразу, а не по требованию: файлы
+        // весят считанные килобайты, и к первому броску костей обычно уже
+        // готовы. Если первый вызов всё же обгонит загрузку — `play()`
+        // отыграет рецепт, а не молчание.
+        for (const [name, file] of Object.entries(AUDIO_FILES) as [
+          SoundName,
+          { src: string; gain: number },
+        ][]) {
+          fetch(file.src)
+            .then((response) => response.arrayBuffer())
+            .then((bytes) => created.decodeAudioData(bytes))
+            .then((buffer) => {
+              buffersRef.current[name] = buffer;
+            })
+            .catch(() => {
+              // Нет файла или не раскодировался — рецепт останется
+              // единственным источником звука для этого имени.
+            });
+        }
       } catch {
         // Без звука приложение работает — молча живём дальше.
       }
@@ -306,6 +348,22 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
       // раньше из-за этого пропадал первый же звук после нажатия.
       if (document.hidden) return;
       if (context.state === 'suspended') void context.resume().catch(() => undefined);
+
+      const buffer = buffersRef.current[name];
+      const file = AUDIO_FILES[name];
+      if (buffer && file) {
+        try {
+          const source = context.createBufferSource();
+          const envelope = context.createGain();
+          source.buffer = buffer;
+          envelope.gain.value = (settings.soundVolume / 100) * file.gain;
+          source.connect(envelope).connect(context.destination);
+          source.start();
+        } catch {
+          // Звук — не игра: сломался, и ладно.
+        }
+        return;
+      }
 
       const recipe = RECIPES[name];
       const master = (settings.soundVolume / 100) * recipe.gain;
