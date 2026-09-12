@@ -39,6 +39,7 @@ import { generateInviteCode } from '../game/invite-code';
 import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
 import { rollDice } from './dice-rng';
 
 type Match = Prisma.DiceMatchGetPayload<{ include: { players: true } }>;
@@ -48,6 +49,10 @@ type CreateParams = {
   openToMatchmaking?: boolean;
   botDifficulty?: DiceBotLevel;
 };
+/** Партия только что закончилась партией с живым соперником — кому
+ * начислять победу/поражение. `null` — либо партия ещё идёт, либо
+ * закончилась партия с программой (награды за неё нет). */
+type FinishSignal = { winnerId: string; playerIds: string[] } | null;
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const INTRO_MS = 2800;
 /** Секунд на ход у любого стола с живым соперником — личный вызов, вход
@@ -58,6 +63,19 @@ const INTRO_MS = 2800;
  * секунды) — второй игрок сидит и ждёт непонятно чего. Партии с
  * программой таймер по-прежнему не нужен: программа не «зависает». */
 const TURN_TIME_LIMIT_SECONDS = 60;
+/** Плоская награда за партию против живого соперника — как в дуэли по
+ * вопросам: без учёта счёта партии. До этой правки завершённая партия в
+ * кости с человеком не начисляла вообще ничего — ни XP, ни монет, ни
+ * рейтинга, ни побед/поражений в статистику — независимо от того, как она
+ * закончилась (цель, отказ, таймаут). Числа взяты в масштабе обычной
+ * дуэли по вопросам на 10 вопросов по умолчанию (10×5 XP / 10×2 монеты =
+ * 50/20), чуть скромнее — победа в кости не проверяет знание Писания.
+ * Партии с программой этой награды не получают: свою пользу игрок берёт
+ * разблокировкой следующего характера (см. `DiceService.progress`). */
+const DICE_WIN_XP = 40;
+const DICE_WIN_COINS = 15;
+const DICE_WIN_RATING = 10;
+const DICE_LOSS_RATING = -5;
 const HANDOFF_MS = 1500;
 /** Полный бросок (1,44 с) и две секунды на чтение результата. */
 const BUST_HANDOFF_MS = 3500;
@@ -77,6 +95,7 @@ export class DiceService {
     private readonly contacts: ContactPolicyService,
     private readonly inviteNotifier: InviteNotifierService,
     private readonly notifications: NotificationsService,
+    private readonly usersService: UsersService,
   ) {}
 
   /** Одна короткая очередь в БД: работает и при двух экземплярах API.
@@ -375,7 +394,7 @@ export class DiceService {
     actionId: string = randomUUID(),
     expectedVersion?: number,
   ) {
-    await this.prisma.$transaction(async (tx) => {
+    const finished = await this.prisma.$transaction(async (tx) => {
       const match = await this.lock(tx, matchId);
       this.assertMember(match, userId);
       const payload: DiceAction =
@@ -393,7 +412,7 @@ export class DiceService {
           throw new ConflictException(
             'Этот запрос уже использован для другого действия',
           );
-        return;
+        return null;
       }
       if (match.status !== 'IN_PROGRESS')
         throw new BadRequestException(
@@ -402,15 +421,16 @@ export class DiceService {
       // Срок проверяется под той же блокировкой, что и действие. Просроченный
       // запрос не может «успеть» между проверкой таймера и сохранением.
       if (this.expired(match)) {
+        const step = timeoutDiceTurn(this.stateOf(match));
         await this.saveStep(
           tx,
           match,
-          timeoutDiceTurn(this.stateOf(match)),
+          step,
           'server:timer',
           `timeout:${match.version}`,
           { type: 'TIMEOUT' },
         );
-        return;
+        return this.finishSignal(match, step);
       }
       if (expectedVersion !== undefined && expectedVersion !== match.version)
         throw new ConflictException('Стол уже изменился — обновляем состояние');
@@ -420,8 +440,9 @@ export class DiceService {
         match.turnStartedAt.getTime() > Date.now()
       )
         throw new BadRequestException('Сейчас начнём — дождитесь отсчёта');
-      await this.perform(tx, match, userId, payload, actionId);
+      return this.perform(tx, match, userId, payload, actionId);
     });
+    await this.grantDiceRewards(finished);
     return this.buildView(await this.load(matchId), userId);
   }
 
@@ -433,7 +454,7 @@ export class DiceService {
     userId: string,
     action: DiceAction,
     actionId: string,
-  ) {
+  ): Promise<FinishSignal> {
     let state = this.stateOf(match);
     let step: DiceStepResult;
     let roll: DiceValue[] | undefined;
@@ -463,6 +484,44 @@ export class DiceService {
           dice: roll,
         },
       });
+    return this.finishSignal(match, step);
+  }
+
+  /** `match` — снимок ДО этого шага: партия сюда попадает только пока она
+   * ещё `IN_PROGRESS`, так что переход в `FINISHED` внутри `step` всегда
+   * свежий, а не уже когда-то обработанный. Награда — только за партию с
+   * живым соперником: у программы `botDifficulty` заполнен. */
+  private finishSignal(match: Match, step: DiceStepResult): FinishSignal {
+    if (
+      step.state.status !== 'FINISHED' ||
+      match.botDifficulty ||
+      !step.state.winnerId
+    )
+      return null;
+    return {
+      winnerId: step.state.winnerId,
+      playerIds: step.state.players.map((p) => p.userId),
+    };
+  }
+
+  /** Раздаёт плоскую награду победителю и поражение проигравшему — тем же
+   * общим путём, что дуэль по вопросам и «Горячо-холодно». Вызывается уже
+   * ПОСЛЕ фиксации транзакции стола: `applyGameRewards` открывает свою
+   * собственную транзакцию на пользователя, и вкладывать её в ещё не
+   * завершённую транзакцию стола незачем — это тот же порядок, что и у
+   * `HotColdDuelService.finish`. */
+  private async grantDiceRewards(finished: FinishSignal): Promise<void> {
+    if (!finished) return;
+    for (const playerId of finished.playerIds) {
+      const won = playerId === finished.winnerId;
+      await this.usersService.applyGameRewards(playerId, {
+        xpEarned: won ? DICE_WIN_XP : 0,
+        coinsEarned: won ? DICE_WIN_COINS : 0,
+        outcome: won ? 'win' : 'loss',
+        ratingDelta: won ? DICE_WIN_RATING : DICE_LOSS_RATING,
+        cappedWin: won,
+      });
+    }
   }
 
   private async saveStep(
@@ -552,39 +611,43 @@ export class DiceService {
   }
 
   async advanceDue(matchId: string) {
-    await this.prisma.$transaction(async (tx) => {
+    const finished = await this.prisma.$transaction(async (tx) => {
       const match = await this.lock(tx, matchId);
-      if (match.status !== 'IN_PROGRESS') return;
+      if (match.status !== 'IN_PROGRESS') return null;
       const state = this.stateOf(match);
       if (state.phase === 'BUST') {
         // Бросок уже был принят вовремя. Старый дедлайн хода не должен
         // оборвать показ результата раньше отдельного срока Bust.
         if (!match.botActionAt || match.botActionAt.getTime() > Date.now())
-          return;
+          return null;
+        const step = resolveDiceBust(state);
         await this.saveStep(
           tx,
           match,
-          resolveDiceBust(state),
+          step,
           'server:bust',
           `bust:${match.version}`,
           { type: 'RESOLVE_BUST' },
         );
+        return this.finishSignal(match, step);
       } else if (this.expired(match)) {
+        const step = timeoutDiceTurn(this.stateOf(match));
         await this.saveStep(
           tx,
           match,
-          timeoutDiceTurn(this.stateOf(match)),
+          step,
           'server:timer',
           `timeout:${match.version}`,
           { type: 'TIMEOUT' },
         );
+        return this.finishSignal(match, step);
       } else if (
         match.botDifficulty &&
         match.botActionAt &&
         match.botActionAt.getTime() <= Date.now()
       ) {
-        if (state.currentPlayerId !== DICE_BOT_ID) return;
-        await this.perform(
+        if (state.currentPlayerId !== DICE_BOT_ID) return null;
+        return this.perform(
           tx,
           match,
           DICE_BOT_ID,
@@ -592,7 +655,9 @@ export class DiceService {
           `bot:${match.version}`,
         );
       }
+      return null;
     });
+    await this.grantDiceRewards(finished);
   }
 
   async tick() {

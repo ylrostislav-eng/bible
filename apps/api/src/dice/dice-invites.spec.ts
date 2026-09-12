@@ -10,6 +10,7 @@ import type { ContactPolicyService } from '../contact/contact-policy.service';
 import type { InviteNotifierService } from '../notifications/invite-notifier.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { UsersService } from '../users/users.service';
 import { DiceService } from './dice.service';
 
 /**
@@ -381,6 +382,14 @@ function service(
     matchId: string;
   }> = [],
   declined: Array<{ userId: string; declinedByUserId: string }> = [],
+  rewards: Array<{
+    userId: string;
+    outcome?: 'win' | 'loss' | 'draw';
+    xpEarned: number;
+    coinsEarned: number;
+    ratingDelta?: number;
+    cappedWin?: boolean;
+  }> = [],
 ): DiceService {
   const staffNames = {
     nickname: (_id: string, nickname: string | null) => nickname,
@@ -409,6 +418,21 @@ function service(
       return Promise.resolve();
     },
   } as unknown as NotificationsService;
+  const usersService = {
+    applyGameRewards: (
+      userId: string,
+      params: {
+        xpEarned: number;
+        coinsEarned: number;
+        outcome?: 'win' | 'loss' | 'draw';
+        ratingDelta?: number;
+        cappedWin?: boolean;
+      },
+    ) => {
+      rewards.push({ userId, ...params });
+      return Promise.resolve({});
+    },
+  } as unknown as UsersService;
   return new DiceService(
     prisma,
     staffNames,
@@ -416,6 +440,7 @@ function service(
     contacts,
     inviteNotifier,
     notifications,
+    usersService,
   );
 }
 
@@ -573,6 +598,67 @@ describe('DiceService — персональные приглашения', () =
 
     const accepted = await dice.respondToInvite('b', view.matchId, 'ACCEPT');
     expect('turnTimeLimit' in accepted && accepted.turnTimeLimit).toBe(60);
+  });
+
+  it('партия с живым соперником начисляет плоскую награду — победителю выигрыш, проигравшему поражение', async () => {
+    // До этой правки завершённая партия в кости с человеком не начисляла
+    // вообще ничего — ни XP, ни монет, ни рейтинга, ни побед/поражений в
+    // статистику, — независимо от исхода. Нашлось живой проверкой: счёт
+    // профиля до и после форфейта по таймеру не менялся ни на единицу.
+    // Решение владельца — плоская награда, как в дуэли по вопросам.
+    const { prisma } = fakeDb([player('a', 'Аня'), player('b', 'Боря')]);
+    const rewards: Array<{
+      userId: string;
+      outcome?: 'win' | 'loss' | 'draw';
+      xpEarned: number;
+      coinsEarned: number;
+      ratingDelta?: number;
+      cappedWin?: boolean;
+    }> = [];
+    const dice = service(prisma, undefined, undefined, undefined, rewards);
+    const view = await dice.challenge('a', 'b', 4000);
+    await dice.respondToInvite('b', view.matchId, 'ACCEPT');
+
+    await dice.act('b', view.matchId, { type: 'RESIGN' });
+
+    expect(rewards).toContainEqual({
+      userId: 'a',
+      xpEarned: 40,
+      coinsEarned: 15,
+      outcome: 'win',
+      ratingDelta: 10,
+      cappedWin: true,
+    });
+    expect(rewards).toContainEqual({
+      userId: 'b',
+      xpEarned: 0,
+      coinsEarned: 0,
+      outcome: 'loss',
+      ratingDelta: -5,
+      cappedWin: false,
+    });
+  });
+
+  it('партия с программой не начисляет награду вообще — свой стимул у неё уже есть', async () => {
+    // Программе не с кого спрашивать «капнула ли награда» — очки за неё
+    // держит отдельный счётчик побед в `DiceService.progress`, который и
+    // открывает следующего соперника. Награда за партию с человеком не
+    // должна была случайно распространиться на бота.
+    const { prisma } = fakeDb([player('a', 'Аня')]);
+    const rewards: Array<{
+      userId: string;
+      outcome?: 'win' | 'loss' | 'draw';
+      xpEarned: number;
+      coinsEarned: number;
+      ratingDelta?: number;
+      cappedWin?: boolean;
+    }> = [];
+    const dice = service(prisma, undefined, undefined, undefined, rewards);
+    const view = await dice.create('a', { botDifficulty: 'EASY' });
+
+    await dice.act('a', view.matchId, { type: 'RESIGN' });
+
+    expect(rewards).toEqual([]);
   });
 
   it('принятие сажает за стол и убирает приглашение из списка', async () => {
