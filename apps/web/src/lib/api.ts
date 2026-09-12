@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const REQUEST_TIMEOUT_MS = 15_000;
 
 let accessToken: string | null = null;
 
@@ -85,9 +86,12 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   // отказом уже после того, как сессию восстановили без нас.
   const usedToken = accessToken;
   let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     response = await fetch(`${API_URL}${path}`, {
       method,
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         // The player's own UTC offset. The daily streak rolls over at their
@@ -110,6 +114,8 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
       apiPath: path,
     });
     throw err;
+  } finally {
+    clearTimeout(timeout);
   }
 
   const payload = await response.json().catch(() => null);

@@ -75,6 +75,7 @@ export class DiceScene {
 
   private frame = 0;
   private running = false;
+  private contextLost = false;
   private startedAt = 0;
   private values: DiceValue[] = [];
   private rollKey = 'none';
@@ -103,7 +104,7 @@ export class DiceScene {
     });
     this.renderer.setClearColor(0x0d0906, 1);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // Тёплая таверна: без тонального отображения свеча выжигает белым
     // пятном всё, до чего дотягивается.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -149,6 +150,8 @@ export class DiceScene {
     this.buildDice();
 
     canvas.addEventListener('pointerdown', this.handlePointer);
+    canvas.addEventListener('webglcontextlost', this.handleContextLost);
+    canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     document.addEventListener('visibilitychange', this.handleVisibility);
   }
 
@@ -203,7 +206,6 @@ export class DiceScene {
   /** Чей кубок в кадре: свой справа, соперника — на его стороне стола. */
   setSide(side: SceneSide) {
     this.side = side;
-    this.cup.hand.visible = side === 'you';
   }
 
   setRivalThinking(value: boolean) {
@@ -240,6 +242,8 @@ export class DiceScene {
     this.running = false;
     cancelAnimationFrame(this.frame);
     this.canvas.removeEventListener('pointerdown', this.handlePointer);
+    this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
+    this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
     document.removeEventListener('visibilitychange', this.handleVisibility);
     this.tavern.dispose();
     this.cup.dispose();
@@ -291,9 +295,26 @@ export class DiceScene {
     // иначе возвращение показывает кости уже лежащими, а бросок пропущен.
     if (document.hidden) {
       cancelAnimationFrame(this.frame);
-    } else if (this.running) {
+    } else if (this.running && !this.contextLost) {
       this.loop();
     }
+  };
+
+  private handleContextLost = (event: Event) => {
+    // Telegram WebView может отобрать GPU-контекст после сворачивания или
+    // при нехватке памяти. Без preventDefault браузер не пытается вернуть
+    // его, а последний кадр выглядит как навсегда зависшая игра.
+    event.preventDefault();
+    this.contextLost = true;
+    cancelAnimationFrame(this.frame);
+  };
+
+  private handleContextRestored = () => {
+    this.contextLost = false;
+    if (!this.running || document.hidden) return;
+    this.frames = 0;
+    this.framesSince = this.now();
+    this.loop();
   };
 
   /**
@@ -395,12 +416,10 @@ export class DiceScene {
     this.tavern.candleLight.intensity = 2.2 * (this.quality === 'low' ? 1 : flicker);
     this.tavern.flame.scale.set(1, 0.9 + flicker * 0.18, 1);
 
-    const breath = Math.sin(time * 1.1) * 0.006;
     const lean = this.rivalThinking ? 0.055 : 0;
-    this.tavern.rival.position.y = breath;
+    this.tavern.rival.position.y = 0;
     this.tavern.rival.position.z = RIVAL.z + lean;
     this.tavern.rival.rotation.x = lean * 0.9;
-    this.tavern.rivalArms.position.y = breath * 0.4;
     if (!this.reducedMotion) {
       // В покое взгляд слегка блуждает по столу. Во время решения соперник
       // наклоняет голову и едва постукивает руками — движение заметно, но
@@ -410,7 +429,9 @@ export class DiceScene {
         (this.rivalThinking ? 0.07 : 0.015) + Math.sin(time * 0.63) * 0.012;
       this.tavern.rivalArms.rotation.x = this.rivalThinking ? Math.sin(time * 2.1) * 0.028 : 0;
       this.tavern.rivalArms.rotation.y = this.rivalThinking ? Math.sin(time * 1.35) * 0.018 : 0;
-      const portraitBreath = 1 + Math.sin(time * 1.1) * 0.003;
+      // Масштаб никогда не меньше единицы: локти остаются прижаты к столу,
+      // и при «дыхании» под портретом не открывается пустая щель.
+      const portraitBreath = 1.0015 + Math.sin(time * 1.1) * 0.0015;
       this.tavern.rivalPortrait.scale.set(portraitBreath, portraitBreath, 1);
       this.tavern.rivalPortrait.rotation.z = Math.sin(time * 0.38) * 0.0035;
     }

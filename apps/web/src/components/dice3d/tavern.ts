@@ -10,6 +10,13 @@ const OPPONENT_ASSETS: Record<OpponentAppearance, string> = {
   'female-innkeeper': '/game/dice/opponents/female-innkeeper/idle.webp',
 };
 
+const OPPONENT_Y: Record<OpponentAppearance, number> = {
+  // У мужского портрета локти визуально выше нижней границы файла, поэтому
+  // он садится на стол чуть ниже хозяйки.
+  'male-traveler': 0.292,
+  'female-innkeeper': 0.305,
+};
+
 /**
  * Таверна вокруг стола: столешница, доска, свеча, стена и соперник.
  *
@@ -193,6 +200,7 @@ export function buildTavern(shadows: boolean): Tavern {
     requestedAppearance = appearance;
     rivalPortrait.visible = false;
     rivalFallback.visible = false;
+    rivalPortrait.position.y = OPPONENT_Y[appearance];
     textureLoader.load(
       OPPONENT_ASSETS[appearance],
       (texture) => {

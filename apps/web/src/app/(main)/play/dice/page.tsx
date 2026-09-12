@@ -99,6 +99,15 @@ export default function DicePage() {
         apply(await fn());
       } catch (e) {
         setError(e instanceof ApiError ? e.message : 'Не получилось — попробуйте ещё раз');
+        // Ответ мог потеряться уже после того, как сервер применил действие.
+        // Перечитываем активный стол: версия сервера восстановит экран, а
+        // expectedVersion не даст повторному нажатию сыграть дважды.
+        void apiClient
+          .get<{ match: DiceMatchView | null }>('/dice/active')
+          .then((active) => {
+            if (active.match) apply(active.match);
+          })
+          .catch(() => undefined);
       } finally {
         setBusy(false);
       }
@@ -156,19 +165,33 @@ export default function DicePage() {
 
   useEffect(() => {
     if (!matchId || !waitingForOther) return;
-    const timer = setInterval(() => {
-      void apiClient
-        .get<DiceMatchView>(`/dice/${matchId}`)
-        .then((fresh) => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const fresh = await apiClient.get<DiceMatchView>(`/dice/${matchId}`);
+        if (!cancelled) {
+          setError(null);
           setMatch((current) =>
             current && current.matchId === fresh.matchId && fresh.version >= current.version
               ? fresh
               : current,
           );
-        })
-        .catch(() => undefined);
-    }, POLL_MS);
-    return () => clearInterval(timer);
+        }
+      } catch {
+        // Краткий обрыв связи не выкидывает из партии: следующий опрос
+        // продолжит с того же состояния.
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, POLL_MS);
+      }
+    };
+
+    timer = setTimeout(poll, POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [matchId, waitingForOther]);
 
   if (screen === 'rules') {

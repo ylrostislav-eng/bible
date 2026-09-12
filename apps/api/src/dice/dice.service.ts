@@ -456,21 +456,39 @@ export class DiceService {
   }
 
   async tick() {
-    const due = await this.prisma.diceMatch.findMany({
-      where: {
-        status: 'IN_PROGRESS',
-        OR: [
-          { botActionAt: { lte: new Date() } },
-          {
-            turnTimeLimit: { not: null },
-            turnStartedAt: { lte: new Date(Date.now() - 30_000) },
-          },
-        ],
-      },
-      select: { id: true },
-      take: 100,
-    });
-    for (const match of due) await this.advanceDue(match.id);
+    const now = new Date();
+    const [bots, timed] = await Promise.all([
+      this.prisma.diceMatch.findMany({
+        where: { status: 'IN_PROGRESS', botActionAt: { lte: now } },
+        select: { id: true },
+        take: 100,
+        orderBy: { botActionAt: 'asc' },
+      }),
+      this.prisma.diceMatch.findMany({
+        where: {
+          status: 'IN_PROGRESS',
+          turnTimeLimit: { not: null },
+          // У DTO минимальный лимит 30 секунд. Более свежая партия
+          // заведомо не просрочена и не должна доходить до блокировки.
+          turnStartedAt: { lte: new Date(now.getTime() - 30_000) },
+        },
+        select: { id: true, turnStartedAt: true, turnTimeLimit: true },
+        take: 500,
+        orderBy: { turnStartedAt: 'asc' },
+      }),
+    ]);
+    const due = new Set(bots.map((match) => match.id));
+    for (const match of timed) {
+      if (
+        match.turnStartedAt &&
+        match.turnTimeLimit !== null &&
+        now.getTime() >=
+          match.turnStartedAt.getTime() + match.turnTimeLimit * 1000
+      ) {
+        due.add(match.id);
+      }
+    }
+    for (const id of due) await this.advanceDue(id);
   }
 
   async view(matchId: string, userId: string): Promise<DiceMatchView> {
