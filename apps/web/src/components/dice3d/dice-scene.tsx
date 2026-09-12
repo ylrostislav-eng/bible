@@ -2,6 +2,7 @@
 
 import type { DiceValue } from '@bible-arena/shared';
 import { useEffect, useRef, useState } from 'react';
+import { reportClientError } from '@/lib/telemetry';
 import { DiceScene, type SceneSide } from './scene';
 import type { OpponentAppearance } from './tavern';
 
@@ -28,6 +29,11 @@ export interface DiceSceneProps {
   side: SceneSide;
   rivalThinking: boolean;
   opponentAppearance: OpponentAppearance;
+  telemetry?: {
+    matchId: string;
+    version: number;
+    phase: string;
+  };
   onPick: (index: number) => void;
 }
 
@@ -35,6 +41,7 @@ export default function DiceSceneView(props: DiceSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<DiceScene | null>(null);
   const pickRef = useRef(props.onPick);
+  const telemetryRef = useRef(props.telemetry);
   const initialOpponentAppearance = useRef(props.opponentAppearance);
   const previousRoll = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -48,6 +55,10 @@ export default function DiceSceneView(props: DiceSceneProps) {
   }, [props.onPick]);
 
   useEffect(() => {
+    telemetryRef.current = props.telemetry;
+  }, [props.telemetry]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -57,6 +68,26 @@ export default function DiceSceneView(props: DiceSceneProps) {
         canvas,
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         onPick: (index) => pickRef.current(index),
+        onContextLost: () => {
+          reportClientError('dice_webgl_context_lost', 'Потерян WebGL-контекст игры в кости', {
+            ...telemetryRef.current,
+          });
+        },
+        onContextRestored: (lostForMs) => {
+          if (lostForMs < 3000) return;
+          reportClientError(
+            'dice_webgl_slow_restore',
+            'WebGL-контекст игры в кости восстанавливался дольше 3 секунд',
+            { ...telemetryRef.current, lostForMs: Math.round(lostForMs) },
+          );
+        },
+        onQualityChange: (quality, fps) => {
+          if (quality !== 'low') return;
+          reportClientError('dice_low_fps', 'Игра в кости перешла на низкое качество', {
+            ...telemetryRef.current,
+            fps: Math.round(fps),
+          });
+        },
       });
     } catch {
       // WebGL может быть недоступен: старый WebView, отключённое

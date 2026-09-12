@@ -23,6 +23,8 @@ import { ScreenBack } from '@/components/ui/screen-back';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
 import { useImmersiveWhile } from '@/lib/immersive-context';
+import { useSoundWhen } from '@/lib/sound';
+import { reportClientError } from '@/lib/telemetry';
 
 /**
  * «Кости» — партия один на один. Правила и замысел: `docs/dice.md`.
@@ -459,6 +461,72 @@ function DiceMatchScreen({
   const pickedPoints = picked.length ? scoreSelection(match.dice, picked) : null;
   const lastBust = match.events.find((event) => event.type === 'BUST');
   const lastHotDice = match.events.find((event) => event.type === 'HOT_DICE');
+  const lastTurnEnded = match.events.find((event) => event.type === 'TURN_ENDED');
+  const ownBank =
+    lastTurnEnded?.playerId === match.youId && lastTurnEnded.bankedScore > 0
+      ? lastTurnEnded.bankedScore
+      : 0;
+  const rivalBank =
+    lastTurnEnded?.playerId !== match.youId && (lastTurnEnded?.bankedScore ?? 0) > 0
+      ? (lastTurnEnded?.bankedScore ?? 0)
+      : 0;
+
+  useSoundWhen('burnt', Boolean(lastBust && !revealingRoll));
+  useSoundWhen('reward', Boolean(lastHotDice));
+  useSoundWhen('reward', ownBank > 0);
+  useSoundWhen('opponent', rivalBank > 0);
+  useSoundWhen(finished && match.winnerId === match.youId ? 'win' : 'lose', finished);
+
+  const automaticPhase =
+    match.phase === 'BUST' || revealingRoll || Boolean(rival?.isBot && !myTurn);
+  const actionsKey = match.actions.join(',');
+  useEffect(() => {
+    if (!automaticPhase || finished || abandoned) return;
+    const timer = window.setTimeout(() => {
+      reportClientError(
+        'dice_phase_stalled',
+        'Автоматическая фаза игры в кости длится более 12 секунд',
+        {
+          matchId: match.matchId,
+          version: match.version,
+          phase: match.phase,
+          currentPlayer: myTurn ? 'you' : 'rival',
+          revealingRoll,
+          actions: actionsKey,
+        },
+      );
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [
+    abandoned,
+    automaticPhase,
+    finished,
+    match.matchId,
+    match.phase,
+    match.version,
+    myTurn,
+    revealingRoll,
+    actionsKey,
+  ]);
+
+  const moment =
+    lastBust && !revealingRoll
+      ? {
+          tone: 'bust' as const,
+          text: lastBust.lostScore
+            ? `Пустой бросок · сгорело ${lastBust.lostScore}`
+            : 'Пустой бросок',
+        }
+      : lastHotDice
+        ? { tone: 'hot' as const, text: 'Hot Dice · снова в игре все шесть' }
+        : ownBank > 0
+          ? { tone: 'bank' as const, text: `+${ownBank} в общий счёт` }
+          : rivalBank > 0
+            ? {
+                tone: 'bank' as const,
+                text: `${rival?.nickname ?? 'Соперник'} · +${rivalBank}`,
+              }
+            : null;
 
   const toggle = (index: number) => {
     if (locked.includes(index)) return;
@@ -510,6 +578,11 @@ function DiceMatchScreen({
           side={visualMyTurn ? 'you' : 'rival'}
           rivalThinking={!visualMyTurn && !revealingRoll && !finished && !abandoned}
           opponentAppearance={opponentAppearance(match, rival?.userId)}
+          telemetry={{
+            matchId: match.matchId,
+            version: match.version,
+            phase: match.phase,
+          }}
           onPick={toggle}
         />
       </div>
@@ -518,6 +591,29 @@ function DiceMatchScreen({
           не читается, а сплошная плашка закрыла бы стол. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[calc(var(--safe-top)+7rem)] bg-gradient-to-b from-black/70 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
+
+      {moment && (
+        <>
+          <div
+            className={clsx(
+              'pointer-events-none absolute inset-0 z-10',
+              moment.tone === 'bust' ? 'dice-bust-wash' : 'dice-hot-wash',
+            )}
+          />
+          <p
+            key={`${match.version}:${moment.tone}`}
+            role="status"
+            className={clsx(
+              'dice-moment pointer-events-none absolute left-1/2 top-[68%] z-20 w-max max-w-[calc(100%-1.5rem)] rounded-xl border bg-black/80 px-4 py-2 text-center text-sm font-bold shadow-xl backdrop-blur-sm',
+              moment.tone === 'bust'
+                ? 'border-danger/45 text-danger'
+                : 'border-primary/45 text-primary',
+            )}
+          >
+            {moment.text}
+          </p>
+        </>
+      )}
 
       {!finished && !abandoned && (
         /* HUD привязан к самой сцене, а не к меняющей высоту колонке
@@ -619,27 +715,6 @@ function DiceMatchScreen({
                   })}
                 </div>
               )}
-
-            {!revealingRoll && lastBust && (
-              <p
-                role="status"
-                className="rounded-xl border border-danger/30 bg-black/75 px-3 py-2 text-center text-sm font-semibold text-danger backdrop-blur-sm"
-              >
-                {lastBust.playerId === match.youId
-                  ? `Неудачный бросок — сгорело ${lastBust.lostScore} очков`
-                  : `${rival?.nickname ?? 'Соперник'} теряет ${lastBust.lostScore} очков хода`}
-              </p>
-            )}
-            {!revealingRoll && lastHotDice && (
-              <p
-                role="status"
-                className="rounded-xl border border-primary/35 bg-black/75 px-3 py-2 text-center text-sm font-semibold text-primary backdrop-blur-sm"
-              >
-                {lastHotDice.playerId === match.youId
-                  ? 'Hot Dice! Все шесть принесли очки — бросайте их снова'
-                  : `Hot Dice у ${rival?.nickname ?? 'соперника'} — снова в игре все шесть`}
-              </p>
-            )}
 
             {error && <p className="text-center text-sm text-danger">{error}</p>}
 
@@ -775,7 +850,12 @@ function ScoreChip({
         >
           {label ?? <PlayerLabel nickname={player?.nickname} role={player?.role} />}
         </p>
-        <p className="shrink-0 text-base font-bold leading-none tabular-nums text-white">{score}</p>
+        <p
+          key={score}
+          className="dice-score-pop shrink-0 text-base font-bold leading-none tabular-nums text-white"
+        >
+          {score}
+        </p>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-black/50">
         <div

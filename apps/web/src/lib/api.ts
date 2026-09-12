@@ -88,6 +88,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   let response: Response;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const startedAt = Date.now();
   try {
     response = await fetch(`${API_URL}${path}`, {
       method,
@@ -116,6 +117,20 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     throw err;
   } finally {
     clearTimeout(timeout);
+  }
+
+  const durationMs = Date.now() - startedAt;
+  if (path.startsWith('/dice') && durationMs >= 5000) {
+    const route = path.replace(
+      /\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi,
+      '/:id',
+    );
+    void import('./telemetry').then(({ reportClientError }) => {
+      reportClientError('dice_slow_response', `${method} ${route} выполнялся дольше 5 секунд`, {
+        durationMs,
+        status: response.status,
+      });
+    });
   }
 
   const payload = await response.json().catch(() => null);

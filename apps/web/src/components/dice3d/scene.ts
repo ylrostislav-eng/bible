@@ -43,12 +43,15 @@ const AIM_FROM = 0.72;
 const MAX_DICE = 6;
 
 export type SceneSide = 'you' | 'rival';
-type Quality = 'high' | 'medium' | 'low';
+export type Quality = 'high' | 'medium' | 'low';
 
 export interface DiceSceneOptions {
   canvas: HTMLCanvasElement;
   reducedMotion: boolean;
   onPick: (index: number) => void;
+  onContextLost?: () => void;
+  onContextRestored?: (lostForMs: number) => void;
+  onQualityChange?: (quality: Quality, fps: number) => void;
 }
 
 interface DieView {
@@ -71,11 +74,15 @@ export class DiceScene {
   private readonly canvas: HTMLCanvasElement;
   private readonly reducedMotion: boolean;
   private readonly onPick: (index: number) => void;
+  private readonly onContextLost?: () => void;
+  private readonly onContextRestored?: (lostForMs: number) => void;
+  private readonly onQualityChange?: (quality: Quality, fps: number) => void;
   private readonly geometries: THREE.BufferGeometry[] = [];
 
   private frame = 0;
   private running = false;
   private contextLost = false;
+  private contextLostAt = 0;
   private startedAt = 0;
   private values: DiceValue[] = [];
   private rollKey = 'none';
@@ -91,10 +98,20 @@ export class DiceScene {
   private frames = 0;
   private framesSince = 0;
 
-  constructor({ canvas, reducedMotion, onPick }: DiceSceneOptions) {
+  constructor({
+    canvas,
+    reducedMotion,
+    onPick,
+    onContextLost,
+    onContextRestored,
+    onQualityChange,
+  }: DiceSceneOptions) {
     this.canvas = canvas;
     this.reducedMotion = reducedMotion;
     this.onPick = onPick;
+    this.onContextLost = onContextLost;
+    this.onContextRestored = onContextRestored;
+    this.onQualityChange = onQualityChange;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -282,11 +299,13 @@ export class DiceScene {
     if (this.quality === 'high' && fps < 42) {
       this.quality = 'medium';
       this.renderer.setPixelRatio(this.pixelRatio());
+      this.onQualityChange?.(this.quality, fps);
     } else if (this.quality === 'medium' && fps < 30) {
       this.quality = 'low';
       this.keyLight.castShadow = false;
       this.renderer.shadowMap.enabled = false;
       this.renderer.setPixelRatio(this.pixelRatio());
+      this.onQualityChange?.(this.quality, fps);
     }
   }
 
@@ -306,11 +325,16 @@ export class DiceScene {
     // его, а последний кадр выглядит как навсегда зависшая игра.
     event.preventDefault();
     this.contextLost = true;
+    this.contextLostAt = this.now();
     cancelAnimationFrame(this.frame);
+    this.onContextLost?.();
   };
 
   private handleContextRestored = () => {
+    const lostForMs = this.contextLostAt ? this.now() - this.contextLostAt : 0;
     this.contextLost = false;
+    this.contextLostAt = 0;
+    this.onContextRestored?.(lostForMs);
     if (!this.running || document.hidden) return;
     this.frames = 0;
     this.framesSince = this.now();

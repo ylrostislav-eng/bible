@@ -704,3 +704,60 @@ a {
    кубок — предмет в трёхмерной сцене, и всё движение считается в цикле
    отрисовки (`components/dice3d/scene.ts`), включая уважение к
    `prefers-reduced-motion`. */
+
+/* Короткие игровые акценты лежат поверх сцены и не участвуют в потоке:
+ * результат заметен, но ни HUD, ни кнопки от него не сдвигаются. */
+.dice-moment {
+  transform: translateX(-50%);
+  animation: dice-moment-in 420ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+.dice-score-pop {
+  animation: dice-score-pop 360ms ease-out both;
+}
+
+.dice-bust-wash {
+  background: radial-gradient(circle at 50% 62%, transparent 35%, rgba(127, 29, 29, 0.2) 100%);
+  animation: dice-wash-in 700ms ease-out both;
+}
+
+.dice-hot-wash {
+  box-shadow: inset 0 0 48px rgba(232, 176, 75, 0.16);
+  animation: dice-wash-in 700ms ease-out both;
+}
+
+@keyframes dice-moment-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.45rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes dice-wash-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dice-score-pop {
+  45% {
+    color: var(--color-primary);
+    transform: scale(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice-moment,
+  .dice-score-pop,
+  .dice-bust-wash,
+  .dice-hot-wash {
+    animation: none;
+  }
+}
