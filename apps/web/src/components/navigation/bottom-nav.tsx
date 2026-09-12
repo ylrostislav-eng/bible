@@ -21,6 +21,7 @@ const RESUME_HREF: Record<ActiveGameType, string> = {
   room: '/play/room',
   alias: '/play/alias',
   'hot-cold-duel': '/hot-cold/duel',
+  dice: '/play/dice',
 };
 
 const TABS = [

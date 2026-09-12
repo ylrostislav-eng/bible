@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
+import { useIncomingDiceChallenges } from '@/lib/incoming-dice-challenges-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { parseLaunchInvite, type LaunchInvite } from '@/lib/launch-invite';
 
@@ -25,6 +26,7 @@ import { parseLaunchInvite, type LaunchInvite } from '@/lib/launch-invite';
  */
 export function LaunchInviteNotice() {
   const { challenges, loaded: challengesLoaded } = useIncomingChallenges();
+  const { challenges: diceChallenges, loaded: diceChallengesLoaded } = useIncomingDiceChallenges();
   const { invites, loaded: invitesLoaded } = useIncomingRoomInvites();
 
   // Читается ленивым инициализатором, а не в эффекте: параметр запуска не
@@ -40,11 +42,18 @@ export function LaunchInviteNotice() {
   );
   const [dismissed, setDismissed] = useState(false);
 
-  const loaded = invite?.kind === 'duel' ? challengesLoaded : invitesLoaded;
+  const loaded =
+    invite?.kind === 'duel'
+      ? challengesLoaded
+      : invite?.kind === 'dice'
+        ? diceChallengesLoaded
+        : invitesLoaded;
   const present =
     invite?.kind === 'duel'
       ? challenges.some((c) => c.sessionId === invite.sessionId)
-      : invites.some((i) => invite && i.inviteId === invite.inviteId);
+      : invite?.kind === 'dice'
+        ? diceChallenges.some((c) => c.matchId === invite.matchId)
+        : invites.some((i) => invite && i.inviteId === invite.inviteId);
 
   /**
    * Ответ даётся один раз, вскоре после запуска, — и больше не
@@ -91,12 +100,12 @@ export function LaunchInviteNotice() {
       <div className="glass-card pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">
-            {invite.kind === 'duel' ? 'Вызов уже неактуален' : 'Приглашение уже неактуально'}
+            {invite.kind === 'room' ? 'Приглашение уже неактуально' : 'Вызов уже неактуален'}
           </p>
           <p className="mt-0.5 text-xs text-text-secondary">
-            {invite.kind === 'duel'
-              ? 'Его отменили или он истёк, пока вы не открывали приложение. Позовите в ответ — во вкладке «Игроки».'
-              : 'Комната уже началась или закрылась. Загляните во вкладку «Игроки» — позовите сами.'}
+            {invite.kind === 'room'
+              ? 'Комната уже началась или закрылась. Загляните во вкладку «Игроки» — позовите сами.'
+              : 'Его отменили или он истёк, пока вы не открывали приложение. Позовите в ответ — во вкладке «Игроки».'}
           </p>
         </div>
         <button
@@ -155,7 +164,12 @@ function takeLaunchInviteOnce(): LaunchInvite | null {
     return null;
   }
 
-  const key = invite.kind === 'duel' ? `duel_${invite.sessionId}` : `room_${invite.inviteId}`;
+  const key =
+    invite.kind === 'duel'
+      ? `duel_${invite.sessionId}`
+      : invite.kind === 'dice'
+        ? `dice_${invite.matchId}`
+        : `room_${invite.inviteId}`;
   try {
     if (sessionStorage.getItem(HANDLED_KEY) === key) {
       cachedInvite = null;

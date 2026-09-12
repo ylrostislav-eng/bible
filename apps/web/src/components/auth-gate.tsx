@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { DeclineNoticesProvider } from '@/lib/decline-notices-context';
 import { ImmersiveProvider, useImmersive } from '@/lib/immersive-context';
 import { IncomingChallengesProvider } from '@/lib/incoming-challenges-context';
+import { IncomingDiceChallengesProvider } from '@/lib/incoming-dice-challenges-context';
 import { IncomingRoomInvitesProvider } from '@/lib/incoming-room-invites-context';
 import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { SwipeBackNavigation, SwipeBackProvider } from '@/lib/swipe-back-context';
@@ -94,13 +95,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <ActiveGameProvider>
         <SwipeBackProvider>
           <IncomingChallengesProvider>
-            <IncomingRoomInvitesProvider>
-              <DeclineNoticesProvider>
-                <ImmersiveProvider>
-                  <AppChrome>{children}</AppChrome>
-                </ImmersiveProvider>
-              </DeclineNoticesProvider>
-            </IncomingRoomInvitesProvider>
+            <IncomingDiceChallengesProvider>
+              <IncomingRoomInvitesProvider>
+                <DeclineNoticesProvider>
+                  <ImmersiveProvider>
+                    <AppChrome>{children}</AppChrome>
+                  </ImmersiveProvider>
+                </DeclineNoticesProvider>
+              </IncomingRoomInvitesProvider>
+            </IncomingDiceChallengesProvider>
           </IncomingChallengesProvider>
         </SwipeBackProvider>
       </ActiveGameProvider>

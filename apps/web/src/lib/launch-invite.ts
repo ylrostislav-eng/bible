@@ -1,7 +1,10 @@
 import { retrieveLaunchParams } from '@telegram-apps/sdk-react';
 
 /** На что показывала ссылка из уведомления. */
-export type LaunchInvite = { kind: 'duel'; sessionId: string } | { kind: 'room'; inviteId: string };
+export type LaunchInvite =
+  | { kind: 'duel'; sessionId: string }
+  | { kind: 'room'; inviteId: string }
+  | { kind: 'dice'; matchId: string };
 
 /**
  * Приглашение, с которым открыли приложение из уведомления бота.
@@ -36,9 +39,10 @@ function startParamInvite(): string | null {
 }
 
 /**
- * Форматы: `duel_<id партии>` и `room_<id приглашения>`. Рядом живёт
- * третий, `ref_<токен>`, — он про приглашение в друзья и разбирается на
- * сервере при входе; здесь он намеренно не наш случай и даёт `null`.
+ * Форматы: `duel_<id партии>`, `room_<id приглашения>` и
+ * `dice_<id партии>`. Рядом живёт четвёртый, `ref_<токен>`, — он про
+ * приглашение в друзья и разбирается на сервере при входе; здесь он
+ * намеренно не наш случай и даёт `null`.
  */
 function parseInvite(value: string | null): LaunchInvite | null {
   if (!value) return null;
@@ -48,6 +52,9 @@ function parseInvite(value: string | null): LaunchInvite | null {
 
   const room = /^room_([A-Za-z0-9_-]{1,64})$/.exec(value);
   if (room) return { kind: 'room', inviteId: room[1] };
+
+  const dice = /^dice_([A-Za-z0-9_-]{1,64})$/.exec(value);
+  if (dice) return { kind: 'dice', matchId: dice[1] };
 
   return null;
 }

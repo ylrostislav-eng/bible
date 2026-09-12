@@ -7,30 +7,33 @@ import { TournamentIcon } from '@/components/icons/nav-icons';
 import { useActiveGame } from '@/lib/active-game-context';
 import { ApiError, apiClient } from '@/lib/api';
 import { useIncomingChallenges } from '@/lib/incoming-challenges-context';
+import { useIncomingDiceChallenges } from '@/lib/incoming-dice-challenges-context';
 import { useIncomingRoomInvites } from '@/lib/incoming-room-invites-context';
 import { leaveActiveRoom } from '@/lib/leave-room';
 import { LeaveRoomConfirm } from './leave-room-confirm';
 
 /**
- * A floating badge+panel for pending duel challenges *and* room invites —
- * the persistent home for either one once you tap "Позже" on
- * `IncomingNotifications`'s full-screen popup, so it doesn't just vanish.
- * Covers both kinds in a single widget rather than two competing floating
- * buttons: the popup already treats them as one family (only one shows at a
- * time, with the other queued behind it), so splitting them back apart here
- * would just be visual clutter — and a duel challenge dismissed with
- * "Позже" used to have nowhere to resurface *at all* short of navigating to
- * the duel screen's own list, unlike room invites. Mirrors `ChatWidget`'s
- * collapsed-icon/expanded-panel shape, positioned just to its left so the
- * two don't overlap. Only rendered while there's at least one of either —
- * unlike chat, an empty state here has nothing useful to show.
+ * A floating badge+panel for pending duel challenges, dice challenges *and*
+ * room invites — the persistent home for any of the three once you tap
+ * "Позже" on `IncomingNotifications`'s full-screen popup, so it doesn't
+ * just vanish. Covers all three kinds in a single widget rather than
+ * competing floating buttons: the popup already treats them as one family
+ * (only one shows at a time, the rest queued behind it), so splitting them
+ * back apart here would just be visual clutter — and a challenge dismissed
+ * with "Позже" used to have nowhere to resurface *at all* short of
+ * navigating to that mode's own screen, unlike room invites. Mirrors
+ * `ChatWidget`'s collapsed-icon/expanded-panel shape, positioned just to
+ * its left so the two don't overlap. Only rendered while there's at least
+ * one of the three — unlike chat, an empty state here has nothing useful
+ * to show.
  */
 export function PendingInvitesWidget() {
   const { challenges } = useIncomingChallenges();
+  const { challenges: diceChallenges } = useIncomingDiceChallenges();
   const { invites } = useIncomingRoomInvites();
   const [open, setOpen] = useState(false);
 
-  const total = challenges.length + invites.length;
+  const total = challenges.length + diceChallenges.length + invites.length;
   if (total === 0) return null;
 
   return (
@@ -58,6 +61,9 @@ export function PendingInvitesWidget() {
             <div className="flex flex-col gap-3">
               {challenges.map((challenge) => (
                 <ChallengeRow key={challenge.sessionId} sessionId={challenge.sessionId} />
+              ))}
+              {diceChallenges.map((challenge) => (
+                <DiceChallengeRow key={challenge.matchId} matchId={challenge.matchId} />
               ))}
               {invites.map((invite) => (
                 <InviteRow key={invite.inviteId} inviteId={invite.inviteId} />
@@ -158,6 +164,101 @@ function ChallengeRow({ sessionId }: { sessionId: string }) {
               className="h-9 flex-1 rounded-lg bg-primary text-xs font-semibold text-on-primary disabled:opacity-50"
             >
               {busy ? 'Подключение…' : 'Принять'}
+            </button>
+            <button
+              onClick={() => void decline()}
+              disabled={busy}
+              className="h-9 flex-1 rounded-lg bg-surface-hover text-xs font-semibold text-text-secondary disabled:opacity-50"
+            >
+              Отклонить
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DiceChallengeRow({ matchId }: { matchId: string }) {
+  const router = useRouter();
+  const { activeGame, setActiveGame } = useActiveGame();
+  const { challenges, removeChallenge } = useIncomingDiceChallenges();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+
+  const challenge = challenges.find((c) => c.matchId === matchId);
+  if (!challenge) return null;
+
+  const doAccept = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiClient.post(`/dice/${matchId}/respond`, { action: 'ACCEPT' });
+      removeChallenge(matchId);
+      setActiveGame({ type: 'dice', sessionId: matchId, status: 'IN_PROGRESS' });
+      router.push('/play/dice');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось принять вызов');
+      setBusy(false);
+    }
+  };
+
+  const accept = () => {
+    if (activeGame?.type === 'room') {
+      setConfirmingLeave(true);
+      return;
+    }
+    void doAccept();
+  };
+
+  const confirmLeaveAndAccept = async () => {
+    if (!activeGame) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await leaveActiveRoom(activeGame.sessionId);
+    } catch {
+      // Худший случай — старая комната повисит чуть дольше; вызов, ради
+      // которого это делалось, всё равно стоит принять.
+    }
+    await doAccept();
+  };
+
+  const decline = async () => {
+    setBusy(true);
+    try {
+      await apiClient.post(`/dice/${matchId}/respond`, { action: 'DECLINE' });
+    } catch {
+      // Убираем из списка в любом случае — устаревший отказ безвреден.
+    } finally {
+      removeChallenge(matchId);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold">{challenge.fromNickname ?? 'Игрок'}</p>
+        <p className="text-xs text-text-muted">Кости · до {challenge.targetScore} очков</p>
+      </div>
+      {confirmingLeave ? (
+        <LeaveRoomConfirm
+          onConfirm={() => void confirmLeaveAndAccept()}
+          onCancel={() => setConfirmingLeave(false)}
+          busy={busy}
+          error={error}
+        />
+      ) : (
+        <>
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={accept}
+              disabled={busy}
+              className="h-9 flex-1 rounded-lg bg-primary text-xs font-semibold text-on-primary disabled:opacity-50"
+            >
+              {busy ? 'Садимся за стол…' : 'Принять'}
             </button>
             <button
               onClick={() => void decline()}

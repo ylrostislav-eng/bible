@@ -24,6 +24,8 @@ import { PlayerLabel } from '@/components/ui/player-label';
 import { ScreenBack } from '@/components/ui/screen-back';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, apiClient } from '@/lib/api';
+import { useActiveGame } from '@/lib/active-game-context';
+import { useIncomingDiceChallenges } from '@/lib/incoming-dice-challenges-context';
 import { useImmersiveWhile } from '@/lib/immersive-context';
 import { useSoundWhen } from '@/lib/sound';
 import { useBlockSwipeBack } from '@/lib/swipe-back-context';
@@ -69,7 +71,12 @@ export default function DicePage() {
   const [code, setCode] = useState('');
   const [picked, setPicked] = useState<number[]>([]);
   const [progress, setProgress] = useState<DiceProgress | null>(null);
-  const [pendingInvites, setPendingInvites] = useState<PendingDiceInvite[]>([]);
+  const { activeGame, setActiveGame } = useActiveGame();
+  // Список приглашений общий с глобальным попапом (`IncomingDiceInvitePopup`):
+  // один и тот же опрос, а не два по одному адресу — экран здесь только
+  // читает то, что уже пришло, и добавляет ответ на конкретное приглашение.
+  const { challenges: pendingInvites, removeChallenge: removePendingInvite } =
+    useIncomingDiceChallenges();
 
   /** Ключ броска: по нему сцена понимает, что кости новые. */
   const rollKey = match ? `${match.matchId}:${match.turnNumber}:${match.rollNumber}` : 'none';
@@ -131,12 +138,15 @@ export default function DicePage() {
       await apiClient.post(`/dice/${match.matchId}/cancel`, {});
       setMatch(null);
       setScreen('menu');
+      // Стол не просто скрыт — его больше нет на сервере, и вкладке
+      // «Играть» незачем вести обратно в партию, которой уже не будет.
+      setActiveGame(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось отменить ожидание');
     } finally {
       setBusy(false);
     }
-  }, [match]);
+  }, [match, setActiveGame]);
 
   // Возвращение в незаконченную партию: приложение закрыли, матч остался
   // на сервере — и открывается ровно там, где его бросили.
@@ -159,24 +169,25 @@ export default function DicePage() {
       .catch(() => undefined);
   }, [match?.status]);
 
+  // Тот же стол, что видит нижнее меню и попап «вас пригласили в кости»:
+  // партия, которая ждёт соперника, «Играть» ещё пускает в другое место, а
+  // партия в игре — метит себя `IN_PROGRESS`, и тогда чужие вызовы (сюда
+  // же и в дуэль) молчат, пока идёт бросок. Точная копия того, как это
+  // сделано на экране дуэли.
   useEffect(() => {
-    if (match) return undefined;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const invites = await apiClient.get<PendingDiceInvite[]>('/dice/pending-invites');
-        if (!cancelled) setPendingInvites(invites);
-      } catch {
-        // Следующий опрос восстановит список после краткого обрыва связи.
-      }
-    };
-    void poll();
-    const interval = setInterval(() => void poll(), 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [match]);
+    if (!match || match.status === 'FINISHED' || match.status === 'ABANDONED') return;
+    if (
+      activeGame?.type !== 'dice' ||
+      activeGame.sessionId !== match.matchId ||
+      activeGame.status !== match.status
+    ) {
+      setActiveGame({ type: 'dice', sessionId: match.matchId, status: match.status });
+    }
+  }, [match, activeGame, setActiveGame]);
+
+  useEffect(() => {
+    if (match?.status === 'FINISHED' || match?.status === 'ABANDONED') setActiveGame(null);
+  }, [match?.status, setActiveGame]);
 
   // Пока ход соперника — спрашиваем состояние. Свои действия обновляют
   // экран сразу ответом сервера, поэтому опрос нужен только на чужой ход
@@ -275,7 +286,7 @@ export default function DicePage() {
               `/dice/${invite.matchId}/respond`,
               { action },
             );
-            setPendingInvites((items) => items.filter((item) => item.matchId !== invite.matchId));
+            removePendingInvite(invite.matchId);
             if ('matchId' in response) apply(response);
           } catch (cause) {
             setError(

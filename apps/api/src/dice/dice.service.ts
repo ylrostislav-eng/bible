@@ -36,6 +36,7 @@ import { AdminRegistry } from '../auth/admin-registry.service';
 import { StaffNameMask } from '../auth/staff-name-mask.service';
 import { ContactPolicyService } from '../contact/contact-policy.service';
 import { generateInviteCode } from '../game/invite-code';
+import { InviteNotifierService } from '../notifications/invite-notifier.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { rollDice } from './dice-rng';
 
@@ -66,6 +67,7 @@ export class DiceService {
     private readonly staffNames: StaffNameMask,
     private readonly admins: AdminRegistry,
     private readonly contacts: ContactPolicyService,
+    private readonly inviteNotifier: InviteNotifierService,
   ) {}
 
   /** Одна короткая очередь в БД: работает и при двух экземплярах API.
@@ -133,6 +135,19 @@ export class DiceService {
         );
       return this.createIn(tx, userId, { targetScore }, undefined, opponentId);
     });
+    // Уведомление вне приложения — вдогонку и без ожидания, как у дуэли:
+    // приглашение уже создано, и падать из-за недоступного Telegram оно не
+    // должно. Сервис сам решает, писать ли (человек в сети — не пишем,
+    // ночь — не пишем, выключил — не пишем).
+    const host = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { nickname: true },
+    });
+    void this.inviteNotifier.notifyDiceChallenge({
+      toUserId: opponentId,
+      fromNickname: this.staffNames.label(userId, host?.nickname ?? null),
+      matchId: id,
+    });
     return this.view(id, userId);
   }
 
@@ -164,28 +179,30 @@ export class DiceService {
     matchId: string,
     action: 'ACCEPT' | 'DECLINE',
   ) {
-    const match = await this.prisma.diceMatch.findUnique({
-      where: { id: matchId },
-    });
-    if (
-      !match ||
-      match.status !== 'WAITING' ||
-      match.targetOpponentId !== userId
-    )
-      throw new NotFoundException('Приглашение уже неактуально');
-    if (action === 'DECLINE') {
-      await this.prisma.diceMatch.updateMany({
-        where: { id: matchId, status: 'WAITING', targetOpponentId: userId },
-        data: {
-          status: 'ABANDONED',
-          finishedAt: new Date(),
-          lastActionAt: new Date(),
-        },
-      });
-      return { declined: true as const };
+    if (action === 'ACCEPT') {
+      // `join` сам берёт блокировку стола внутри общей очереди — тот же
+      // путь, каким садится любой второй игрок.
+      await this.join(userId, matchId);
+      return this.view(matchId, userId);
     }
-    await this.join(userId, matchId);
-    return this.view(matchId, userId);
+    // Раньше это был голый `updateMany` без строки лога и без общей
+    // очереди: он не был синхронизирован с `join` вовсе, и мог решить, что
+    // отклонил уже принятое приглашение — обновлял ноль строк
+    // (`WHERE status = 'WAITING'` уже не совпадало), но всё равно отвечал
+    // `{ declined: true }`. Игрок читал «отклонено», а стол на сервере
+    // тем временем был IN_PROGRESS. _Найдено разбором, не проверкой:
+    // задача явно требовала проверить `updateMany.count`._
+    //
+    // Внутри общей очереди и под блокировкой строки — тем же путём, что и
+    // ACCEPT: два ответа на одно приглашение не могут разойтись по факту,
+    // даже если оба ушли с клиента почти одновременно.
+    await this.queue(async (tx) => {
+      const match = await this.lock(tx, matchId);
+      if (match.status !== 'WAITING' || match.targetOpponentId !== userId)
+        throw new NotFoundException('Приглашение уже неактуально');
+      await this.abandon(tx, match);
+    });
+    return { declined: true as const };
   }
 
   private async createIn(

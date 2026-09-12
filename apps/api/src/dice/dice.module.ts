@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { ContactModule } from '../contact/contact.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { DiceController } from './dice.controller';
 import { DiceService } from './dice.service';
 
@@ -15,7 +16,7 @@ const SWEEP_INTERVAL_MS = 5 * 60_000;
 const TURN_INTERVAL_MS = 750;
 
 @Module({
-  imports: [AuthModule, ContactModule],
+  imports: [AuthModule, ContactModule, NotificationsModule],
   controllers: [DiceController],
   providers: [DiceService],
   exports: [DiceService],

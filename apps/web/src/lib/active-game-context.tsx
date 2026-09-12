@@ -5,8 +5,11 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 /** `alias` — партия за одним телефоном. Она попадает сюда не ради
  * переподключения (партия целиком на устройстве и никуда не девается), а
  * ради двух побочных эффектов: вкладка «Играть» возвращает в неё, а входящие
- * вызовы и приглашения не всплывают посреди раунда. */
-export type ActiveGameType = 'duel' | 'room' | 'alias' | 'hot-cold-duel';
+ * вызовы и приглашения не всплывают посреди раунда. Та же причина держит
+ * здесь и `dice`: партия в кости с личным приглашением должна точно так же
+ * глушить чужие вызовы, пока идёт бросок, и не глушить вовсе, пока стол
+ * просто ждёт соперника. */
+export type ActiveGameType = 'duel' | 'room' | 'alias' | 'hot-cold-duel' | 'dice';
 
 export interface ActiveGame {
   type: ActiveGameType;
@@ -43,7 +46,8 @@ function readStored(): ActiveGame | null {
       (parsed.type === 'duel' ||
         parsed.type === 'room' ||
         parsed.type === 'alias' ||
-        parsed.type === 'hot-cold-duel') &&
+        parsed.type === 'hot-cold-duel' ||
+        parsed.type === 'dice') &&
       typeof parsed.sessionId === 'string'
     ) {
       const status =
