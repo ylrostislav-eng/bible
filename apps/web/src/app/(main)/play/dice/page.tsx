@@ -27,7 +27,7 @@ import { ApiError, apiClient } from '@/lib/api';
 import { useActiveGame } from '@/lib/active-game-context';
 import { useIncomingDiceChallenges } from '@/lib/incoming-dice-challenges-context';
 import { useImmersiveWhile } from '@/lib/immersive-context';
-import { useSoundWhen } from '@/lib/sound';
+import { playSound, useSoundWhen } from '@/lib/sound';
 import { useBlockSwipeBack } from '@/lib/swipe-back-context';
 import { reportClientError } from '@/lib/telemetry';
 
@@ -692,6 +692,7 @@ function DiceMatchScreen({
       ? (lastTurnEnded?.bankedScore ?? 0)
       : 0;
 
+  useSoundWhen('roll', revealingRoll);
   useSoundWhen('burnt', Boolean(lastBust && !revealingRoll));
   useSoundWhen('reward', Boolean(lastHotDice));
   useSoundWhen('reward', ownBank > 0);
@@ -749,9 +750,15 @@ function DiceMatchScreen({
               }
             : null;
 
+  // Единая точка для звука выбора: 3D-стол — это `<canvas>`, а не кнопка,
+  // и общий слушатель нажатий (`sound.tsx`) по нему не срабатывает — выбор
+  // костей раскрытием ладони по столу звучал тише самой кнопки «Бросить».
+  // Резервный список кнопок ниже помечен `data-no-sound`, чтобы звук не
+  // сыграл дважды.
   const toggle = (index: number) => {
     if (locked.includes(index)) return;
     onPick(picked.includes(index) ? picked.filter((value) => value !== index) : [...picked, index]);
+    playSound('tap');
   };
 
   // Идентификатор действия — чтобы повторное нажатие на плохой связи не
@@ -911,6 +918,7 @@ function DiceMatchScreen({
                         disabled={busy || unavailable}
                         aria-pressed={selected}
                         aria-label={`Кость ${index + 1}: ${die}${unavailable ? ', уже отложена' : ''}`}
+                        data-no-sound
                         onClick={() => toggle(index)}
                         className={clsx(
                           'h-10 w-10 rounded-xl border text-sm font-bold backdrop-blur-sm',
@@ -1294,13 +1302,14 @@ function DiceTutorial({ onFinish }: { onFinish: () => void }) {
           side="you"
           rivalThinking={false}
           opponentAppearance="female-innkeeper"
-          onPick={(index) =>
+          onPick={(index) => {
             setPicked((current) =>
               current.includes(index)
                 ? current.filter((value) => value !== index)
                 : [...current, index],
-            )
-          }
+            );
+            playSound('tap');
+          }}
         />
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[calc(var(--safe-top)+8rem)] bg-gradient-to-b from-black/85 to-transparent" />

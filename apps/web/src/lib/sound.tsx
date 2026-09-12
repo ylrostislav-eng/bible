@@ -101,6 +101,18 @@ const RECIPES: Record<SoundName, Recipe> = {
     gain: 0.13,
     type: 'sawtooth',
   },
+  // Короткий деревянный клац: неровные по высоте ноты имитируют кости,
+  // скачущие по дну кружки, а не музыкальный интервал.
+  roll: {
+    notes: [
+      { hz: 180, ms: 20 },
+      { hz: 260, ms: 18 },
+      { hz: 205, ms: 22 },
+      { hz: 150, ms: 30 },
+    ],
+    gain: 0.12,
+    type: 'square',
+  },
   win: {
     notes: [
       { hz: 523, ms: 110 },
@@ -136,6 +148,7 @@ const HAPTICS: Partial<Record<SoundName, number | number[]>> = {
   correct: 14,
   wrong: [18, 40, 18],
   burnt: [18, 40, 18],
+  roll: 12,
   win: [20, 60, 20],
   lose: 40,
 };

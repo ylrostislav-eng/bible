@@ -34,6 +34,8 @@ export const SOUND_NAMES = [
   'opponent',
   /** Слово сгорело: не успели. */
   'burnt',
+  /** Кости покатились по столу — начало показа броска. */
+  'roll',
   'win',
   'lose',
   'draw',
