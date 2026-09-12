@@ -602,27 +602,45 @@ function DiceMatchScreen({
   const rollResult = match.events.find((event) => event.type === 'ROLL_RESULT');
   const rollPlayerId = rollResult?.playerId;
 
-  // `match.phase` нарочно не в списке зависимостей. Между броском и тем,
-  // как счётчик снова уйдёт в `false`, фаза успевает смениться сама
-  // (SELECTING → DECISION → HOT_DICE выбором костей) — и раньше это было
-  // зависимостью эффекта: смена фазы перезапускала его, старый таймер
-  // гасило `clearTimeout` из cleanup, а ранний выход по «этот бросок уже
-  // отыгран» (`previousAnimatedRoll.current === rollKey`) не ставил
-  // новый. `revealingRoll` застревал в `true` навсегда — кнопки хода
-  // спрятаны именно под этим флагом, и стол чинил только перезаход.
-  // _Нашлось живой партией двух ботов: обычная выборка костей быстрее
-  // после броска, чем гаснет анимация, — ровно то, что делает не только
-  // сценарий, но и любой не самый медленный игрок._
+  // Единственное, что вправе запускать (или прерывать) показ броска, —
+  // смена самого ключа броска (`rollKey`: стол:ход:номер броска). Первая
+  // версия чинила только `match.phase` в зависимостях, но у `rollPlayerId`
+  // была та же болезнь: он берётся из `match.events` — списка событий
+  // **последнего** действия, а не всего хода, — и гаснет в `undefined`,
+  // как только следующим действием (выбор костей, «забрать», «рискнуть»)
+  // событие ROLL_RESULT вываливается из этого списка. Раз он в
+  // зависимостях — эффект перезапускается, `cleanup` гасит ещё тикающий
+  // таймер показа, а ранний выход по «нет данных о броске» новый не
+  // ставит. `revealingRoll` застревал в `true`, а под ним спрятаны все
+  // кнопки хода — не помогало ничего, кроме перезахода. _Нашлось не с
+  // первой правки: живая партия ботов проходила без сбоев только потому,
+  // что тестовый скрипт ждал 2+ секунды после каждого броска — дольше,
+  // чем идёт показ. Настоящий игрок (и настоящий баг-репорт) выбирает
+  // кости куда быстрее._
+  //
+  // Поэтому `rollPlayerId` и `match.phase` читаются внутри эффекта через
+  // «свежий» ref, а не как зависимости: их значение на момент **именно
+  // этого** броска нужно захватить один раз, а не отслеживать, как оно
+  // меняется дальше.
+  const latestRollRef = useRef({ rollPlayerId, phase: match.phase });
+  // Синхронизация — отдельным эффектом без зависимостей (значит, после
+  // каждого рендера), а не прямо в теле рендера: писать в ref во время
+  // рендера запрещает `react-hooks/refs`, а по порядку объявления этот
+  // эффект всё равно отработает раньше нижнего в том же коммите.
   useEffect(() => {
-    if (!rollPlayerId || previousAnimatedRoll.current === rollKey) return;
+    latestRollRef.current = { rollPlayerId, phase: match.phase };
+  });
+
+  useEffect(() => {
+    const { rollPlayerId: currentRollPlayerId, phase } = latestRollRef.current;
+    if (!currentRollPlayerId || previousAnimatedRoll.current === rollKey) return;
     previousAnimatedRoll.current = rollKey;
-    setRollingPlayerId(rollPlayerId);
+    setRollingPlayerId(currentRollPlayerId);
     setRevealingRoll(true);
-    const resultHold = match.phase === 'BUST' ? 0 : 350;
+    const resultHold = phase === 'BUST' ? 0 : 350;
     const timer = window.setTimeout(() => setRevealingRoll(false), DICE_ROLL_MS + resultHold);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rollKey, rollPlayerId]);
+  }, [rollKey]);
 
   const visualMyTurn = revealingRoll ? rollingPlayerId === match.youId : myTurn;
 
