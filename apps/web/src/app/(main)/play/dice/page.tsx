@@ -384,7 +384,7 @@ function DiceMenu({
         {busy ? 'Ищем…' : 'Найти соперника'}
       </Button>
       <Button variant="secondary" onClick={onCreate} disabled={busy}>
-        Создать стол для друга
+        Пригласить
       </Button>
 
       <Card className="flex-col gap-2">
@@ -570,6 +570,14 @@ function DiceMatchScreen({
           <p className="rounded-xl bg-surface-hover px-4 py-2 text-2xl font-bold tracking-widest">
             {match.inviteCode}
           </p>
+          <Button
+            type="button"
+            variant="secondary"
+            className="max-w-xs"
+            onClick={() => void navigator.clipboard?.writeText(match.inviteCode)}
+          >
+            Скопировать код
+          </Button>
         </Card>
         <Button variant="secondary" onClick={onCancel} disabled={busy}>
           Отменить ожидание
